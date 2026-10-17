@@ -141,8 +141,6 @@ function Detail({ card, builtAt, detail }: DetailProps) {
         )}
       </header>
 
-      <CrewEntry eventId={card.id} />
-
       <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-6">
           {/* Opis z API jest już tekstem (HTML usuwa backend) - bez dangerouslySetInnerHTML. */}
@@ -162,6 +160,7 @@ function Detail({ card, builtAt, detail }: DetailProps) {
             </Card>
           )}
           <AttendeesSection id={card.id} />
+          <CrewEntry id={card.id} saved={card.saved} />
         </div>
 
         {/* Karta z faktami obok treści i mapy (na telefonie: przed mapą) */}

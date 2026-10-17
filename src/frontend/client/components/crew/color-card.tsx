@@ -13,7 +13,7 @@ export function ColorCard({ onClose }: { onClose: () => void }) {
   return (
     <section
       aria-label="Karta koloru"
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-brand p-6 text-center text-brand-foreground motion-safe:animate-pop"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-brand p-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center text-brand-foreground motion-safe:animate-pop"
     >
       <Icon name="location_on" size={64} filled />
       <h2 className="text-[44px] leading-[1.05] font-extrabold tracking-[-0.02em]">

@@ -2,27 +2,45 @@ import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { useAttendees } from "@/hooks/use-attendees.query";
+import { crewMembers, membersLine } from "@/lib/crew-chat";
 import { DEMO_CREW } from "@/lib/crew-demo";
+import { DemoNote } from "./demo-note";
+import { JoinCrewButton } from "./join-crew-button";
 
-// Wejście do czatu ekipy zaraz pod tytułem wydarzenia — widoczne bez przewijania, także na telefonie.
-export function CrewEntry({ eventId }: { eventId: string }) {
+type Props = { id: string; saved: boolean | undefined };
+
+/**
+ * „Ekipa na to wydarzenie” w szczegółach, pod „Kto się wybiera”: zapisani wchodzą na czat, pozostali
+ * dostają przycisk zapisu. Stan zapisu z listy zapisanych (ten sam cache co sekcja wyżej), zapas: karta.
+ */
+export function CrewEntry({ id, saved }: Props) {
+  const attendees = useAttendees(id);
+  const joined = attendees.data?.saved ?? saved === true;
+  const others = crewMembers(attendees.data?.people, DEMO_CREW.names, DEMO_CREW.capacity - 1);
+
   return (
-    <Card className="flex-row flex-wrap items-center gap-3 border-primary-soft bg-primary-soft p-4">
-      <span className="flex size-12 items-center justify-center rounded-full bg-card text-primary-ink">
-        <Icon name="groups" size={26} filled />
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <h2 className="text-lg leading-tight font-bold">Ekipa na to wydarzenie</h2>
-        <p className="text-meta text-muted-foreground">
-          {DEMO_CREW.members}/{DEMO_CREW.capacity} osoby · odpowiedz na lodołamacz i dołącz do czatu
-        </p>
-      </div>
-      <Button asChild className="w-full sm:w-auto">
-        <Link to="/wydarzenie/$id/ekipa" params={{ id: eventId }}>
-          <Icon name="forum" size={22} filled />
-          Wejdź na czat
-        </Link>
-      </Button>
+    <Card className="gap-3 p-5">
+      <h2 className="flex items-center gap-2 text-xl font-extrabold">
+        <Icon name="forum" size={24} filled className="text-primary-ink" />
+        Ekipa na to wydarzenie
+      </h2>
+      <p className="text-base text-pretty text-muted-foreground">
+        {joined
+          ? `${membersLine(others)}. Odpowiedz na lodołamacz i umówcie się na wspólne wyjście.`
+          : `Nie masz z kim iść? Zapisani dostają ekipę do ${DEMO_CREW.capacity} osób i wspólny czat.`}
+      </p>
+      {joined ? (
+        <Button asChild size="lg">
+          <Link to="/wydarzenie/$id/ekipa" params={{ id }}>
+            <Icon name="forum" size={22} filled />
+            Wejdź na czat
+          </Link>
+        </Button>
+      ) : (
+        <JoinCrewButton id={id} />
+      )}
+      <DemoNote />
     </Card>
   );
 }

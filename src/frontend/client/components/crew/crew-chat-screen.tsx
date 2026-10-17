@@ -1,52 +1,121 @@
 import { getRouteApi, Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { errorText, RouteError } from "@/components/layout/route-error";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAttendees } from "@/hooks/use-attendees.query";
+import { useEvent } from "@/hooks/use-event.query";
 import { useEventCard } from "@/hooks/use-event-card.query";
+import { currentName } from "@/lib/auth";
 import { CATEGORY_LABEL, categoryOf } from "@/lib/categories";
-import { lastSearch } from "@/lib/search";
+import { crewMembers, membersLine, ownLabel } from "@/lib/crew-chat";
+import { DEMO_CREW } from "@/lib/crew-demo";
+import { placeLabel, slotLabel } from "@/lib/events";
+import type { Card } from "@/lib/schemas";
 import { CrewChat } from "./crew-chat";
+import { DemoNote } from "./demo-note";
+import { JoinCrewButton } from "./join-crew-button";
 
 const route = getRouteApi("/_app/wydarzenie/$id_/ekipa");
 
-// Wysokość ekranu minus nagłówek portalu, odstępy <main> i przycisk powrotu: czat na cały ekran jak w mockupie.
-const fullHeight = "h-[calc(100dvh-11.5rem)] min-h-[460px] md:h-[calc(100dvh-14rem)]";
+// Telefon: pełny ekran nad nagłówkiem i dolnym paskiem (pole wiadomości zawsze na dole, z bezpiecznym
+// obszarem). Desktop: karta w treści strony na wysokość okna minus nagłówek i odstępy <main>.
+const shell =
+  "fixed inset-0 z-30 flex flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] " +
+  "md:static md:z-auto md:mx-auto md:h-[calc(100dvh-10.5rem)] md:min-h-[520px] md:w-full md:max-w-[720px] md:rounded-2xl md:border md:bg-card md:p-0";
 
 export function CrewChatScreen() {
   const { id } = route.useParams();
-  const { found, isPending, error, refetch } = useEventCard(id);
+  const detail = useEvent(id);
+  // Zapas jak w szczegółach: karta z cache rekomendacji, gdy GET /api/events/{id} zawiedzie.
+  const fallback = useEventCard(id, detail.isError);
+  const attendees = useAttendees(id);
+  const card = detail.data ?? fallback.found?.card ?? null;
+  const joined = attendees.data?.saved ?? card?.saved === true;
+  // Skład ustalamy po odpowiedzi listy zapisanych, żeby imiona nie zmieniały się w trakcie rozmowy.
+  const membersReady = attendees.data !== undefined || attendees.isError;
+  const members = crewMembers(attendees.data?.people, DEMO_CREW.names, DEMO_CREW.capacity - 1);
+
+  let body: ReactNode;
+  if (card && membersReady && joined) {
+    body = (
+      <CrewChat
+        // key: inne wydarzenie = nowa ekipa i świeży stan czatu
+        key={id}
+        members={members}
+        myLabel={ownLabel(currentName())}
+        category={CATEGORY_LABEL[categoryOf(card.tags)]}
+        place={placeLabel(card)}
+        when={slotLabel(card.slot, new Date())}
+      />
+    );
+  } else if (card && membersReady) {
+    body = <JoinGate id={id} />;
+  } else if (detail.isError && fallback.error) {
+    body = (
+      <div className="p-4">
+        <RouteError
+          message={errorText(detail.error, "Nie udało się pobrać wydarzenia.")}
+          onRetry={() => {
+            void detail.refetch();
+            void fallback.refetch();
+          }}
+        />
+      </div>
+    );
+  } else if (detail.isError && !fallback.isPending && !card) {
+    body = <p className="p-4 text-meta text-muted-foreground">Nie znaleziono tego wydarzenia.</p>;
+  } else {
+    body = <Skeleton className="m-4 flex-1 rounded-2xl" />;
+  }
 
   return (
-    <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4">
-      <Button asChild variant="secondary" size="sm" className="self-start pr-3.5 pl-2 font-semibold">
-        {found ? (
-          <Link to="/wydarzenie/$id" params={{ id }}>
-            <Icon name="chevron_left" size={22} />
-            Wydarzenie
-          </Link>
-        ) : (
-          <Link to="/" search={lastSearch()}>
-            <Icon name="chevron_left" size={22} />
-            Rekomendacje
-          </Link>
-        )}
+    <section aria-labelledby="crew-title" className={shell}>
+      <TopBar id={id} card={card} members={joined && membersReady ? members : null} />
+      <DemoNote className="border-b bg-warning-soft px-4 py-2" />
+      {body}
+    </section>
+  );
+}
+
+function TopBar({ id, card, members }: { id: string; card: Card | null; members: string[] | null }) {
+  return (
+    <header className="flex items-center gap-2 border-b bg-background px-2 py-2 md:bg-card">
+      <Button asChild variant="ghost" size="icon" aria-label="Wróć do wydarzenia">
+        <Link to="/wydarzenie/$id" params={{ id }}>
+          <Icon name="arrow_back" size={24} />
+        </Link>
       </Button>
-      {found ? (
-        <CrewChat
-          // key: inne wydarzenie = nowa ekipa i świeży stan czatu
-          key={id}
-          eventTitle={found.card.title}
-          category={CATEGORY_LABEL[categoryOf(found.card.tags)]}
-          className={fullHeight}
-        />
-      ) : error ? (
-        <RouteError message={errorText(error, "Nie udało się pobrać wydarzenia.")} onRetry={() => void refetch()} />
-      ) : isPending ? (
-        <Skeleton className={`${fullHeight} rounded-2xl`} />
-      ) : (
-        <p className="text-meta text-muted-foreground">Nie znaleziono tego wydarzenia – wróć do rekomendacji.</p>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <h1 id="crew-title" className="truncate text-title font-bold">
+          {card ? `Ekipa: ${card.title}` : "Ekipa"}
+        </h1>
+        {members && <p className="truncate text-sm text-muted-foreground">{membersLine(members)}</p>}
+      </div>
+      {members && (
+        <Badge variant="success" size="lg" className="mr-2">
+          <Icon name="group" size={18} />
+          {members.length + 1}/{DEMO_CREW.capacity} osoby
+        </Badge>
       )}
+    </header>
+  );
+}
+
+/** Niezapisani widzą zamiast czatu prośbę o zapis (po zapisie czat pojawia się od razu). */
+function JoinGate({ id }: { id: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-secondary p-6 text-center">
+      <span className="flex size-14 items-center justify-center rounded-full bg-primary-soft text-primary-ink">
+        <Icon name="lock" size={28} />
+      </span>
+      <h2 className="text-title font-bold">Czat jest dla zapisanych</h2>
+      <p className="max-w-sm text-base text-pretty text-muted-foreground">
+        Zapisz się na wydarzenie, a dołączysz do ekipy (do {DEMO_CREW.capacity} osób), która idzie razem.
+      </p>
+      <JoinCrewButton id={id} className="w-full max-w-sm" />
     </div>
   );
 }
