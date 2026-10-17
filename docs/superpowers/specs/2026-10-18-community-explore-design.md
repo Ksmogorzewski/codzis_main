@@ -45,7 +45,7 @@ Karta (`Card`) ma ten sam kształt co karta rekomendacji z `src/recommender_api/
 Rekomendacje (`/api/recommendations`) zostają bez zmian; front dociąga do ich kart `saves`/`saved` przez `GET /api/events/stats?ids=…` **albo** pokazuje licznik dopiero w szczegółach — do decyzji implementującego (mniejsza liczba zapytań wygrywa).
 
 ## Imię
-- Rejestracja: pole „Imię” → atrybut Cognito `name` (`SignUp` `UserAttributes`). Profil: pole „Imię” → `UpdateUserAttributes` z access tokenem (klient `web` nie ogranicza atrybutów do zapisu), potem odświeżenie tokenu. `GET /api/me` już zapisuje `displayName` z claimu `name`.
+- Rejestracja: pole „Imię” (wymagane) → atrybut Cognito `name` (`SignUp` `UserAttributes`). Imienia nie zmieniamy później (brak pola w profilu); wyjątek: jednorazowe uzupełnienie dla kont bez imienia (decyzja 2). `GET /api/me` już zapisuje `displayName` z claimu `name`.
 - Zapis na wydarzenie kopiuje imię z claimu do `attendance.name`.
 
 ## Front (`src/frontend/client`, zasady z `src/frontend/AGENTS.md`)
@@ -65,11 +65,11 @@ Rekomendacje (`/api/recommendations`) zostają bez zmian; front dociąga do ich 
 
 ## Decyzje po przeglądzie (decyzje Claude, do sprawdzenia przez Dawida)
 1. **Zajęcia cykliczne** (`kind=recurring`, `schedule`): client-api ma **własną kopię** logiki terminu (port `next_slot` z `recommender/retriever/filters.py` do modułu client-api, z testami; rekomendera nie ruszamy ani nie importujemy). Karta ma `slot` = najbliższy termin w oknie, liczony tak samo jak w rekomenderze. Zajęcia cykliczne są w Eksploruj, gdy mają termin w oknie; w Popularnych, gdy mają termin w bieżącym tygodniu i mają zapisy.
-2. **Imię:** po `UpdateUserAttributes` front od razu odświeża token (`REFRESH_TOKEN_AUTH`) — nowy ID token ma nowy claim `name`, bez ponownego logowania. Pula nie definiuje własnego `schema`, więc standardowy `name` jest zapisywalny; Google wyłączone. Zapis na wydarzenie kopiuje imię z claimu; wcześniejsze zapisy zachowują stare imię (akceptowalne).
+2. **Imię (decyzja Dawida: niezmienne):** podawane przy rejestracji (atrybut Cognito `name`), potem **nie da się go zmienić** w UI. Konta bez imienia (założone wcześniej) widzą **jednorazową** prośbę o imię przed pierwszym zapisem na wydarzenie: `UpdateUserAttributes` (tylko gdy `name` puste) + od razu odświeżenie tokenu (`REFRESH_TOKEN_AUTH`), żeby nowy ID token miał claim `name`. Pula nie definiuje własnego `schema`, więc standardowy `name` jest zapisywalny; Google wyłączone. Zapis na wydarzenie kopiuje imię z claimu.
 3. **Lambda client-api:** pamięć 128 → **512 MB**, timeout 10 s zostaje. Pamięć podręczna wydarzeń per kontener (5 min) jest akceptowalna — różnice między kopiami trwają maks. 5 min. Liczniki (`saves`) zawsze z bazy, nie z pamięci.
-4. **Popularne:** `query` GSI `bySaves` malejąco z zapasem (do 200), filtr do wydarzeń z terminem w bieżącym tygodniu, maks. 20. Tylko `saves > 0`. Gdy pusto — stan pusty „Jeszcze nikt się nie zapisał — bądź pierwszy” z linkiem do Eksploruj (bez dopełniania innymi wydarzeniami). Seed zapewnia treść na demo.
-5. **Stabilność `eventId`:** id z importera to hash klucza źródła (`kal-…`, `spt-…`), stabilne między importami. Po wygaśnięciu wydarzenia (TTL) zapisy zostają jako sieroty — przy odczycie pomijamy wydarzenia, których nie ma; sprzątanie poza zakresem.
-6. **Terraform pisze implementujący** (tabele, GSI, IAM, trasy, `DELETE` w CORS `allow_methods` — dziś tylko GET/PUT/OPTIONS, `memory_size`); **wdraża Krzysztof** (`terraform plan` → `apply` → test).
+4. **Popularne (od najwięcej zapisanych):** `query` GSI `bySaves` malejąco z zapasem (do 200), filtr do wydarzeń z terminem w bieżącym tygodniu, maks. 20. Tylko `saves > 0`. Gdy pusto — stan pusty „Jeszcze nikt się nie zapisał — bądź pierwszy” z linkiem do Eksploruj (bez dopełniania innymi wydarzeniami). Seed zapewnia treść na demo.
+5. **Stabilność `eventId`:** id z importera to hash klucza źródła (`kal-…`, `spt-…`), stabilne między importami. Po wygaśnięciu wydarzenia (TTL) **zapisy zostają do analityki (decyzja Dawida)** — przy odczycie pomijamy wydarzenia, których nie ma; bez sprzątania.
+6. **Terraform pisze implementujący** (tabele, GSI, IAM, trasy, `DELETE` w CORS `allow_methods` — dziś tylko GET/PUT/OPTIONS, `memory_size`); **wdraża Dawid** (`terraform plan` → `apply` → test) po przeniesieniu stanu Terraforma do S3 (backend `s3` z `use_lockfile`, migracja: Krzysztof). Bez ręcznych zmian przez AWS CLI (rozjazd ze stanem).
 
 ## Zostawione budowniczemu
 Dokładny podział modułów client-api (`events.py`, `attendance.py`…), wygląd dolnego paska, liczba kart na stronie Eksploruj (stronicowanie albo limit), sposób dociągania liczników do kart rekomendacji (patrz wyżej).
