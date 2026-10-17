@@ -21,7 +21,7 @@ target-table events (schema v1, `src/importer/schema.py`) with the `tags` produc
 4. **Retrieve** — expand the query (optional DeepSeek step: a short/vague request is rewritten
    into a richer Polish search text, cached, with fallback to the raw query), encode the user
    context, apply hard filters (district/cost/mode/audience/price/date), score the filtered
-   events on the prebuilt index, add small soft-preference boosts (`retriever/scoring.py`),
+   events on the prebuilt index, add small soft-preference boosts/penalties (`retriever/scoring.py`),
    collapse same-title duplicates and pick a varied top-N.
 5. **Rank** (optional) — DeepSeek re-ranks candidates and adds a one-line reason (in Polish)
    per event. Any LLM error falls back to the cosine order.
@@ -84,7 +84,7 @@ for c in results:
 | `max_price` | hard filter on a declared price (`attributes.price`) |
 | `date_from` / `date_to` | ISO dates `"2026-10-17"`; weekly classes match by weekday |
 | `now` | ISO datetime: drops what is already over |
-| `themes`, `formats`, `occasion`, `activity_level`, `setting`, `registration`, `accessibility`, `time_of_day`, `home_district`, `near_districts` | soft preferences (reorder only) |
+| `themes`, `formats`, `occasion`, `activity_level`, `setting`, `registration`, `accessibility`, `time_of_day`, `home_district`, `near_districts`, `audience`, `mode` | soft preferences (reorder only) |
 | `profile` | free-text profile for the LLM ranker |
 
 `recommend(..., min_score=0.30)` — weak matches are **dropped** instead of padding the list,

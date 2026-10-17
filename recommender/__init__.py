@@ -42,7 +42,7 @@ from typing import Any
 
 from .chunker import EventChunk, chunk_events, build_event_text, event_district, plain_text, MAX_CHUNK_CHARS
 from .embedder import EmbeddingModel, VectorIndex, build_index, DEFAULT_MODEL
-from .retriever import Retriever, Candidate, QueryEncoder, DEFAULT_TASTE_WEIGHT, DEFAULT_MIN_SCORE
+from .retriever import Retriever, Candidate, QueryEncoder, DEFAULT_TASTE_WEIGHT, DEFAULT_MIN_SCORE, BOOSTS, PENALTIES
 from .llm import DeepSeekClient, load_env_value, DEEPSEEK_MODEL
 from .ranker import rank_candidates
 from .expand import expand_query
@@ -69,6 +69,8 @@ __all__ = [
     "DEFAULT_MODEL",
     "DEFAULT_TASTE_WEIGHT",
     "DEFAULT_MIN_SCORE",
+    "BOOSTS",
+    "PENALTIES",
     "__version__",
 ]
 

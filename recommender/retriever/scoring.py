@@ -4,13 +4,28 @@ Hard filters (filters.py) decide WHAT may be recommended; this module only reord
 It uses the tagger's closed taxonomy (`tags`) and the data facets (`facets`), which a
 free-text embedding can miss. Each boost is small, so a strong semantic match still wins.
 
+Two kinds of adjustment, both small:
+  BOOSTS    - the event satisfies a stated preference (adds score)
+  PENALTIES - the event CONTRADICTS a stated preference (subtracts score)
+
+The distinction matters. Without a penalty, contradicting a preference is only
+"no bonus", which an unrelated event with a slightly closer embedding still wins. Live
+example from scripts/recommender-demo.py: for "czego moge sie nauczyc za darmo" a
+free astronomy lecture (cosine 0.419 + 0.08 theme boost) was pushed below a board-game
+evening (cosine 0.479, no match) once the theme-diversity penalty for repeating the
+already-chosen "Nauka" theme was applied - i.e. a 0.02 diversification penalty cancelled
+a 0.08 preference signal. Hence the penalties below, and the much smaller diversify
+penalties.
+
 Recognised user fields (all optional; lists of taxonomy values from tagger/prompt.py):
     themes, formats, occasion, activity_level, setting, registration, accessibility
     time_of_day                  "rano" / "popołudnie" / "wieczór" (as in facets.timeOfDay)
+    audience                     "Dzieci (7-12)", "Dorośli (18-64)", ...
+    mode                         "Stacjonarne" / "Online" / "Hybrydowe"
     home_district (str), near_districts (list)   closer events first
 
 `preference_boost()` also returns WHAT matched, so a caller can explain a recommendation
-without an LLM.
+without an LLM. A negative boost means a stated preference was contradicted.
 """
 
 from __future__ import annotations
@@ -34,6 +49,13 @@ BOOSTS = {
     "near_districts": 0.025,
 }
 EXTRA_THEME = 0.02  # per additional matching theme
+
+# Penalties for events that actively contradict a stated preference.
+PENALTIES = {
+    "time_of_day_mismatch": 0.04,  # the slot's hour is known and outside the wanted bucket
+    "audience_untagged": 0.03,     # user asked for a group, the event has no audience tag
+    "online_unrequested": 0.03,    # online event when the user did not ask for online
+}
 # Month-long "events" are usually programmes or services, not something to do today;
 # exhibitions are the exception (open daily for weeks).
 LONG_SPAN_DAYS, LONG_SPAN_PENALTY = 7, 0.06
@@ -113,6 +135,21 @@ def preference_boost(event: dict, user: dict, slot: dict | None = None) -> tuple
         if hits:
             matched["time_of_day"] = hits
             boost += BOOSTS["time_of_day"]
+        elif times:
+            # The time is known and it is the wrong part of the day (e.g. a 14:00
+            # workshop for "wieczorem"): demote instead of merely not boosting.
+            boost -= PENALTIES["time_of_day_mismatch"]
+
+    # A stated audience with an untagged event is unknown, not "fine". Family events
+    # carry the FAMILY tag, so they are not affected; untagged ones get demoted.
+    if _as_list(user.get("audience")) and not _as_list(tags.get("audience")):
+        boost -= PENALTIES["audience_untagged"]
+
+    # Same idea for mode: unless the user asked for online, prefer being there in person.
+    if not _as_list(user.get("mode")):
+        online = event.get("online") is True or tags.get("mode") == "Online"
+        if online:
+            boost -= PENALTIES["online_unrequested"]
 
     days = _span_days(slot)
     if days > LONG_SPAN_DAYS and "Wystawa" not in _as_list(tags.get("format")):
@@ -131,9 +168,15 @@ def preference_boost(event: dict, user: dict, slot: dict | None = None) -> tuple
     return boost, matched
 
 
-def diversify(candidates: list, top_k: int, venue_penalty: float = 0.06, theme_penalty: float = 0.02) -> list:
+def diversify(candidates: list, top_k: int, venue_penalty: float = 0.02, theme_penalty: float = 0.005) -> list:
     """Greedy top-k (candidates sorted best-first) that spreads results across venues and
-    main themes, so one pool or one cinema does not fill the whole list."""
+    main themes, so one pool or one cinema does not fill the whole list.
+
+    The penalties are deliberately an order of magnitude SMALLER than the preference
+    boosts (BOOSTS = 0.02-0.08): variety is a tie-breaker, it must never outvote a
+    stated preference. At the previous 0.06/0.02 a repeated theme cost as much as a
+    matched preference and silently cancelled it.
+    """
     pool = list(candidates)
     picked: list = []
     venues: Counter = Counter()
