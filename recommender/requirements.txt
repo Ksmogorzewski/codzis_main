@@ -1,0 +1,12 @@
+# Recommender (RAG). Install torch CPU-only first — the default PyPI wheel on Linux pulls
+# several GB of CUDA libraries:
+#   pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r recommender/requirements.txt
+sentence-transformers==6.1.0
+torch==2.14.1
+numpy==2.5.4
+transformers==5.20.1
+scikit-learn==1.9.1
+scipy==1.18.1
+openai==3.33.*
+tzdata==2026.*

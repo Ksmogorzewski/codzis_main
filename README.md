@@ -1,7 +1,7 @@
 # codzis_main
 
 PoC **WarsawNow**: co robić w Warszawie dziś.
-- **Portal klienta** (`portal.waw-out.pl`): logowanie e-mailem lub Google (Cognito), profil zbierany kafelkami (onboarding) i zapisywany w DynamoDB pod rekomendacje (RAG).
+- **Portal klienta** (`portal.waw-out.pl`): logowanie e-mailem lub Google (Cognito), profil zbierany kafelkami (onboarding) i zapisywany w DynamoDB, a na jego podstawie zakładka **Rekomendacje** (RAG: embeddingi eventów + ranking DeepSeek z uzasadnieniem „Pasuje: …”).
 - **Panel organizatora** (`partner.waw-out.pl`): partner loguje się kluczem API, kupuje kredyty (mock bramka płatności) i publikuje ogłoszenia (1 zdjęcie → S3, 1 ogłoszenie = 1 kredyt).
 - **Dane:** ogłoszenia partnerów i eventy z otwartych danych UM trafiają na kolejkę SQS, a tagger AI na ECS taguje je i zapisuje do docelowej tabeli DynamoDB.
 
@@ -11,6 +11,7 @@ Frontend obu stron to React + TypeScript (`src/frontend`, Vite), wygląd według
 https://portal.<domena>/ ──▶ CloudFront ──▶ S3 (portal klienta, React)
      logowanie: Cognito (e-mail + hasło: API Cognito; Google: Hosted UI + PKCE)
      API: HTTP API (JWT authorizer Cognito) ──▶ Lambda client-api ──▶ users (profil + preferencje)
+          GET /api/recommendations ──▶ Lambda recommender (obraz kontenera: model + indeks z S3) ──▶ DeepSeek
 
 https://<domena>/        ──▶ CloudFront ──▶ S3 (panel organizatora, React, prywatny, OAC)
 https://<domena>/api/*   ──▶ CloudFront ──▶ API GW (REST, API key, /{proxy+}) ──▶ Lambda ──▶ submissions + SQS
@@ -20,6 +21,7 @@ importer ECS (EventBridge co 2 h): API UM Warszawy ──▶ schemat v1 ──�
 SQS ──▶ tagger ECS (Fargate Spot): tagi DeepSeek ──▶ events (docelowa) + submissions.status = published
           ▲ RunTask
 dispatcher (Lambda, EventBridge co 1 min): gdy w kolejce jest ≥ 1 wiadomość i tagger nie działa → RunTask
+recommender (EventBridge co 30 min): events ──▶ embeddingi nowych eventów ──▶ S3 recommender/index.npz
 ```
 
 Panel organizatora: logowanie kluczem API, potem Moje wydarzenia (statusy, tagi AI), Dodaj wydarzenie (formularz z podglądem karty) i Płatności i kredyty. Mock bramka: `mock-pay.html`.
@@ -47,6 +49,8 @@ Tabele DynamoDB: `events` (docelowa, pisze tylko worker), `submissions` i `payme
 - `src/importer/` – importer ECS: API UM Warszawy → wspólny schemat (`schema.py`, `sources.py`) → SQS
 - `Dockerfile` (tagger), `src/importer/Dockerfile`, `scripts/push-images.sh` – obrazy ECS i ich build + push do ECR
 - `src/client_api/` – Lambda API portalu klienta: `handler.py` (profil), `onboarding.py` (pytania + mapowanie odpowiedzi na preferencje)
+- `recommender/` – silnik rekomendacji (RAG): embeddingi, filtry, ranking, DeepSeek. Szczegóły: [recommender/README.md](recommender/README.md)
+- `src/recommender_api/` – Lambda z obrazu kontenera: `GET /api/recommendations` + budowa indeksu (`Dockerfile`, build z katalogu głównego)
 - `src/frontend/` – React + TS (Vite): `client/` portal klienta, `partner/` panel organizatora (+ `mock-pay.html`), `shared/`; `config.js` generuje Terraform
 
 ## Deploy
@@ -112,6 +116,7 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 | `GET /api/me` | profil (pierwsze wywołanie zakłada rekord), `needsOnboarding`, `onboardingOutdated` |
 | `GET /api/onboarding` | kafelki z pytaniami (ikony, limity wyborów, wymagane pola) |
 | `PUT /api/profile` | `{"answers": {"who": ["kids"], ...}}` → walidacja, preferencje, zapis |
+| `GET /api/recommendations` | `?when=today\|tomorrow\|weekend\|week&q=jazz&limit=12` → karty wydarzeń z uzasadnieniem (sekcja Rekomendacje); `409` bez profilu, `503` zanim powstanie indeks |
 
 **Onboarding:** pytania i mapowanie odpowiedzi są w jednym miejscu, `src/client_api/onboarding.py`; frontend tylko je wyświetla. Jest 10 kafelków:
 - wymagane: z kim, klimat (maks. 2), co odkryć (maks. 2), gdzie (dzielnica i zasięg);
@@ -131,6 +136,41 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 - `scripts/frontend-dev.sh partner` (http://localhost:8001; `/api` idzie przez proxy do domeny panelu).
 
 Testy frontendu: `npm --prefix src/frontend test`.
+
+## Rekomendacje (RAG)
+
+Zakładka **Rekomendacje** w portalu klienta: wybór dnia (dziś / jutro / weekend / 7 dni), wyszukiwanie tekstem („jazz”, „joga”) i karty jak w makiecie (cena, miejsce, termin, „Pasuje: …”, Trasa, Bilet / Szczegóły). Silnik to pakiet [`recommender/`](recommender) z brancha `llm`, dostosowany do schematu v1 eventów.
+
+**Jak dobieramy propozycje** (`src/recommender_api/user_context.py` mapuje `preferences` z onboardingu):
+1. **Twarde filtry:** termin w wybranym oknie (już zakończone odpadają; zajęcia cykliczne wg dni tygodnia), dzielnica wg zasięgu dojazdu (okolica / sąsiednie dzielnice / cała Warszawa), koszt („tylko bezpłatne”), forma (na żywo / online), grupa odbiorców, budżet.
+2. **Podobieństwo wektorowe:** model `paraphrase-multilingual-MiniLM-L12-v2` (lokalnie, CPU) porównuje profil (tematy, formaty, kategorie) albo wpisaną frazę z tekstem eventu (tytuł, kategorie, tagi AI, opis).
+3. **Miękkie preferencje:** drobne punkty za zgodność tagów (tematy, formaty, z kim, aktywność, plener / pod dachem, zapisy, dostępność), porę dnia, bliskość dzielnicy; mniej za „wydarzenia” trwające miesiącami (to zwykle programy, nie propozycja na dziś). Potem dedupe tytułów i różnorodność (nie 5 kart z jednej pływalni).
+4. **DeepSeek** (opcjonalnie, ten sam klucz co tagger): układa 16 najlepszych kandydatów i pisze uzasadnienia. Przy błędzie lub po 12 s zostaje kolejność wektorowa z uzasadnieniem z reguł.
+
+Gdy w okolicy wyjdą mniej niż 4 propozycje, obszar poszerza się sam (strona to pokazuje).
+
+**Indeks:** `s3://<data_bucket>/recommender/index.npz` (wektory + odchudzone eventy). EventBridge co 30 min (`recommender_refresh_minutes`) skanuje tabelę `events` i liczy embeddingi tylko dla nowych lub zmienionych tekstów. Drugi harmonogram co 5 min trzyma model w pamięci (`recommender_keep_warm`), bo zimny start z torchem trwa kilkanaście sekund. Koszt: grosze miesięcznie (Lambda płatna za czas wywołań, ECR ~0,25 USD/mies. za obraz 2,3 GB).
+
+**Wdrożenie** (Lambda potrzebuje istniejącego obrazu, więc za pierwszym razem dwa applye):
+```sh
+terraform -chdir=infra apply -target=aws_ecr_repository.recommender
+scripts/push-images.sh recommender    # build arm64 (torch CPU + model w obrazie), push do ECR
+scripts/build-frontend.sh
+terraform -chdir=infra apply          # Lambda, trasa w HTTP API, harmonogramy, nowy frontend
+scripts/recommender-refresh.sh        # pierwszy indeks od razu (~1-3 min), zamiast czekać 30 min
+```
+Kolejne zmiany kodu rekomendera: `scripts/push-images.sh recommender` (sam podmienia kod Lambdy). Nowe eventy trafiają do rekomendacji przy najbliższym odświeżeniu indeksu, a od razu po `scripts/recommender-refresh.sh`.
+
+**Lokalnie, bez AWS** (zrzut tabeli `events` do JSON-a):
+```sh
+docker build --platform linux/arm64 --provenance=false -f src/recommender_api/Dockerfile -t codzis-recommender .
+docker run --rm -v "$PWD/tmp:/data" -e EVENTS_FILE=/data/events.json -e INDEX_PATH=/data/index.npz \
+  -e AWS_DEFAULT_REGION=eu-central-1 --entrypoint python codzis-recommender \
+  -c 'import handler; print(handler.handler({"action": "refresh"}, None))'
+```
+Z `INDEX_PATH` i `EVENTS_FILE` handler zapisuje indeks do pliku zamiast do S3 i czyta eventy z pliku zamiast z DynamoDB.
+
+Strojenie: wagi miękkich preferencji w `recommender/retriever/scoring.py` (`BOOSTS`), sąsiedztwo dzielnic w `src/recommender_api/user_context.py`, prompt rankingu w `recommender/ranker.py`, wyłączenie LLM: `recommender_llm_enabled = false`.
 
 ## Initial load (pierwsze załadowanie danych)
 
@@ -224,7 +264,8 @@ Pola portalu partnera i ich walidacja: `TEXT_FIELDS`, `DECLARED_FIELDS` i `_even
 - Kredyt jest pobierany przy zapisie ogłoszenia, przed uploadem zdjęcia. Jeśli upload się nie uda, `image.highlighted.path` wskazuje na nieistniejący plik.
 - Czas z formularza jest interpretowany w strefie przeglądarki partnera.
 - **Domena główna bez subdomeny** (np. samo `waw-out.pl`) nie zadziała z CloudFront przez home.pl: CNAME wymaga hosta, a rekord A wymagałby stałego IP, którego CloudFront nie ma. Dlatego obie strony są na subdomenach (`partner.`, `portal.`).
-- Portal klienta nie ma jeszcze rekomendacji: po zapisaniu profilu pokazuje jego podsumowanie i `ragProfile`.
+- Rekomendacje: nowy event pojawia się w nich po odświeżeniu indeksu (do 30 min); sąsiedztwo dzielnic jest przybliżone; brak jeszcze sygnałów zwrotnych (polubienia → `liked_event_ids`), które recommender już obsługuje.
+- Pierwsze zapytanie po zimnym starcie Lambdy rekomendera trwa kilkanaście sekund (strona pokazuje komunikat i raz ponawia); harmonogram „warmup” zwykle temu zapobiega.
 - Ogłoszenie partnera pojawia się w tabeli `events` po ~2-5 min (start kontenera + tagowanie).
 - Brak alarmu na DLQ: zepsute wiadomości trzeba sprawdzać ręcznie.
 - Rekordy usunięte w źródle przed końcem (np. odwołane eventy) zostają w tabeli do `expiresAt`; zajęcia cykliczne usunięte w źródle zostają na stałe (importer tylko loguje ich liczbę).

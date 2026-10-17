@@ -2,10 +2,11 @@ import { Icon } from "../../shared/Icon";
 import { formatDayLabel } from "../../shared/format";
 import type { Me, OnboardingStep } from "../lib/types";
 import { isFilled, summary } from "../lib/wizard";
+import { Recommendations } from "./Recommendations";
 
 type Props = { me: Me; steps: OnboardingStep[] };
 
-// Do czasu uruchomienia rekomendacji (RAG): nagłówek dnia + podsumowanie zapisanego profilu
+// Zakładka "Rekomendacje": nagłówek dnia, propozycje z RAG i podsumowanie profilu, na którym się opierają
 export function Home({ me, steps }: Props) {
   const answers = me.profile?.answers ?? {};
   const prefs = me.profile?.preferences;
@@ -27,27 +28,13 @@ export function Home({ me, steps }: Props) {
         <p className="day-profile">Propozycje dla profilu: {headline || "uzupełnij profil"}</p>
       </section>
 
-      <section className="soon">
-        <span className="soon-icon">
-          <Icon name="auto_awesome" fill />
-        </span>
-        <div>
-          <h2>Rekomendacje są w przygotowaniu</h2>
-          <p>
-            Twój profil jest zapisany. Gdy uruchomimy dopasowanie, pojawią się tu wydarzenia z kalendarza miasta, zajęć sportowych i od
-            organizatorów – z wyjaśnieniem, dlaczego pasują.
-          </p>
-        </div>
-      </section>
+      <Recommendations />
 
-      <section className="card">
-        <div className="card-head">
-          <h2>Co wiemy o Twoich preferencjach</h2>
-          <a className="btn btn-outline btn-sm" href="#/profil">
-            <Icon name="edit" />
-            Edytuj
-          </a>
-        </div>
+      <details className="card prefs-card">
+        <summary className="card-head">
+          <h2>Na tej podstawie dobieramy propozycje</h2>
+          <Icon name="expand_more" className="prefs-chevron" />
+        </summary>
         <div className="prefs">
           {steps
             .filter((s) => isFilled(s, answers))
@@ -69,13 +56,19 @@ export function Home({ me, steps }: Props) {
               </div>
             ))}
         </div>
+        <div className="row-gap prefs-actions">
+          <a className="btn btn-outline btn-sm" href="#/profil">
+            <Icon name="edit" />
+            Edytuj profil
+          </a>
+        </div>
         {me.profile?.ragProfile && (
           <details className="rag">
             <summary>Parametry do rekomendacji</summary>
             <pre>{me.profile.ragProfile}</pre>
           </details>
         )}
-      </section>
+      </details>
     </main>
   );
 }
