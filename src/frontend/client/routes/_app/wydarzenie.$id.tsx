@@ -1,14 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { EventDetailView } from "@/components/events/event-detail";
 import { GenericRouteError } from "@/components/layout/route-error";
 
-// ZAŚLEPKA (faza A). Faza B: szczegóły z karty w cache ["recommendations", …], a bez cache -
-// pobranie rekomendacji i wyszukanie po id; brak -> „Nie znaleziono”.
+// Szczegóły z karty w cache rekomendacji; po odświeżeniu strony widok sam pobiera listę i szuka po id
+// (hooks/use-event-card.query.ts). Bez loadera, bo zimny start rekomendacji trwa do ~30 s.
 export const Route = createFileRoute("/_app/wydarzenie/$id")({
-  component: EventPlaceholder,
+  component: EventDetailView,
   errorComponent: GenericRouteError,
 });
-
-function EventPlaceholder() {
-  const { id } = Route.useParams();
-  return <h1 className="text-[28px] font-extrabold tracking-[-0.02em]">Wydarzenie {id}</h1>;
-}
