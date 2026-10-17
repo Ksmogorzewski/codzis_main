@@ -1,4 +1,5 @@
-# API portalu klienta: HTTP API + JWT authorizer (Cognito) -> Lambda -> tabela users.
+# API portalu klienta: HTTP API + JWT authorizer (Cognito) -> Lambda -> tabela users
+# (+ odczyt codzis-events, zapisy na wydarzenia i liczniki: infra/community.tf).
 
 # Profile klientów pod rekomendacje (RAG): odpowiedzi z onboardingu, preferencje, profil tekstowy
 resource "aws_dynamodb_table" "users" {
@@ -60,6 +61,24 @@ resource "aws_iam_role_policy" "client_api" {
         Resource = aws_dynamodb_table.users.arn
       },
       {
+        # Eksploruj i Popularne: scan z pamięcią w Lambdzie (5 min), szczegóły i zapis po kluczu
+        Effect   = "Allow"
+        Action   = ["dynamodb:Scan", "dynamodb:GetItem"]
+        Resource = aws_dynamodb_table.events.arn
+      },
+      {
+        # Zapisy na wydarzenia (Put/Delete także w TransactWriteItems), lista zapisanych, "moje zapisy"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query"]
+        Resource = [aws_dynamodb_table.attendance.arn, "${aws_dynamodb_table.attendance.arn}/index/*"]
+      },
+      {
+        # Liczniki zapisanych (Update także w TransactWriteItems) i top po liczbie zapisanych
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:BatchGetItem", "dynamodb:Query"]
+        Resource = [aws_dynamodb_table.event_stats.arn, "${aws_dynamodb_table.event_stats.arn}/index/*"]
+      },
+      {
         # Po zapisaniu profilu i przy logowaniu: przeliczenie rekomendacji w tle
         Effect   = "Allow"
         Action   = ["lambda:InvokeFunction"]
@@ -77,7 +96,8 @@ resource "aws_lambda_function" "client_api" {
   handler          = "handler.handler"
   filename         = data.archive_file.client_api.output_path
   source_code_hash = data.archive_file.client_api.output_base64sha256
-  memory_size      = 128
+  layers           = [aws_lambda_layer_version.common.arn]
+  memory_size      = 512 # pamięć podręczna wydarzeń (scan codzis-events) dla Eksploruj i Popularnych
   timeout          = 10
 
   environment {
@@ -85,6 +105,9 @@ resource "aws_lambda_function" "client_api" {
       USERS_TABLE          = aws_dynamodb_table.users.name
       DISTRICTS            = jsonencode(local.warsaw_districts)
       RECOMMENDER_FUNCTION = aws_lambda_function.recommender.function_name
+      EVENTS_TABLE         = aws_dynamodb_table.events.name
+      ATTENDANCE_TABLE     = aws_dynamodb_table.attendance.name
+      STATS_TABLE          = aws_dynamodb_table.event_stats.name
     }
   }
 
@@ -98,7 +121,7 @@ resource "aws_apigatewayv2_api" "client" {
   # Strona woła API bezpośrednio (inna domena niż strona) - CORS obsługuje API Gateway
   cors_configuration {
     allow_origins = concat(local.client_origins, var.client_dev_origins)
-    allow_methods = ["GET", "PUT", "OPTIONS"]
+    allow_methods = ["GET", "PUT", "DELETE", "OPTIONS"]
     allow_headers = ["authorization", "content-type"]
     max_age       = 3600
   }
@@ -125,7 +148,18 @@ resource "aws_apigatewayv2_integration" "client_api" {
 }
 
 resource "aws_apigatewayv2_route" "client" {
-  for_each = toset(["GET /api/me", "GET /api/onboarding", "PUT /api/profile"])
+  for_each = toset([
+    "GET /api/me",
+    "GET /api/onboarding",
+    "PUT /api/profile",
+    "GET /api/events",
+    "GET /api/events/stats",
+    "GET /api/events/{id}",
+    "PUT /api/events/{id}/save",
+    "DELETE /api/events/{id}/save",
+    "GET /api/events/{id}/attendees",
+    "GET /api/popular",
+  ])
 
   api_id             = aws_apigatewayv2_api.client.id
   route_key          = each.key

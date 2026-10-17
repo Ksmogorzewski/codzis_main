@@ -1,0 +1,7 @@
+# Tylko lokalnie / CI: testy, lint, typy. Nie trafia do paczek Lambd
+# (Lambdy pakuje Terraform z src/..., runtime ma własne boto3).
+boto3==1.43.*
+pytest~=9.1
+moto[dynamodb,sqs]~=5.2
+ruff~=0.17.1
+mypy~=2.4

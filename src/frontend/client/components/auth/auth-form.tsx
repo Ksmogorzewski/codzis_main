@@ -26,6 +26,7 @@ import {
   PASSWORD_HINT,
   showsCode,
   showsEmail,
+  showsName,
   showsPassword,
   validateAuthForm,
 } from "@/lib/auth-form";
@@ -39,6 +40,7 @@ export function AuthForm() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<AuthMode>("login");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -95,7 +97,7 @@ export function AuthForm() {
       case "login":
         return signInAndContinue(password);
       case "register": {
-        const r = await signUp(mail, password);
+        const r = await signUp(mail, password, name);
         if (r.error !== null) return r;
         go("confirm", `Wysłaliśmy 6-cyfrowy kod na ${r.data}.`);
         return ok(undefined);
@@ -121,7 +123,7 @@ export function AuthForm() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const problem = validateAuthForm(mode, { email, password, code, newPassword });
+    const problem = validateAuthForm(mode, { name, email, password, code, newPassword });
     if (problem) {
       setError(problem);
       return;
@@ -153,6 +155,23 @@ export function AuthForm() {
         </p>
       )}
 
+      {showsName(mode) && (
+        <Field id="auth-name" label="Imię">
+          <Input
+            id="auth-name"
+            autoComplete="given-name"
+            placeholder="np. Anna"
+            maxLength={40}
+            value={name}
+            aria-invalid={error ? true : undefined}
+            aria-describedby="auth-name-hint"
+            onChange={(e) => setName(e.target.value)}
+          />
+          <p id="auth-name-hint" className="text-meta text-muted-foreground">
+            Zobaczą je inni zapisani na to samo wydarzenie. Później go nie zmienisz.
+          </p>
+        </Field>
+      )}
       {showsEmail(mode) && (
         <Field id="auth-email" label="E-mail">
           <Input

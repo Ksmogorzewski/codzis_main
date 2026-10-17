@@ -9,6 +9,9 @@ function Toaster(props: ToasterProps) {
     <Sonner
       theme={dark ? "dark" : "light"}
       position="bottom-center"
+      // nad dolnym paskiem zakładek na telefonie (components/layout/tab-bar.tsx)
+      offset={{ bottom: "calc(80px + env(safe-area-inset-bottom))" }}
+      mobileOffset={{ bottom: "calc(80px + env(safe-area-inset-bottom))" }}
       duration={2600}
       icons={{
         success: <Icon name="check_circle" />,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeCode, validateAuthForm } from "./auth-form";
 
-const values = { email: "anna@example.pl", password: "haslo1234", code: "123456", newPassword: "nowehaslo1" };
+const values = { name: "Anna", email: "anna@example.pl", password: "haslo1234", code: "123456", newPassword: "nowehaslo1" };
 
 describe("formularz logowania", () => {
   it("poprawne dane w każdym kroku", () => {
@@ -14,6 +14,11 @@ describe("formularz logowania", () => {
     expect(validateAuthForm("login", { ...values, email: "anna" })).toBe("Podaj poprawny adres e-mail.");
     expect(validateAuthForm("login", { ...values, password: "" })).toBe("Podaj hasło.");
     expect(validateAuthForm("register", { ...values, password: "krótkie" })).toMatch(/min\. 8 znaków/);
+  });
+
+  it("rejestracja wymaga imienia", () => {
+    expect(validateAuthForm("register", { ...values, name: "   " })).toBe("Podaj imię.");
+    expect(validateAuthForm("login", { ...values, name: "" })).toBeNull();
   });
 
   it("kod musi mieć 6 cyfr", () => {

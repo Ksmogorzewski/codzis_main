@@ -3,6 +3,7 @@ import {
   areaLabel,
   chosenDayLabel,
   countLabel,
+  eventCountLabel,
   dateBounds,
   dateTitle,
   dayLine,
@@ -68,6 +69,7 @@ describe("events", () => {
     expect(areaLabel({ area: "nearby", district: "Wola" })).toBe("w dzielnicy Wola i okolicy");
     expect(areaLabel({ area: "city", district: "Wola" })).toBe("w całej Warszawie");
     expect([1, 3, 12].map(countLabel)).toEqual(["1 propozycja", "3 propozycje", "12 propozycji"]);
+    expect([1, 3, 12, 22].map(eventCountLabel)).toEqual(["1 wydarzenie", "3 wydarzenia", "12 wydarzeń", "22 wydarzenia"]);
   });
 });
 

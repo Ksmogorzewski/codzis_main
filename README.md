@@ -44,7 +44,8 @@ Tabele DynamoDB: `events` (docelowa, pisze tylko worker), `submissions` i `payme
 - `run_task.py`, `tagger/` – tagowanie eventów przez AI (DeepSeek), jednorazowy task ECS: SQS → tagi → `events`. Szczegóły: [tagger/README.md](tagger/README.md)
 
 - `infra/` – Terraform
-- `src/api/handler.py` – Lambda API (walidacja pól: `TEXT_FIELDS`, `_event_input`)
+- `src/api/` – Lambda API panelu partnera: `handler.py` (routing), `events.py` (ogłoszenia, walidacja pól: `TEXT_FIELDS`, `_event_input`), `payments.py` (płatności), `store.py` (AWS, kredyty), `config.py` (zmienne środowiskowe)
+- `src/layers/common/` – warstwa Lambda `codzis_common` (wspólne helpery HTTP dla `src/api` i `src/client_api`)
 - `src/dispatcher/handler.py` – Lambda uruchamiająca task taggera
 - `src/importer/` – importer ECS: API UM Warszawy → wspólny schemat (`schema.py`, `sources.py`) → SQS
 - `Dockerfile` (tagger), `src/importer/Dockerfile`, `scripts/push-images.sh` – obrazy ECS i ich build + push do ECR
@@ -278,7 +279,7 @@ Jeden kształt dla wszystkich źródeł (importer i portal partnera). Pełny opi
 | `facets` | dopisuje tagger, z danych: `timeOfDay`, `days`, `weekend`, `multiDay`, `recurring` |
 | `tagInputHash`, `taxonomyVersion`, `expiresAt` | tagger: wykrywanie zmian dla modelu, wersja taksonomii, TTL (epoch) |
 
-Pola portalu partnera i ich walidacja: `TEXT_FIELDS`, `DECLARED_FIELDS` i `_event_input` w `src/api/handler.py`. Opcje w `DECLARED_FIELDS` muszą być dokładnie opcjami z `tagger/prompt.py` (wartość spoza taksonomii tagger pominie); portal pobiera je z `GET /api/me` (`formOptions`). Cena (`priceMin`/`priceMax`, tylko przy „Płatne”) i link do biletów lądują w `attributes`. Kategorie: zmienna `event_categories`, dzielnice: `local.warsaw_districts`.
+Pola portalu partnera i ich walidacja: `TEXT_FIELDS`, `DECLARED_FIELDS` i `_event_input` w `src/api/events.py`. Opcje w `DECLARED_FIELDS` muszą być dokładnie opcjami z `tagger/prompt.py` (wartość spoza taksonomii tagger pominie); portal pobiera je z `GET /api/me` (`formOptions`). Cena (`priceMin`/`priceMax`, tylko przy „Płatne”) i link do biletów lądują w `attributes`. Kategorie: zmienna `event_categories`, dzielnice: `local.warsaw_districts`.
 
 ## Wydarzenia demo (prezentacja)
 

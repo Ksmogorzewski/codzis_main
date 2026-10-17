@@ -1,10 +1,13 @@
-import { getRouteApi, Link } from "@tanstack/react-router";
+import { getRouteApi, Link, useCanGoBack, useRouter } from "@tanstack/react-router";
 import { type ReactNode, useEffect } from "react";
+import { AttendeesSection } from "@/components/community/attendees-section";
+import { SaveButton, SavesCount } from "@/components/community/save-button";
 import { errorText, RouteError } from "@/components/layout/route-error";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Separator } from "@/components/ui/separator";
+import { useEvent } from "@/hooks/use-event.query";
 import { useEventCard } from "@/hooks/use-event-card.query";
 import { useMe } from "@/hooks/use-me.query";
 import { CATEGORY_LABEL, categoryOf } from "@/lib/categories";
@@ -23,7 +26,7 @@ import {
 import { walkLabel } from "@/lib/geo";
 import { startLocation, useLocation } from "@/lib/location";
 import { destinationOf, districtOf, mapsEmbedUrl, originOf } from "@/lib/maps";
-import type { Card as CardData } from "@/lib/schemas";
+import type { Card as CardData, EventDetail } from "@/lib/schemas";
 import { lastSearch } from "@/lib/search";
 import { DetailSkeleton } from "./detail-skeleton";
 import { EventBadges } from "./event-badges";
@@ -32,12 +35,25 @@ import { RouteMap } from "./route-map";
 
 const route = getRouteApi("/_app/wydarzenie/$id");
 
+const backClass = "self-start pr-3.5 pl-2 font-semibold";
+
+/** Wróć tam, skąd przyszliśmy (Dla Ciebie, Eksploruj, Popularne); z linku z zewnątrz - do propozycji. */
 function BackLink() {
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
+  if (canGoBack) {
+    return (
+      <Button variant="secondary" size="sm" className={backClass} onClick={() => router.history.back()}>
+        <Icon name="chevron_left" size={22} />
+        Wróć
+      </Button>
+    );
+  }
   return (
-    <Button asChild variant="secondary" size="sm" className="self-start pr-3.5 pl-2 font-semibold">
+    <Button asChild variant="secondary" size="sm" className={backClass}>
       <Link to="/" search={lastSearch()}>
         <Icon name="chevron_left" size={22} />
-        Rekomendacje
+        Dla Ciebie
       </Link>
     </Button>
   );
@@ -60,19 +76,24 @@ function NotFound() {
         <Icon name="search_off" size={40} className="text-muted-foreground" />
         <h1 className="text-lg font-bold">Nie znaleziono tego wydarzenia</h1>
         <p className="max-w-md text-meta text-muted-foreground">
-          Mogło zniknąć z Twoich propozycji – np. po zmianie profilu albo filtrów.
+          Mogło się już zakończyć albo zniknąć z kalendarza miasta.
         </p>
         <Button asChild size="sm">
-          <Link to="/" search={lastSearch()}>
-            Wróć do rekomendacji
-          </Link>
+          <Link to="/eksploruj">Eksploruj wydarzenia</Link>
         </Button>
       </div>
     </>
   );
 }
 
-function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
+/** Kolejne terminy wydarzenia (bez tych, które już minęły), najwyżej 6. */
+function upcoming(occurrences: EventDetail["occurrences"], now: Date): EventDetail["occurrences"] {
+  return occurrences.filter((o) => new Date(o.end ?? o.start) >= now).slice(0, 6);
+}
+
+type DetailProps = { card: CardData; builtAt: string | null; detail?: EventDetail };
+
+function Detail({ card, builtAt, detail }: DetailProps) {
   const { position, status } = useLocation();
   const me = useMe();
   const district = districtOf(me.data?.profile?.preferences);
@@ -93,7 +114,9 @@ function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
   const route = mapsUrl(card);
   const link = outboundLink(card);
   const page = safeUrl(card.url);
-  const readAt = readAtLabel(builtAt);
+  const readAt = readAtLabel(detail?.importedAt ?? builtAt);
+  const description = detail?.text || card.lead;
+  const dates = detail ? upcoming(detail.occurrences, now) : [];
   const distance = card.online
     ? "Online"
     : (dist ?? (status === "denied" ? "Włącz lokalizację, aby zobaczyć" : card.location ? "—" : "Brak współrzędnych"));
@@ -119,7 +142,8 @@ function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
 
       <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-6">
-          {card.lead && <p className="text-lg leading-relaxed text-pretty whitespace-pre-line">{card.lead}</p>}
+          {/* Opis z API jest już tekstem (HTML usuwa backend) - bez dangerouslySetInnerHTML. */}
+          {description && <p className="text-lg leading-relaxed text-pretty whitespace-pre-line">{description}</p>}
           {card.reason && (
             <Card className="gap-3 p-5">
               <h2 className="flex items-center gap-2 text-xl font-extrabold">
@@ -134,6 +158,7 @@ function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
               </p>
             </Card>
           )}
+          <AttendeesSection id={card.id} />
         </div>
 
         {/* Karta z faktami obok treści i mapy (na telefonie: przed mapą) */}
@@ -151,9 +176,23 @@ function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
                 </ul>
               </Fact>
             )}
+            {dates.length > 1 && (
+              <Fact label="Kolejne terminy" wide>
+                <ul className="flex flex-col gap-0.5 text-base font-semibold">
+                  {dates.map((o) => (
+                    <li key={o.start}>{slotLabel(o, now)}</li>
+                  ))}
+                </ul>
+              </Fact>
+            )}
             <Fact label="Cena">{price?.label ?? "—"}</Fact>
             <Fact label="Odległość">{distance}</Fact>
           </dl>
+          <Separator />
+          <div className="flex flex-col gap-2.5 p-4">
+            <SaveButton id={card.id} saved={card.saved} saves={card.saves} size="lg" />
+            <SavesCount saves={card.saves} className="justify-center text-meta text-muted-foreground" />
+          </div>
           {(route || link) && (
             <>
               <Separator />
@@ -204,33 +243,45 @@ function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
 
 export function EventDetailView() {
   const { id } = route.useParams();
-  const { found, isPending, error, refetch, coldStart } = useEventCard(id);
+  const detail = useEvent(id);
+  // Zapas: karta z cache rekomendacji, gdy szczegóły z API się nie udały (np. backend jeszcze bez trasy).
+  const fallback = useEventCard(id, detail.isError);
 
   useEffect(() => startLocation(), []);
 
-  if (found) return <Detail card={found.card} builtAt={found.builtAt} />;
-  if (error) {
+  if (detail.data) {
+    const full = detail.isPlaceholderData ? undefined : detail.data;
+    return <Detail card={detail.data} builtAt={null} detail={full} />;
+  }
+  if (!detail.isError) return <Loading />;
+  if (fallback.found) return <Detail card={fallback.found.card} builtAt={fallback.found.builtAt} />;
+  if (fallback.isPending) return <Loading coldStart={fallback.coldStart} />;
+  if (fallback.error) {
     return (
       <>
         <BackLink />
         <RouteError
-          message={errorText(error, "Nie udało się pobrać wydarzenia.")}
-          onRetry={() => void refetch()}
+          message={errorText(detail.error, "Nie udało się pobrać wydarzenia.")}
+          onRetry={() => {
+            void detail.refetch();
+            void fallback.refetch();
+          }}
         />
       </>
     );
   }
-  if (isPending) {
-    return (
-      <>
-        <BackLink />
-        <p role="status" className="flex items-center gap-2 text-meta text-muted-foreground">
-          <Icon name="progress_activity" size={18} className="motion-safe:animate-spin" />
-          {coldStart ? "Dobieramy propozycje… Za pierwszym razem może to potrwać do pół minuty." : "Wczytujemy wydarzenie…"}
-        </p>
-        <DetailSkeleton />
-      </>
-    );
-  }
   return <NotFound />;
+}
+
+function Loading({ coldStart = false }: { coldStart?: boolean }) {
+  return (
+    <>
+      <BackLink />
+      <p role="status" className="flex items-center gap-2 text-meta text-muted-foreground">
+        <Icon name="progress_activity" size={18} className="motion-safe:animate-spin" />
+        {coldStart ? "Dobieramy propozycje… Za pierwszym razem może to potrwać do pół minuty." : "Wczytujemy wydarzenie…"}
+      </p>
+      <DetailSkeleton />
+    </>
+  );
 }

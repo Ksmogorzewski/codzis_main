@@ -1,0 +1,43 @@
+# Konfiguracja narzędzi deweloperskich backendu (pytest, ruff, mypy).
+# Zależności: requirements-dev.txt. Uruchomienie wszystkiego: scripts/backend-check.sh
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Warstwa codzis_common (w Lambdzie: /opt/python)
+pythonpath = ["src/layers/common/python"]
+addopts = "-ra"
+
+# Lint i formatowanie: na razie tylko Lambdy API (klient, partner, dispatcher), wspólna warstwa i testy.
+# recommender/, tagger/, src/importer/, src/recommender_api/ - do objęcia w przyszłości.
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+include = [
+    "src/client_api/**/*.py",
+    "src/api/**/*.py",
+    "src/dispatcher/**/*.py",
+    "src/layers/**/*.py",
+    "tests/**/*.py",
+]
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle (błędy + ostrzeżenia), isort, bugbear, pyupgrade
+select = ["F", "E", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+# Moduły Lambd importowane jak w runtime (katalog Lambdy w sys.path)
+known-first-party = ["onboarding", "handler", "config", "events", "payments", "store", "codzis_common", "tests"]
+
+[tool.ruff.format]
+# Ręcznie ułożona tabela pytań ankiety jest czytelniejsza niż po automatycznym formatowaniu (lint nadal działa).
+exclude = ["src/client_api/onboarding.py"]
+
+# mypy uruchamiamy osobno dla każdej Lambdy (każda ma własny moduł `handler`) - patrz scripts/backend-check.sh.
+[tool.mypy]
+python_version = "3.13"
+check_untyped_defs = true
+ignore_missing_imports = true  # boto3/moto bez pakietów stubów
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+mypy_path = "src/layers/common/python"
