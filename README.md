@@ -41,20 +41,20 @@ Tabele DynamoDB: `events` (docelowa, pisze tylko worker), `submissions` i `payme
 
 ## Deploy
 
-Terraform zakłada strefę Route53 dla `domain_name` (np. `test.agm.waw.pl`). Domena nadrzędna może zostać u obecnego operatora DNS (agm.waw.pl jest w home.pl), wystarczy delegacja NS. Certyfikat ACM czeka na tę delegację, dlatego deploy ma dwa etapy:
+DNS domeny zostaje u obecnego operatora (agm.waw.pl → home.pl), bez Route53. W home.pl dodajesz ręcznie 2 rekordy CNAME, dlatego deploy ma dwa etapy:
 
 ```sh
 cd infra
 cp terraform.tfvars.example terraform.tfvars   # domena i partnerzy
 terraform init
 
-# 1. strefa DNS + delegacja
-terraform apply -target=aws_route53_zone.main
-terraform output dns_delegation                # w home.pl dla agm.waw.pl dodaj 4 rekordy: test NS <każdy serwer z listy>
-dig +short NS test.agm.waw.pl                  # powinno pokazać serwery awsdns-*
+# 1. certyfikat -> rekord walidacyjny w home.pl (zostaje na stałe, dzięki niemu certyfikat sam się odnawia)
+terraform apply -target=aws_acm_certificate.portal
+terraform output acm_validation_record         # home.pl: CNAME <name> -> <value>
 
-# 2. reszta (pierwszy raz ~5-10 min: ACM + CloudFront)
+# 2. reszta; apply czeka (do 2 h), aż certyfikat zostanie wydany (~5-30 min po dodaniu rekordu)
 terraform apply
+terraform output portal_cname                  # home.pl: zamień CNAME test (dziś -> agm.waw.pl) na <value> (dXXXX.cloudfront.net)
 terraform output -json partner_api_keys        # klucze do przekazania partnerom
 aws ssm put-parameter --name "$(terraform output -raw um_api_token_parameter)" \
   --type SecureString --overwrite --value "<token dane.um.warszawa.pl>"

@@ -81,7 +81,18 @@ output "events_dlq_url" {
   value = aws_sqs_queue.events_dlq.url
 }
 
-output "dns_delegation" {
-  description = "Rekordy NS do dodania u operatora domeny nadrzędnej (home.pl): <subdomena> NS <każdy z poniższych>"
-  value       = aws_route53_zone.main.name_servers
+# --- rekordy DNS do dodania ręcznie w home.pl ---
+
+output "acm_validation_record" {
+  description = "CNAME do walidacji certyfikatu (dodaj w home.pl i zostaw na stałe)"
+  value = [for o in aws_acm_certificate.portal.domain_validation_options : {
+    name  = o.resource_record_name
+    type  = o.resource_record_type
+    value = o.resource_record_value
+  }]
+}
+
+output "portal_cname" {
+  description = "CNAME domeny portalu (w home.pl zamień obecny rekord, np. test -> agm.waw.pl)"
+  value       = { name = var.domain_name, type = "CNAME", value = aws_cloudfront_distribution.portal.domain_name }
 }
