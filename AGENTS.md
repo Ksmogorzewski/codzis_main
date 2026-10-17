@@ -9,7 +9,7 @@ Instrukcje dla agentów AI (Claude, Codex, Cursor, Copilot…) i ludzi. WarsawNo
 |---|---|---|---|
 | Importer: API UM → schemat v1 → SQS | `src/importer/` | Python, ECS | Krzysztof |
 | Tagger: DeepSeek → DynamoDB `codzis-events` | `run_task.py`, `tagger/` | Python, ECS | Krzysztof / Jeremi |
-| API klienta: `/api/me`, `/api/onboarding`, `/api/profile` | `src/client_api/` | Python, Lambda (zip) | Krzysztof |
+| API klienta: `/api/me`, `/api/onboarding`, `/api/profile`, Eksploruj i społeczność: `/api/events` (+ `/stats`, `/{id}`, `/{id}/save`, `/{id}/attendees`), `/api/popular` | `src/client_api/` | Python, Lambda (zip) | Krzysztof |
 | Rekomender RAG: `/api/recommendations` | `src/recommender_api/`, `recommender/` | Python, Lambda (kontener) | Jeremi |
 | API panelu partnera | `src/api/`, `src/dispatcher/` | Python, Lambda | Krzysztof |
 | **Front** (portal klienta + panel partnera) | `src/frontend/` | React + TS (Vite) | Dawid (klient) — **`src/frontend/AGENTS.md`** |
@@ -47,13 +47,14 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 - **Wspólny kod: warstwa `codzis_common`** (`src/layers/common/python/codzis_common/`, import `from codzis_common.http import ApiError, parse_body, response, now_iso`). Wdrażana jako Lambda Layer (`infra/layers.tf`, podpięta do client-api i API partnera). Nowy helper używany przez więcej niż jedną Lambdę dodaj tam (tylko biblioteka standardowa) z testem w `tests/layers/`, zamiast kopiować; nowa Lambda, która go używa, potrzebuje `layers = [aws_lambda_layer_version.common.arn]`. Rekomender ma własne kopie.
 - **Błędy:** `raise ApiError(status, "komunikat po polsku", **extra)` → `{"error": "…", "fields"?: [...], "code"?: "…"}`. Kody: 400 (walidacja; `fields` = lista id błędnych pól), 404, 409 (np. `code: "needs_onboarding"`), 503 (zależność niedostępna). 401 zwraca API Gateway.
 - **Logika osobno od HTTP:** czyste funkcje w osobnym module (jak `onboarding.py`: `validate_answers` zwraca `(czyste_dane, błędy)`, `compute_preferences`, `rag_profile`). Handler tylko łączy: wejście → logika → DynamoDB → odpowiedź.
+- **API klienta** (`src/client_api/`): `handler.py` (routing + łączenie), `onboarding.py` (ankieta), `events.py` (rekord v1 → karta, okna czasu, filtry Eksploruj, kopia `next_slot` z rekomendera, pamięć scanu), `store.py` (DynamoDB: wydarzenia, zapisy, liczniki). Kontrakt tras w docstringu `handler.py`.
 - **API partnera** (`src/api/`): `handler.py` (tylko routing), `events.py` (ogłoszenia i walidacja), `payments.py` (płatności), `store.py` (klienty AWS, transakcje, kredyty), `config.py` (zmienne środowiskowe).
 - **Konfiguracja** z `os.environ[...]` (ustawia Terraform), czytana raz na poziomie modułu (np. `USERS_TABLE`, `DISTRICTS`). Klienty AWS (`boto3.resource("dynamodb").Table(...)`) też na poziomie modułu — przeżywają między wywołaniami.
 
 **DynamoDB w kodzie**
 - Odczyt/zapis po kluczu: `get_item`, `put_item`, `update_item` z `UpdateExpression` i `ExpressionAttributeValues`; `if_not_exists(createdAt, :now)` dla pól ustawianych raz; `ReturnValues="ALL_NEW"`, gdy zwracamy rekord.
 - Liczby wracają jako `Decimal` (serializuje `json_default` z `codzis_common.http`); `None` i puste wartości nie są zapisywane (tagger ma `sanitize()`).
-- **Bez `scan` w ścieżce żądania** (wolne i drogie przy wzroście) — wyjątki w tle: budowa indeksu rekomendera i nocne przeliczenie zestawów (`codzis-users`).
+- **Bez `scan` w ścieżce żądania** (wolne i drogie przy wzroście) — wyjątki w tle: budowa indeksu rekomendera i nocne przeliczenie zestawów (`codzis-users`). Świadomy wyjątek w żądaniu: client-api (Eksploruj, Popularne) czyta `codzis-events` scanem z pamięcią w kontenerze Lambdy na 5 min (`EventCache` w `src/client_api/events.py`, ~1200 rekordów); liczniki zawsze z bazy. Docelowo GSI po czasie.
 - Każda tabela ma jednego właściciela, który do niej zapisuje (sekcja „Dane”).
 
 **Recepta: nowa trasa w API klienta**
@@ -71,7 +72,7 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 
 ## Dane
 - **Kontrakt:** rekord wydarzenia „schemat v1” (`src/importer/schema.py`), taksonomia tagów (`tagger/prompt.py`), kroki ankiety (`src/client_api/onboarding.py` — dodanie pytania nie wymaga zmian we froncie), karta rekomendacji (`src/recommender_api/present.py`). Front odwzorowuje je w `src/frontend/client/lib/schemas.ts`. **Zmiana kontraktu = informacja do zespołu i aktualizacja po obu stronach.**
-- **Tabele (DynamoDB) i jedyny zapisujący:** `codzis-events` — tagger (TTL `expiresAt` sam usuwa zakończone); `codzis-users` (klucz `userId` = `sub`) — client-api; `codzis-recommendations` (`userId` + `setKey`, TTL `expiresAt`) — rekomender; `submissions`, `partners`, `payments` — API partnera.
+- **Tabele (DynamoDB) i jedyny zapisujący:** `codzis-events` — tagger (TTL `expiresAt` sam usuwa zakończone); `codzis-users` (klucz `userId` = `sub`) — client-api; `codzis-recommendations` (`userId` + `setKey`, TTL `expiresAt`) — rekomender; `codzis-attendance` (zapisy „idę”: `eventId` + `userId`, `name` = imię z tokenu, `savedAt`; GSI `byUser`; PITR) i `codzis-event-stats` (licznik `saves` per `eventId`, `kind = "event"`; GSI `bySaves`) — client-api, zawsze razem w jednej transakcji; dane testowe (`scripts/seed_demo.py`) tylko z `seed: true` (`userId` = `seed-<n>`), usuwalne w całości; zapisy na wygasłe wydarzenia zostają (analityka), przy odczycie je pomijamy; `submissions`, `partners`, `payments` — API partnera.
 - **Niczego nie zmyślamy.** Wszystko, co widzi użytkownik, pochodzi z API miasta albo od partnerów i ma źródło.
 - **API UM** (`POST https://dane.um.warszawa.pl/api/action/<akcja>`) nie ma historii ani stronicowania i **blokuje adresy IP AWS** — import uruchamiamy z laptopa (`scripts/import-local.sh`).
 
