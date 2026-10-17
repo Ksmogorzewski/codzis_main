@@ -1,0 +1,13 @@
+# Szacunek kosztów: cd infra && infracost scan
+# Ten sam kod Terraform w dwóch scenariuszach ruchu.
+version: 0.1
+
+projects:
+  - path: .
+    name: start
+    terraform_var_files: [terraform.tfvars]
+    usage_file: infracost-usage.start.yml
+  - path: .
+    name: growth
+    terraform_var_files: [terraform.tfvars]
+    usage_file: infracost-usage.growth.yml
