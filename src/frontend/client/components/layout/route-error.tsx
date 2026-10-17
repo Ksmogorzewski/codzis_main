@@ -2,6 +2,7 @@ import { type ErrorComponentProps, useRouter } from "@tanstack/react-router";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { ApiRequestError } from "@/lib/api";
 
 type Props = { message: string; onRetry?: () => void; retryable?: boolean };
 
@@ -43,4 +44,13 @@ export function PageRouteError(props: ErrorComponentProps) {
       <GenericRouteError {...props} />
     </main>
   );
+}
+
+/** Komunikat dla użytkownika: tekst z serwera (po polsku), a dla innych błędów ogólny. */
+export const errorText = (error: unknown, fallback = "Coś poszło nie tak") =>
+  error instanceof ApiRequestError ? error.message : fallback;
+
+/** errorComponent tras z loaderem API: pokazuje komunikat serwera i pozwala ponowić. */
+export function DataRouteError({ error, reset }: ErrorComponentProps) {
+  return <RouteError message={errorText(error)} onRetry={reset} />;
 }
