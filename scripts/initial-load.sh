@@ -27,7 +27,13 @@ done
 echo "OK"
 
 echo "== 1. Import (pierwszy przebieg: brak stanu w S3, więc wszystkie rekordy idą na kolejkę)"
-scripts/run-task.sh importer || echo "!! importer zakończył się błędem - część źródeł mogła się nie zaimportować (logi wyżej)"
+# Lokalnie, nie w ECS: dane.um.warszawa.pl odrzuca połączenia z IP AWS (README, Ograniczenia).
+# Gdy blokada zniknie: IMPORT=ecs scripts/initial-load.sh
+if [[ "${IMPORT:-local}" == "ecs" ]]; then
+  scripts/run-task.sh importer || echo "!! importer zakończył się błędem - część źródeł mogła się nie zaimportować (logi wyżej)"
+else
+  scripts/import-local.sh || echo "!! importer zakończył się błędem - część źródeł mogła się nie zaimportować (logi wyżej)"
+fi
 echo "W kolejce: $(depth "$QUEUE") wiadomości"
 
 echo "== 2. Tagowanie, aż kolejka będzie pusta"

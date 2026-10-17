@@ -96,6 +96,12 @@ variable "worker_check_minutes" {
   default     = 1
 }
 
+variable "importer_schedule_enabled" {
+  description = "Czy EventBridge ma uruchamiać importer w ECS. dane.um.warszawa.pl odrzuca IP AWS - do czasu rozwiązania import robi scripts/import-local.sh"
+  type        = bool
+  default     = true
+}
+
 variable "importer_schedule" {
   description = "Jak często importer pobiera dane z API UM Warszawy (zbiory odświeżają się co 2 h)"
   type        = string

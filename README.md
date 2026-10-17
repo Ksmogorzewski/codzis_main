@@ -93,6 +93,8 @@ Pojedyncze uruchomienia, także później: `scripts/run-task.sh importer|tagger`
 
 ## Importer (API UM Warszawy → SQS)
 
+> **Blokada:** `dane.um.warszawa.pl` odrzuca połączenia z adresów IP AWS (timeout już na TCP; z polskiego łącza API odpowiada w 1-3 s, a z VPC działają SQS, DeepSeek i `um.warszawa.pl`). Do czasu rozwiązania harmonogram w ECS jest wyłączony (`importer_schedule_enabled = false`), a import uruchamia się lokalnie: `scripts/import-local.sh` (Docker + twoje credentiale AWS, zapis do S3/SQS jak w ECS). Możliwe rozwiązania docelowe: whitelista stałego IP po stronie UM (wymaga NAT z Elastic IP) albo uruchamianie importera z hosta w Polsce.
+
 Task ECS uruchamiany przez EventBridge (`importer_schedule`, domyślnie co 2 h; zbiory UM odświeżają się co 2 h). Zwykły Fargate, nie Spot: task trwa ~1 min.
 
 | Źródło (`source`) | Endpoint (`POST`, nagłówek `Authorization: <token>`) | Mapowanie |

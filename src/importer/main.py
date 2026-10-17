@@ -32,7 +32,7 @@ QUEUE_URL = os.environ["SQS_QUEUE_URL"]
 DATA_BUCKET = os.environ["DATA_BUCKET"]
 RECORDS_PER_MESSAGE = int(os.environ.get("RECORDS_PER_MESSAGE", 20))
 MAX_MESSAGE_BYTES = 240_000  # limit SQS 256 KiB z zapasem
-HTTP_TIMEOUT_S = 120
+HTTP_TIMEOUT_S = int(os.environ.get("HTTP_TIMEOUT_S", 60))
 HTTP_RETRIES = 3
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -54,6 +54,7 @@ def main(argv=None) -> int:
         log.error("UM_API_TOKEN nie jest ustawiony (SSM)")
         return 1
 
+    log.info("Start importu: %s%s", ", ".join(s.name for s in SOURCES), " [dry-run]" if dry_run else "")
     ok = True
     for source in SOURCES:
         try:
@@ -66,6 +67,7 @@ def main(argv=None) -> int:
 
 def import_source(source, token: str, dry_run: bool = False) -> None:
     started = now_utc()
+    log.info("%s: pobieram %s", source.name, source.endpoint)
     raw = fetch(source.endpoint, token)
     if not isinstance(raw, list) or not raw:
         # Pusta odpowiedź to raczej awaria API niż brak danych - nie nadpisujemy stanu
@@ -77,6 +79,7 @@ def import_source(source, token: str, dry_run: bool = False) -> None:
         return
 
     save_raw(source.name, raw, started)
+    log.info("%s: zmapowano %d rekordów, porównuję ze stanem z poprzedniego importu", source.name, len(records))
     previous = load_state(source.name)
     changed = [r for r in records if previous.get(r["id"]) != r["contentHash"]]
     new = sum(1 for r in changed if r["id"] not in previous)
@@ -93,9 +96,12 @@ def import_source(source, token: str, dry_run: bool = False) -> None:
 def fetch(url: str, token: str):
     for attempt in range(1, HTTP_RETRIES + 1):
         try:
+            t0 = time.monotonic()
             request = urllib.request.Request(url, method="POST", data=b"", headers={"Authorization": token})
             with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_S) as response:
-                payload = json.loads(response.read().decode("utf-8-sig"))  # API zwraca JSON z BOM
+                body = response.read()
+            log.info("  HTTP %s, %d KB w %.1f s", response.status, len(body) // 1024, time.monotonic() - t0)
+            payload = json.loads(body.decode("utf-8-sig"))  # API zwraca JSON z BOM
             # Część endpointów zwraca gołą listę, część {"result": [...]}
             if isinstance(payload, dict) and isinstance(payload.get("result"), list):
                 return payload["result"]
@@ -103,7 +109,7 @@ def fetch(url: str, token: str):
         except Exception as e:
             if attempt == HTTP_RETRIES:
                 raise
-            log.warning("GET %s: próba %d nieudana (%s), ponawiam", url, attempt, e)
+            log.warning("POST %s: próba %d/%d nieudana po %.0f s (%s), ponawiam", url, attempt, HTTP_RETRIES, time.monotonic() - t0, e)
             time.sleep(5 * attempt)
 
 

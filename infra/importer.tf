@@ -177,6 +177,7 @@ resource "aws_iam_role_policy" "importer_schedule" {
 resource "aws_cloudwatch_event_rule" "importer" {
   name                = "${local.name}-importer"
   schedule_expression = var.importer_schedule
+  state               = var.importer_schedule_enabled ? "ENABLED" : "DISABLED"
 }
 
 resource "aws_cloudwatch_event_target" "importer" {
