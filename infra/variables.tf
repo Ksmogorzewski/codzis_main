@@ -9,12 +9,7 @@ variable "project" {
 }
 
 variable "domain_name" {
-  description = "Domena portalu, np. partner.example.com"
-  type        = string
-}
-
-variable "hosted_zone_name" {
-  description = "Hosted zone w Route53, w której powstaną rekordy, np. example.com"
+  description = "Domena portalu, np. test.agm.waw.pl (Terraform zakłada dla niej strefę Route53)"
   type        = string
 }
 

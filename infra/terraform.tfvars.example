@@ -1,3 +1,2 @@
-domain_name      = "partner.example.com"
-hosted_zone_name = "example.com"
-partners         = ["demo", "partner-a"]
+domain_name = "test.agm.waw.pl"
+partners    = ["demo"]

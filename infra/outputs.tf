@@ -80,3 +80,8 @@ output "tagger_task_family" {
 output "events_dlq_url" {
   value = aws_sqs_queue.events_dlq.url
 }
+
+output "dns_delegation" {
+  description = "Rekordy NS do dodania u operatora domeny nadrzędnej (home.pl): <subdomena> NS <każdy z poniższych>"
+  value       = aws_route53_zone.main.name_servers
+}

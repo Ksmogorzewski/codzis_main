@@ -1,5 +1,8 @@
-data "aws_route53_zone" "main" {
-  name = var.hosted_zone_name
+# Strefa dla samej domeny portalu (np. test.agm.waw.pl). Domena nadrzędna może być u innego
+# operatora DNS (agm.waw.pl jest w home.pl) - wystarczy tam delegacja NS na name_servers tej strefy.
+resource "aws_route53_zone" "main" {
+  name          = var.domain_name
+  force_destroy = true
 }
 
 resource "aws_acm_certificate" "portal" {
@@ -17,7 +20,7 @@ resource "aws_route53_record" "cert_validation" {
     for o in aws_acm_certificate.portal.domain_validation_options : o.domain_name => o
   }
 
-  zone_id         = data.aws_route53_zone.main.zone_id
+  zone_id         = aws_route53_zone.main.zone_id
   name            = each.value.resource_record_name
   type            = each.value.resource_record_type
   records         = [each.value.resource_record_value]
@@ -128,7 +131,7 @@ resource "aws_cloudfront_distribution" "portal" {
 resource "aws_route53_record" "portal" {
   for_each = toset(["A", "AAAA"])
 
-  zone_id = data.aws_route53_zone.main.zone_id
+  zone_id = aws_route53_zone.main.zone_id
   name    = var.domain_name
   type    = each.key
 

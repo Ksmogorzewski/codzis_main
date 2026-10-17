@@ -41,13 +41,20 @@ Tabele DynamoDB: `events` (docelowa, pisze tylko worker), `submissions` i `payme
 
 ## Deploy
 
-Wymaga hosted zone w Route53 dla domeny (lub delegowanej subdomeny).
+Terraform zakłada strefę Route53 dla `domain_name` (np. `test.agm.waw.pl`). Domena nadrzędna może zostać u obecnego operatora DNS (agm.waw.pl jest w home.pl), wystarczy delegacja NS. Certyfikat ACM czeka na tę delegację, dlatego deploy ma dwa etapy:
 
 ```sh
 cd infra
-cp terraform.tfvars.example terraform.tfvars   # uzupełnij domenę i partnerów
+cp terraform.tfvars.example terraform.tfvars   # domena i partnerzy
 terraform init
-terraform apply                                # pierwszy raz ~5-10 min (ACM + CloudFront)
+
+# 1. strefa DNS + delegacja
+terraform apply -target=aws_route53_zone.main
+terraform output dns_delegation                # w home.pl dla agm.waw.pl dodaj 4 rekordy: test NS <każdy serwer z listy>
+dig +short NS test.agm.waw.pl                  # powinno pokazać serwery awsdns-*
+
+# 2. reszta (pierwszy raz ~5-10 min: ACM + CloudFront)
+terraform apply
 terraform output -json partner_api_keys        # klucze do przekazania partnerom
 aws ssm put-parameter --name "$(terraform output -raw um_api_token_parameter)" \
   --type SecureString --overwrite --value "<token dane.um.warszawa.pl>"
