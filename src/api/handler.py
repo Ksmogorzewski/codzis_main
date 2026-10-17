@@ -28,7 +28,7 @@ REGION = os.environ["AWS_REGION"]
 UPLOAD_EXPIRES_S = 300
 LIST_LIMIT = 50
 
-SOURCE = "partner"  # źródła miejskie (importer): um_kalendarz | um_sport | um_trasy
+SOURCE = "partner"  # źródła miejskie (importer): um_kalendarz | um_sport
 SCHEMA_VERSION = 1
 
 # Pola tekstowe formularza: nazwa -> (wymagane, max długość). Pozostałe pola są ignorowane.
@@ -218,6 +218,7 @@ def _event_record(event_id, partner, data, photo_url):
     address = " ".join(filter(None, [data["street"], data["streetNumber"]])) or None
     return {
         "id": event_id,
+        "origin": SOURCE,  # partner | um_warszawa - skąd pochodzi event
         "source": SOURCE,
         "kind": "event",
         "schemaVersion": SCHEMA_VERSION,

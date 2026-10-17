@@ -18,6 +18,7 @@ from .config import record_id
 
 SOURCE_PARTNER = "partner"
 SOURCE_UM = "um_warszawa"
+ORIGIN_UM = "um_warszawa"  # "origin": partner | um_warszawa
 
 
 def normalize(raw: dict) -> dict:
@@ -31,6 +32,7 @@ def normalize(raw: dict) -> dict:
     record = dict(raw)
     record["id"] = record_id(raw)
     record.setdefault("source", SOURCE_UM)
+    record.setdefault("origin", SOURCE_PARTNER if record["source"] == SOURCE_PARTNER else ORIGIN_UM)
 
     if record["source"] != SOURCE_PARTNER:
         record["occurrence"] = [

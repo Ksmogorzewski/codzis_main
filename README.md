@@ -76,7 +76,7 @@ scripts/initial-load.sh
 
 Skrypt:
 1. sprawdza, czy sekrety nie mają wartości `CHANGE_ME`;
-2. uruchamia importer od razu, bez czekania na harmonogram. W S3 nie ma jeszcze stanu, więc na kolejkę idzie wszystko: ok. 1230 rekordów w ~63 wiadomościach;
+2. uruchamia importer od razu, bez czekania na harmonogram. W S3 nie ma jeszcze stanu, więc na kolejkę idzie wszystko: ok. 1220 rekordów w ~62 wiadomościach;
 3. uruchamia tagger i powtarza to do opróżnienia kolejki (najwyżej 6 rund), bez czekania na dispatcher. Jeśli tagger już działa, bo uruchomił go dispatcher, skrypt czeka na niego zamiast startować drugi;
 4. pokazuje stan kolejki i DLQ oraz liczbę rekordów w `events` według źródła.
 
@@ -94,7 +94,6 @@ Task ECS uruchamiany przez EventBridge (`importer_schedule`, domyślnie co 2 h; 
 | --- | --- | --- |
 | `um_kalendarz` | `get_bmm_kalendarz_wydarzen` | `kind=event`, terminy z `occurrence`; wydarzenia zakończone są pomijane |
 | `um_sport` | `get_bmm_zajecia_sportowe` | `kind=recurring` (dni tygodnia + godzina startu → `schedule`) albo `event` gdy są konkretne daty; `dedicated` → `audience` |
-| `um_trasy` | `get_sbt_trasy_turystyczne` | `kind=route`: trasa dostępna o każdej porze; punkty do zwiedzania w `attributes.points`, ślad GPS uproszczony do 200 punktów w `attributes.trace` (`[lat, lon]`), `location` = start trasy |
 
 Przebieg dla każdego źródła: pobranie całego zbioru (API nie ma paginacji) → surowa kopia `s3://<data_bucket>/raw/<source>/…json.gz` (retencja `raw_snapshot_retention_days`) → mapowanie na schemat v1 → porównanie `contentHash` ze stanem `state/<source>.json` → **na SQS idą tylko nowe i zmienione rekordy** (JSON array po ≤ 20 rekordów) → zapis stanu. Pusta odpowiedź API nie nadpisuje stanu; awaria jednego źródła nie blokuje pozostałych (kod wyjścia 1).
 
@@ -104,12 +103,25 @@ Lokalny podgląd bez AWS: `UM_API_TOKEN=… AWS_REGION=eu-central-1 SQS_QUEUE_UR
 
 Kod: `run_task.py` + `tagger/` ([tagger/README.md](tagger/README.md)), obraz z `Dockerfile` w katalogu głównym.
 
-- **Kontrakt wiadomości:** body = JSON array rekordów w schemacie v1 (`[{...}, ...]`). Importer wrzuca diffy, portal wrzuca `[rekord]` z `"source": "partner"`.
-- **Na wiadomość:** `normalize` (rekordy ze `schemaVersion` przechodzą bez zmian; starsze surowe rekordy UM: id z `url`, offset `+01` → `+01:00`, `startsAt`/`endsAt` UTC, zdjęcia → `https`), pominięcie rekordów już istniejących w tabeli (przed wywołaniem modelu), tagowanie DeepSeek, zapis tylko otagowanych rekordów, `submissions.status = published` dla partnerów. Jeśli któryś rekord nie dostał tagów, wiadomość zostaje w kolejce i przy ponownym dostarczeniu tagowane są tylko brakujące.
-- **Tagi** to wymiary z `tagger/prompt.py` (`theme`, `audience`, `format`, `cost`, `mode`), np. `{"theme": ["Teatr i performans"], "audience": "Dorośli (18-64)", ...}`.
+- **Kontrakt wiadomości:** body = JSON array rekordów w schemacie v1. Importer wrzuca diffy, portal wrzuca `[rekord]`.
+- **Decyzja per rekord** (przed wywołaniem modelu, na podstawie rekordu w `events`):
+
+  | Sytuacja | Co robi tagger |
+  | --- | --- |
+  | nowy rekord | taguje |
+  | ten sam `contentHash` i `tagInputHash` | pomija |
+  | zmienił się np. termin, a dane dla modelu bez zmian | zapisuje rekord ze starymi tagami, **bez LLM** |
+  | zmienił się tytuł / opis / kategorie / grupy docelowe albo taksonomia | taguje ponownie |
+  | rekord partnera (bez `contentHash`) już w tabeli | pomija (portal nie edytuje ogłoszeń) |
+
+- **Model dostaje:** tytuł, lead, opis (bez HTML, przycięty do 1500 znaków), kategorie oraz podpowiedzi ze źródła: `audience_hint`, `kind`, `online`, `venue`.
+- **Tagi** (`tags`, 10 wymiarów z `tagger/prompt.py`): `theme`, `audience` (do 3), `format`, `cost`, `mode`, `setting` (w pomieszczeniu / na zewnątrz), `registration` (wstęp wolny / zapisy / bilet), `activity_level`, `occasion` (z dziećmi, na randkę…), `accessibility`. Zmiana taksonomii zmienia `taxonomyVersion`, więc rekordy, które przyjdą ponownie, zostaną przetagowane.
+- **Parametry z danych** (`facets`, bez LLM): `timeOfDay`, `days`, `weekend`, `multiDay`, `recurring`.
+- **TTL:** `expiresAt` = koniec eventu + 1 dzień; DynamoDB sam usuwa zakończone eventy. Zajęcia cykliczne nie wygasają.
+- **Koszt:** każda wiadomość loguje tokeny i przybliżony koszt (`LLM: … ~$…`) w `/ecs/codzis-worker`.
 - **Uruchamianie:** dispatcher odpala task na Fargate Spot (fallback: Fargate), task kończy się, gdy kolejka jest pusta. Kod wyjścia `1` = część wiadomości nie przeszła; po 5 próbach trafiają do `codzis-events-dlq`.
 - **Klucz DeepSeek** jest w SSM (`terraform output deepseek_api_key_parameter`); z placeholderem `CHANGE_ME` task kończy się od razu, bez ruszania kolejki.
-- Progi: `worker_min_messages` (50 wiadomości, nie rekordów), `worker_check_minutes` (5), `worker_max_wait_minutes` (60). Visibility timeout kolejki: 30 min (wywołania LLM).
+- Progi: `worker_min_messages` (50 wiadomości, nie rekordów), `worker_check_minutes` (5), `worker_max_wait_minutes` (60). Visibility timeout kolejki: 30 min.
 
 ## Rekord eventu: schemat v1 (tabela `events`)
 
@@ -117,18 +129,21 @@ Jeden kształt dla wszystkich źródeł (importer i portal partnera). Pełny opi
 
 | Pole | Opis |
 | --- | --- |
-| `id` | `kal-…` / `spt-…` / `trs-…` = prefiks + `sha1(klucz źródła)[:12]`; partner: UUID |
-| `source` | `um_kalendarz` \| `um_sport` \| `um_trasy` \| `partner` |
-| `kind` | `event` (konkretne terminy) \| `recurring` (co tydzień) \| `route` (trasa, o każdej porze) |
+| `id` | `kal-…` / `spt-…` = prefiks + `sha1(klucz źródła)[:12]`; partner: UUID |
+| `origin` | **skąd pochodzi event:** `um_warszawa` (otwarte dane UM, importer) \| `partner` (portal partnera) |
+| `source` | szczegółowe źródło: `um_kalendarz` \| `um_sport` \| `partner` |
+| `kind` | `event` (konkretne terminy) \| `recurring` (zajęcia co tydzień) |
 | `title`, `lead`, `text`, `url` | `text` to HTML: sanityzować przy wyświetlaniu |
 | `category`, `audience` | kategorie i grupy docelowe ze źródła (podpowiedzi dla taggera) |
 | `district`, `online`, `venue {name, address}`, `location {lat, lon}` | `location` = `null` dla partnerów i części eventów UM (brak współrzędnych w źródle) |
 | `occurrences [{start, end, allDay}]` | ISO 8601 z offsetem; dla `kind=event` |
 | `schedule [{day, start, end}]` | `monday`…`sunday`, `HH:MM`; dla `recurring` |
 | `startsAt`, `endsAt` | UTC, z `occurrences` (do sortowania/indeksów) |
-| `imageUrl`, `attributes` | zdjęcie po https; dodatki specyficzne dla źródła (np. ślad trasy) |
+| `imageUrl`, `attributes` | zdjęcie po https; dodatki specyficzne dla źródła |
 | `contentHash`, `importedAt` | wykrywanie zmian w importerze |
-| `tags` | dopisuje tagger (wymiary z `tagger/prompt.py`) |
+| `tags` | dopisuje tagger: 10 wymiarów z `tagger/prompt.py` |
+| `facets` | dopisuje tagger, z danych: `timeOfDay`, `days`, `weekend`, `multiDay`, `recurring` |
+| `tagInputHash`, `taxonomyVersion`, `expiresAt` | tagger: wykrywanie zmian dla modelu, wersja taksonomii, TTL (epoch) |
 
 Pola portalu partnera i ich walidacja: `TEXT_FIELDS` i `_event_input` w `src/api/handler.py`. Kategorie: zmienna `event_categories`, dzielnice: `local.warsaw_districts`.
 
@@ -141,6 +156,6 @@ Pola portalu partnera i ich walidacja: `TEXT_FIELDS` i `_event_input` w `src/api
 - Czas z formularza jest interpretowany w strefie przeglądarki partnera.
 - Ogłoszenie partnera pojawia się w tabeli `events` z opóźnieniem do `worker_max_wait_minutes` (przy małym ruchu).
 - Brak alarmu na DLQ: zepsute wiadomości trzeba sprawdzać ręcznie.
-- Tagger pomija rekordy, które już są w tabeli, więc **zmiany ze źródeł (nowy termin, opis) nie aktualizują tabeli docelowej**, mimo że importer je wysyła (do poprawy w taggerze: porównać `contentHash`).
-- Rekordy usunięte w źródle zostają w tabeli (importer tylko loguje ich liczbę).
+- Rekordy usunięte w źródle przed końcem (np. odwołane eventy) zostają w tabeli do `expiresAt`; zajęcia cykliczne usunięte w źródle zostają na stałe (importer tylko loguje ich liczbę).
+- Zmiana taksonomii przetaguje tylko rekordy, które przyjdą ponownie; żeby przetagować wszystko: pełne przeładowanie (sekcja Initial load).
 - API GW jest też dostępne bezpośrednio pod `execute-api` (z tym samym kluczem).

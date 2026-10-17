@@ -3,9 +3,9 @@
 Ten sam kształt mają rekordy ze wszystkich źródeł (API UM Warszawy i portal partnera):
 
     id             str   "<prefiks źródła>-<sha1(klucz źródła)[:12]>"; partner: UUID
-    source         str   um_kalendarz | um_sport | um_trasy | partner
+    origin         str   um_warszawa (importer, otwarte dane UM) | partner (portal partnera)
+    source         str   szczegółowe źródło: um_kalendarz | um_sport | partner
     kind           str   event (konkretne terminy) | recurring (zajęcia co tydzień)
-                         | route (trasa do przejścia w dowolnym momencie; ślad w attributes.trace)
     schemaVersion  int   1
     title          str
     lead           str?  krótki opis, zwykły tekst
@@ -34,6 +34,7 @@ from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
 
 SCHEMA_VERSION = 1
+ORIGIN = "um_warszawa"  # wszystko z importera; portal partnera ustawia origin = "partner"
 WARSAW = ZoneInfo("Europe/Warsaw")
 DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
@@ -50,6 +51,7 @@ def finalize(record: dict, imported_at: str) -> dict:
     starts = [_parse(o["start"]) for o in record["occurrences"]]
     ends = [_parse(o.get("end") or o["start"]) for o in record["occurrences"]]
     record["schemaVersion"] = SCHEMA_VERSION
+    record["origin"] = ORIGIN
     record["startsAt"] = utc(min(starts)) if starts else None
     record["endsAt"] = utc(max(ends)) if ends else None
     record["contentHash"] = content_hash(record)

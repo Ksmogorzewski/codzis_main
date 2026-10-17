@@ -72,6 +72,9 @@ merged = merge(raw_events, summary["results"])   # full records + "id" + "tags"
 
 | Change | File |
 |---|---|
-| Dimensions (taxonomy) | `tagger/prompt.py` → `DIMENSIONS` |
+| Dimensions (taxonomy) | `tagger/prompt.py` → `DIMENSIONS` (+ `DIMENSION_LABELS`, example in `build_system_prompt`) |
+| What the model sees (hints, truncation) | `tagger/prepare.py` → `prepare_record`, `MAX_DESCRIPTION_CHARS` |
+| Data-derived facets, TTL | `tagger/facets.py` |
+| Skip / reuse tags / re-tag decision | `run_task.py` (per record, before the LLM call) |
 | Model / endpoint | `tagger/client.py` |
 | Chunk token budget | `tagger/orchestrator.py` → `TARGET_TOKENS` |

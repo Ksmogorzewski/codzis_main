@@ -9,6 +9,13 @@ resource "aws_dynamodb_table" "events" {
     name = "id"
     type = "S"
   }
+
+  # Zakończone eventy znikają same (darmowe): tagger ustawia expiresAt = koniec + 1 dzień.
+  # Zajęcia cykliczne nie mają expiresAt, więc zostają.
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
+  }
 }
 
 # Zgłoszenia partnerów ("Moje ogłoszenia"): status queued -> published (ustawia worker).

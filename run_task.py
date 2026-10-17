@@ -6,12 +6,13 @@ Control flow:
     1. Receive a batch of messages from SQS (env SQS_QUEUE_URL).
        Each message body is a JSON array of raw event records (a diff).
     2. For each message:
-         normalize(raw)       -> id, source, startsAt/endsAt, Warsaw API quirks
-         skip records already in the table (BEFORE tagging - saves tokens)
-         prepare_records(new) -> slim records
-         tag_events(slim)     -> LLM tags  (tagger / DeepSeek)
-         merge(new, tagged)   -> full record + "id" + "tags" (pure)
-         sink.put(sanitize(record)) for every TAGGED record
+         normalize(raw)       -> schema v1 passes through; legacy raw Warsaw records fixed up
+         per record, against the item already in the table (BEFORE any LLM call):
+             same contentHash + same tagInputHash  -> skip
+             changed, but the model input is the same -> write with the existing tags (no LLM)
+             new, or title/description/hints/taxonomy changed -> tag
+         tag_events(prepare_records(to_tag))  -> LLM tags (tagger / DeepSeek)
+         record + tags + facets (from data) + expiresAt (TTL) -> sink.put(sanitize(record))
          partner records: mark submission as published (portal status)
          source.delete(receipt_handle)   # ONLY if every record got tags;
                                          # otherwise redelivery re-tags just the rest
@@ -41,8 +42,10 @@ import tempfile
 from tagger import merge, tag_events
 from tagger.client import resolve_api_key
 from tagger.dynamodb_sink import DynamoDBSink, SubmissionStatus, sanitize
+from tagger.facets import expires_at, facets
 from tagger.normalize import SOURCE_PARTNER, normalize
-from tagger.prepare import prepare_records
+from tagger.prepare import prepare_record, prepare_records, tag_input_hash
+from tagger.prompt import taxonomy_version
 from tagger.sqs_source import SQSSource
 
 logging.basicConfig(
@@ -76,7 +79,8 @@ def main() -> int:
         return 1
 
     all_ok = True
-    written = skipped = failed_msgs = 0
+    stats = {"tagged": 0, "reused_tags": 0, "skipped": 0, "failed_messages": 0}
+    taxonomy = taxonomy_version()
 
     source = SQSSource()
     sink = DynamoDBSink()
@@ -105,7 +109,7 @@ def main() -> int:
                 # source. Do NOT delete — count as failure, move on.
                 log.error("Skipping unparseable message (handle=%.20s...)", handle)
                 all_ok = False
-                failed_msgs += 1
+                stats["failed_messages"] += 1
                 continue
 
             try:
@@ -116,33 +120,49 @@ def main() -> int:
                     except ValueError as e:
                         log.error("Dropping invalid record (%s): %.80s", e, raw)
 
-                new = []
-                seen = set()
+                to_tag, seen = [], set()
                 for record in records:
                     if record["id"] in seen:         # duplicate within one diff
-                        skipped += 1
+                        stats["skipped"] += 1
                         continue
                     seen.add(record["id"])
-                    if sink.exists(record["id"]):
-                        skipped += 1
-                        # redelivery after a crash between put and status update
+                    record["tagInputHash"] = tag_input_hash(prepare_record(record), taxonomy)
+                    existing = sink.get(record["id"])
+
+                    if existing is None:
+                        to_tag.append(record)
+                    elif not record.get("contentHash") or (
+                        existing.get("contentHash") == record["contentHash"]
+                        and existing.get("tagInputHash") == record["tagInputHash"]
+                    ):
+                        # unchanged (records without contentHash, e.g. partner, are never updated)
+                        stats["skipped"] += 1
                         if record["source"] == SOURCE_PARTNER:
+                            # redelivery after a crash between put and status update
                             submissions.published(record["id"], None)
+                    elif existing.get("tagInputHash") == record["tagInputHash"] and existing.get("tags"):
+                        # e.g. a new date: same model input -> keep tags, no LLM call
+                        record["tags"] = existing["tags"]
+                        write(sink, submissions, record, taxonomy)
+                        stats["reused_tags"] += 1
                     else:
-                        new.append(record)
+                        to_tag.append(record)
 
                 untagged = []
-                if new:
-                    summary = tag_events(prepare_records(new), output_path=TAGGED_PATH)
+                if to_tag:
+                    summary = tag_events(prepare_records(to_tag), output_path=TAGGED_PATH)
                     tagged = summary["results"]          # {id: dims}
-                    for record in merge(new, tagged):    # full record + id + tags
+                    usage = summary["usage"]
+                    log.info(
+                        "LLM: %d record(s), %d prompt + %d completion tokens, ~$%.4f",
+                        len(to_tag), usage["prompt_tokens"], usage["completion_tokens"], usage["approx_cost_usd"],
+                    )
+                    for record in merge(to_tag, tagged):  # full record + id + tags
                         if record["id"] not in tagged:
                             untagged.append(record["id"])
                             continue
-                        sink.put(sanitize(record))       # raises on failure
-                        written += 1
-                        if record["source"] == SOURCE_PARTNER:
-                            submissions.published(record["id"], record["tags"])
+                        write(sink, submissions, record, taxonomy)
+                        stats["tagged"] += 1
 
                 if untagged:
                     # Keep the message: tagged records are already written and
@@ -150,26 +170,34 @@ def main() -> int:
                     raise RuntimeError(f"{len(untagged)} record(s) not tagged: {untagged[:5]}")
 
                 source.delete(handle)                # only after success
-                log.info(
-                    "Message processed: %d record(s), %d new — deleted from queue",
-                    len(records), len(new),
-                )
+                log.info("Message processed: %d record(s), %d sent to the model — deleted from queue",
+                         len(records), len(to_tag))
             except Exception as e:
                 # Do NOT delete the message: SQS visibility timeout will
                 # redeliver it (or the DLQ will catch it after max receives).
                 log.error("Message failed (kept on queue): %s", e, exc_info=True)
                 all_ok = False
-                failed_msgs += 1
+                stats["failed_messages"] += 1
     else:
         log.error("Hit --max-batches=%d without draining the queue",
                   args.max_batches)
         all_ok = False
 
     log.info(
-        "Finished: %d written, %d skipped (already existed), %d failed message(s)",
-        written, skipped, failed_msgs,
+        "Finished: %d tagged, %d updated with existing tags, %d unchanged/skipped, %d failed message(s)",
+        stats["tagged"], stats["reused_tags"], stats["skipped"], stats["failed_messages"],
     )
     return 0 if all_ok else 1
+
+
+def write(sink, submissions, record: dict, taxonomy: str) -> None:
+    """Add data-derived facets + TTL and upsert; partner records also update the portal status."""
+    record["facets"] = facets(record)
+    record["taxonomyVersion"] = taxonomy
+    record["expiresAt"] = expires_at(record)
+    sink.put(sanitize(record))                   # raises on failure
+    if record["source"] == SOURCE_PARTNER:
+        submissions.published(record["id"], record["tags"])
 
 
 if __name__ == "__main__":

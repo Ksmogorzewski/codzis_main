@@ -80,6 +80,16 @@ class DynamoDBSink:
         resp = self.table.get_item(Key={"id": event_id})
         return "Item" in resp
 
+    def get(self, event_id: str, attributes=("contentHash", "tagInputHash", "tags")) -> dict | None:
+        """Fetch selected attributes of an existing item (None if absent)."""
+        names = {f"#a{i}": a for i, a in enumerate(attributes)}
+        resp = self.table.get_item(
+            Key={"id": event_id},
+            ProjectionExpression=", ".join(names),
+            ExpressionAttributeNames=names,
+        )
+        return resp.get("Item")
+
     def put(self, item: dict) -> None:
         """Write one item. The caller should `sanitize` it first.
 

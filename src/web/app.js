@@ -20,8 +20,9 @@ function setStatus(node, text, kind = "") {
   node.className = `status ${kind}`;
 }
 
-// Tagi z taggera AI: {theme: [...], audience: "...", format: [...], cost: "...", mode: "..."}
-const tagList = (tags) => Object.values(tags || {}).flat().filter(Boolean);
+// Tagi z taggera AI: {theme: [...], audience: [...], cost: "...", setting: "...", ...} (tagger/prompt.py)
+const EMPTY_TAGS = new Set(["Nieznane", "Brak informacji"]);
+const tagList = (tags) => Object.values(tags || {}).flat().filter((t) => t && !EMPTY_TAGS.has(t));
 
 function parseHash() {
   const [tab, query] = location.hash.slice(1).split("?");
