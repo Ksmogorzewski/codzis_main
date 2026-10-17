@@ -2,6 +2,7 @@ import { getRouteApi, Link, useCanGoBack, useRouter } from "@tanstack/react-rout
 import { type ReactNode, useEffect } from "react";
 import { AttendeesSection } from "@/components/community/attendees-section";
 import { SaveButton, SavesCount } from "@/components/community/save-button";
+import { CrewEntry } from "@/components/crew/crew-entry";
 import { errorText, RouteError } from "@/components/layout/route-error";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -159,6 +160,7 @@ function Detail({ card, builtAt, detail }: DetailProps) {
             </Card>
           )}
           <AttendeesSection id={card.id} />
+          <CrewEntry id={card.id} saved={card.saved} />
         </div>
 
         {/* Karta z faktami obok treści i mapy (na telefonie: przed mapą) */}

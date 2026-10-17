@@ -5,7 +5,8 @@ Jeden projekt Vite, dwie aplikacje: **portal klienta** (`client/`, tryb `client`
 ## Produkt (portal klienta)
 Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni/inny dzień, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia (`GET /api/events/{id}`: pełny opis, lista zapisanych, mapa Google z trasą komunikacją miejską). **Eksploruj** (`GET /api/events`: wszystko w oknie czasu, bez profilu), **Popularne w najbliższym tygodniu** (`GET /api/popular`, dziś + 6 dni), **Zapisz / Zapisano** na kartach i w szczegółach. Nawigacja: Dla Ciebie / Eksploruj / Popularne / Profil (nagłówek na desktopie, dolny pasek na telefonie). Wygląd: mockup WarsawNow, wariant 1a Karty.
 **Imię:** wymagane przy rejestracji (atrybut Cognito `name`; walidacja `NameSchema` w `lib/auth-form.ts`: litery, spacje, myślnik, maks. 40), potem niezmienne; konta bez imienia dostają jednorazową prośbę przed pierwszym zapisem (`setMissingName` w `lib/auth.ts`). Na listach zapisanych tylko imię (brak → „Ktoś”; backend bierze imię z tokenu, a bez niego `displayName` z `codzis-users`), nigdy e-mail. Po zapisie mój wpis „<Imię> (Ty)” pojawia się od razu (imię z ID tokenu), toast „Zapisano jako <Imię>”.
-**Poza zakresem bez zgody zespołu:** logowanie Google, „Sponsorowane”, czat (Kacper), pogoda.
+**Czat ekipy (DEMO, Kacper):** w szczegółach pod „Kto się wybiera” sekcja „Ekipa na to wydarzenie” (`components/crew/crew-entry.tsx`): zapisani widzą „Wejdź na czat”, pozostali „Zapisz się, żeby dołączyć do czatu ekipy” (ten sam `useSave`). Czat: `#/wydarzenie/<id>/ekipa` (`routes/_app/wydarzenie.$id_.ekipa.tsx` → `components/crew/crew-chat-screen.tsx`; na telefonie pełny ekran nad paskiem zakładek, na desktopie karta) — lodołamacz, „X pisze…”, Wodzirej AI z punktem zbiórki z danych wydarzenia, „Pokaż Kartę Koloru” → „JESTEM TUTAJ”. **Backendu czatu nie ma:** wiadomości to scenariusz z `lib/crew-demo.ts` (znacznik `DEMO`), w UI zawsze notka „Podgląd czatu (demo)” (`demo-note.tsx`). Prawdziwe są tylko imiona zapisanych (`useAttendees`, brakujące miejsca uzupełnia demo) i moje imię z ID tokenu (`currentName`). Logika (reducer, harmonogram odpowiedzi, skład ekipy) w `lib/crew-chat.ts` z testami.
+**Poza zakresem bez zgody zespołu:** logowanie Google, „Sponsorowane”, prawdziwy backend czatu, pogoda.
 
 ## Komendy (z `src/frontend/`)
 ```sh
@@ -34,7 +35,8 @@ routes/                  trasy plikowe; routeTree.gen.ts jest GENEROWANY — nie
   _app/popularne.tsx     Popularne w najbliższym tygodniu
   _app/profil.tsx        ankieta
   _app/wydarzenie.$id.tsx szczegóły (+ lista zapisanych)
-components/<obszar>/     auth, events, explore, popular, community (zapis, imię, zapisani), survey, layout (nagłówek, tab-bar) — pliki kebab-case
+  _app/wydarzenie.$id_.ekipa.tsx czat ekipy (DEMO, tylko dla zapisanych)
+components/<obszar>/     auth, events, explore, popular, community (zapis, imię, zapisani), crew (czat ekipy, DEMO), survey, layout (nagłówek, tab-bar) — pliki kebab-case
 components/ui/           prymitywy shadcn — wyłącznie przez tokeny motywu
 hooks/                   use-<x>.query.ts / use-<x>.mutation.ts (jeden hook na endpoint, queryOptions):
                          me, onboarding, recommendations, events, event, event-stats, popular, attendees,
@@ -42,8 +44,8 @@ hooks/                   use-<x>.query.ts / use-<x>.mutation.ts (jeden hook na e
 lib/                     config (APP_CONFIG), auth (Cognito), api (Result, błędy, ponawianie zimnego startu),
                          schemas (Zod odpowiedzi API), query-keys, search, categories, geo, wizard (walidacja ankiety),
                          events (formaty terminów/cen), explore (filtry, sortowanie), community (zapisy: stan
-                         optymistyczny, podpisy), maps (osadzona mapa z trasą), nav, recommendations-cache, theme,
-                         storage, utils (cn)
+                         optymistyczny, podpisy), crew-chat + crew-demo (czat ekipy, DEMO), maps (osadzona mapa
+                         z trasą), nav, recommendations-cache, theme, storage, utils (cn)
 styles.css               Tailwind + tokeny (jasny i ciemny) — jedyny plik CSS
 public/                  ikony i manifest PWA (config.js tylko lokalnie)
 ```
