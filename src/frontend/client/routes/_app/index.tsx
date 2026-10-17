@@ -1,6 +1,6 @@
 import { createFileRoute, isRedirect, redirect, stripSearchParams } from "@tanstack/react-router";
-import { toast } from "sonner";
 import { HomeView } from "@/components/events/home-view";
+import { GridSkeleton } from "@/components/events/card-skeleton";
 import { GenericRouteError } from "@/components/layout/route-error";
 import { meQueryOptions } from "@/hooks/use-me.query";
 import { onboardingQueryOptions } from "@/hooks/use-onboarding.query";
@@ -18,14 +18,13 @@ export const Route = createFileRoute("/_app/")({
     try {
       const me = await context.queryClient.ensureQueryData(meQueryOptions);
       if (me.needsOnboarding) throw redirect({ to: "/profil" });
-      if (me.onboardingOutdated) {
-        toast("Dodaliśmy nowe pytania – uzupełnij profil.");
-        throw redirect({ to: "/profil" });
-      }
+      if (me.onboardingOutdated) throw redirect({ to: "/profil" }); // toast pokazuje /profil
+
     } catch (e) {
       if (isRedirect(e)) throw e;
     }
   },
+  pendingComponent: () => <GridSkeleton />,
   component: HomeView,
   errorComponent: GenericRouteError,
 });

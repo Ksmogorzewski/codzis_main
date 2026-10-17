@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { toast } from "sonner";
 import { DataRouteError } from "@/components/layout/route-error";
 import { SurveySkeleton } from "@/components/survey/survey-skeleton";
 import { SurveyView } from "@/components/survey/survey-view";
@@ -21,6 +23,10 @@ export const Route = createFileRoute("/_app/profil")({
 
 function ProfilePage() {
   const { me, steps } = Route.useLoaderData();
+  // Wpadliśmy tu z ekranu głównego, bo doszły nowe pytania (id: bez dublowania przy ponownym wejściu).
+  useEffect(() => {
+    if (me.onboardingOutdated && !me.needsOnboarding) toast("Dodaliśmy nowe pytania – uzupełnij profil.", { id: "onboarding-outdated" });
+  }, [me.onboardingOutdated, me.needsOnboarding]);
   // key: inny użytkownik albo nowa wersja pytań = świeży stan ankiety
   return <SurveyView key={`${me.userId}:${steps.length}`} me={me} steps={steps} />;
 }
