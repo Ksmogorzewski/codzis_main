@@ -1,3 +1,3 @@
 domain_name    = "waw-out.pl"
-domain_aliases = ["www.waw-out.pl"]
+domain_aliases = []
 partners       = ["demo"]
