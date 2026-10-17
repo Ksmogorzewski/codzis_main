@@ -59,9 +59,14 @@ def rank_candidates(
     client: DeepSeekClient,
     user: dict,
     candidates: list,
-    temperature: float = 0.2,
+    temperature: float = 0.0,
 ) -> dict:
-    """Re-rank candidates with DeepSeek. Returns {"data": {...}, "usage": {...}}."""
+    """Re-rank candidates with DeepSeek. Returns {"data": {...}, "usage": {...}}.
+
+    temperature defaults to 0.0: ranking should be deterministic, so the same user
+    context over the same candidates always yields the same order. Creativity belongs
+    in the explanations, not the ordering (and 0.0 writes the reasons just fine).
+    """
     system = (
         "You are an event recommendation engine for Warsaw. Given a user's preferences "
         "and a list of candidate events (each with a relevance score from vector search; "

@@ -62,3 +62,39 @@ def test_parse_json_garbage_does_not_raise():
     assert out["ranking"] == []
     assert out["notes"] == "LLM returned non-JSON"
     assert out["raw"] == "I cannot help with that."
+
+
+def test_rerank_is_deterministic_by_default():
+    """Ranking temperature must be 0 so the same input yields the same order."""
+    import inspect
+
+    from recommender.ranker import rank_candidates
+
+    assert inspect.signature(rank_candidates).parameters["temperature"].default == 0.0
+
+
+def test_expansion_stays_creative():
+    """Expansion deliberately keeps a non-zero temperature (unlike ranking)."""
+    from recommender.expand import EXPANSION_TEMPERATURE
+
+    assert EXPANSION_TEMPERATURE > 0.0
+
+
+def test_expansion_temperature_is_sent_to_the_llm():
+    from recommender.expand import EXPANSION_TEMPERATURE, expand_query
+
+    seen = {}
+
+    class Client:
+        def chat(self, messages, **kwargs):
+            seen.update(kwargs)
+            class M:
+                content = "jazz, koncert"
+            class C:
+                message = M()
+            class R:
+                choices = [C()]
+            return R()
+
+    expand_query(Client(), {"query": "coś"})
+    assert seen["temperature"] == EXPANSION_TEMPERATURE

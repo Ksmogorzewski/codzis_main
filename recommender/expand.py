@@ -22,6 +22,10 @@ from .llm import DeepSeekClient
 log = logging.getLogger(__name__)
 
 MAX_EXPANSION_CHARS = 400  # defensive cap; the prompt asks for <= 40 words
+# Expansion is deliberately NOT deterministic: a little variation surfaces related
+# ideas the model would otherwise repeat monotonically. (Ranking, by contrast, runs at
+# temperature 0 so the same user always gets the same order - see ranker.py.)
+EXPANSION_TEMPERATURE = 0.3
 
 _SYSTEM = (
     "You expand event-search requests for a Warsaw events recommender. Given the user's "
@@ -47,7 +51,7 @@ def expand_query(client: DeepSeekClient, user: dict) -> str | None:
         resp = client.chat(
             [{"role": "system", "content": _SYSTEM},
              {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
-            temperature=0.3,
+            temperature=EXPANSION_TEMPERATURE,
         )
         text = (resp.choices[0].message.content or "").strip().strip('"')
     except Exception as exc:  # expansion is a bonus: never break retrieval
