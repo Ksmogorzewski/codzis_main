@@ -1,37 +1,25 @@
-# Strefa dla samej domeny portalu (np. test.agm.waw.pl). Domena nadrzędna może być u innego
-# operatora DNS (agm.waw.pl jest w home.pl) - wystarczy tam delegacja NS na name_servers tej strefy.
-resource "aws_route53_zone" "main" {
-  name          = var.domain_name
-  force_destroy = true
-}
-
+# DNS domeny jest w home.pl, bez Route53. Rekordy dodajesz tam ręcznie - Terraform je wypisuje:
+#   terraform output acm_validation_records   (walidacja certyfikatu; zostają na stałe - auto-odnawianie)
+#   terraform output dns_records              (domeny portalu -> CloudFront)
 resource "aws_acm_certificate" "portal" {
-  provider          = aws.us_east_1
-  domain_name       = var.domain_name
-  validation_method = "DNS"
+  provider                  = aws.us_east_1
+  domain_name               = var.domain_name
+  subject_alternative_names = var.domain_aliases
+  validation_method         = "DNS"
 
   lifecycle {
     create_before_destroy = true
   }
 }
 
-resource "aws_route53_record" "cert_validation" {
-  for_each = {
-    for o in aws_acm_certificate.portal.domain_validation_options : o.domain_name => o
-  }
-
-  zone_id         = aws_route53_zone.main.zone_id
-  name            = each.value.resource_record_name
-  type            = each.value.resource_record_type
-  records         = [each.value.resource_record_value]
-  ttl             = 300
-  allow_overwrite = true
-}
-
+# Czeka (do 2 h), aż certyfikat będzie ISSUED, czyli aż rekordy walidacyjne pojawią się w home.pl
 resource "aws_acm_certificate_validation" "portal" {
-  provider                = aws.us_east_1
-  certificate_arn         = aws_acm_certificate.portal.arn
-  validation_record_fqdns = [for r in aws_route53_record.cert_validation : r.fqdn]
+  provider        = aws.us_east_1
+  certificate_arn = aws_acm_certificate.portal.arn
+
+  timeouts {
+    create = "2h"
+  }
 }
 
 resource "aws_cloudfront_origin_access_control" "website" {
@@ -57,7 +45,7 @@ data "aws_cloudfront_origin_request_policy" "all_except_host" {
 resource "aws_cloudfront_distribution" "portal" {
   enabled             = true
   is_ipv6_enabled     = true
-  aliases             = [var.domain_name]
+  aliases             = local.portal_domains
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
 
@@ -125,19 +113,5 @@ resource "aws_cloudfront_distribution" "portal" {
     acm_certificate_arn      = aws_acm_certificate_validation.portal.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
-  }
-}
-
-resource "aws_route53_record" "portal" {
-  for_each = toset(["A", "AAAA"])
-
-  zone_id = aws_route53_zone.main.zone_id
-  name    = var.domain_name
-  type    = each.key
-
-  alias {
-    name                   = aws_cloudfront_distribution.portal.domain_name
-    zone_id                = aws_cloudfront_distribution.portal.hosted_zone_id
-    evaluate_target_health = false
   }
 }

@@ -10,7 +10,7 @@ https://<domena>/photos/* ──▶ CloudFront ──▶ S3 (zdjęcia, prywatny;
 importer ECS (EventBridge co 2 h): API UM Warszawy ──▶ schemat v1 ──▶ diff (S3) ──▶ SQS
 SQS ──▶ tagger ECS (Fargate Spot): tagi DeepSeek ──▶ events (docelowa) + submissions.status = published
           ▲ RunTask
-dispatcher (Lambda, EventBridge): co 5 min gdy ≥ 50 wiadomości; co 60 min gdy ≥ 1; zawsze max 1 task naraz
+dispatcher (Lambda, EventBridge co 1 min): gdy w kolejce jest ≥ 1 wiadomość i tagger nie działa → RunTask
 ```
 
 Portal (`index.html`): landing z cennikiem i logowaniem, po zalogowaniu zakładki Moje ogłoszenia / Dodaj nowe / Profil / Płatności. Mock bramka: `mock-pay.html`.
@@ -41,21 +41,20 @@ Tabele DynamoDB: `events` (docelowa, pisze tylko worker), `submissions` i `payme
 
 ## Deploy
 
-Terraform zakłada strefę Route53 dla `domain_name` (np. `test.agm.waw.pl`). Domena nadrzędna może zostać u obecnego operatora DNS (agm.waw.pl jest w home.pl), wystarczy delegacja NS. Certyfikat ACM czeka na tę delegację, dlatego deploy ma dwa etapy:
+DNS domeny jest w home.pl, bez Route53. Portal działa pod `domain_name` (np. `waw-out.pl`) i `domain_aliases` (np. `www.waw-out.pl`). Rekordy w home.pl dodajesz ręcznie, dlatego deploy ma dwa etapy:
 
 ```sh
 cd infra
-cp terraform.tfvars.example terraform.tfvars   # domena i partnerzy
+cp terraform.tfvars.example terraform.tfvars   # domena, aliasy, partnerzy
 terraform init
 
-# 1. strefa DNS + delegacja
-terraform apply -target=aws_route53_zone.main
-terraform output dns_delegation                # home.pl, strefa agm.waw.pl: usuń wszystkie rekordy "test" i "*.test" (CNAME),
-                                               # potem dodaj 4 rekordy: nazwa "test", typ NS, wartość = każdy serwer z listy
-dig +short NS test.agm.waw.pl                  # powinno pokazać serwery awsdns-*
+# 1. certyfikat -> rekordy walidacyjne w home.pl (zostają na stałe: dzięki nim certyfikat sam się odnawia)
+terraform apply -target=aws_acm_certificate.portal
+terraform output acm_validation_records        # home.pl: CNAME <name> -> <value>, po jednym na domenę
 
-# 2. reszta (pierwszy raz ~5-10 min: ACM + CloudFront)
+# 2. reszta; apply czeka (do 2 h), aż certyfikat zostanie wydany (~5-30 min po dodaniu rekordów)
 terraform apply
+terraform output dns_records                   # home.pl: www -> CNAME <value>; domena główna -> ALIAS/ANAME <value>
 terraform output -json partner_api_keys        # klucze do przekazania partnerom
 aws ssm put-parameter --name "$(terraform output -raw um_api_token_parameter)" \
   --type SecureString --overwrite --value "<token dane.um.warszawa.pl>"
@@ -122,7 +121,7 @@ Kod: `run_task.py` + `tagger/` ([tagger/README.md](tagger/README.md)), obraz z `
 - **Koszt:** każda wiadomość loguje tokeny i przybliżony koszt (`LLM: … ~$…`) w `/ecs/codzis-worker`.
 - **Uruchamianie:** dispatcher odpala task na Fargate Spot (fallback: Fargate), task kończy się, gdy kolejka jest pusta. Kod wyjścia `1` = część wiadomości nie przeszła; po 5 próbach trafiają do `codzis-events-dlq`.
 - **Klucz DeepSeek** jest w SSM (`terraform output deepseek_api_key_parameter`); z placeholderem `CHANGE_ME` task kończy się od razu, bez ruszania kolejki.
-- Progi: `worker_min_messages` (50 wiadomości, nie rekordów), `worker_check_minutes` (5), `worker_max_wait_minutes` (60). Visibility timeout kolejki: 30 min.
+- **Start taggera:** dispatcher co minutę (`worker_check_minutes`) sprawdza kolejkę i uruchamia tagger, gdy jest w niej co najmniej `worker_min_messages` wiadomości (domyślnie 1, czyli przy każdej). Od pojawienia się wiadomości do startu kontenera mijają ~1-2 min. Visibility timeout kolejki: 30 min.
 
 ## Rekord eventu: schemat v1 (tabela `events`)
 
@@ -155,7 +154,8 @@ Pola portalu partnera i ich walidacja: `TEXT_FIELDS` i `_event_input` w `src/api
 - Mock bramka: `confirm` woła sam partner, więc każdy zalogowany może dodać sobie kredyty. Przy prawdziwej bramce (np. Stripe, PayU, Przelewy24) zastąp to webhookiem od operatora, weryfikowanym podpisem.
 - Kredyt jest pobierany przy zapisie ogłoszenia, przed uploadem zdjęcia. Jeśli upload się nie uda, `image.highlighted.path` wskazuje na nieistniejący plik.
 - Czas z formularza jest interpretowany w strefie przeglądarki partnera.
-- Ogłoszenie partnera pojawia się w tabeli `events` z opóźnieniem do `worker_max_wait_minutes` (przy małym ruchu).
+- **Domena główna bez `www`:** CNAME na apexie jest niedozwolony, a CloudFront nie ma stałego IP. `waw-out.pl` zadziała tylko, jeśli home.pl obsługuje rekord ALIAS/ANAME. Jeśli nie, ustaw `domain_name = "www.waw-out.pl"` i w home.pl przekieruj `waw-out.pl` na `https://www.waw-out.pl`.
+- Ogłoszenie partnera pojawia się w tabeli `events` po ~2-5 min (start kontenera + tagowanie).
 - Brak alarmu na DLQ: zepsute wiadomości trzeba sprawdzać ręcznie.
 - Rekordy usunięte w źródle przed końcem (np. odwołane eventy) zostają w tabeli do `expiresAt`; zajęcia cykliczne usunięte w źródle zostają na stałe (importer tylko loguje ich liczbę).
 - Zmiana taksonomii przetaguje tylko rekordy, które przyjdą ponownie; żeby przetagować wszystko: pełne przeładowanie (sekcja Initial load).

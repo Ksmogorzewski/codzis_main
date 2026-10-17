@@ -123,7 +123,7 @@ resource "aws_s3_bucket_cors_configuration" "photos" {
 
   cors_rule {
     allowed_methods = ["POST"]
-    allowed_origins = [local.website_origin]
+    allowed_origins = local.website_origins
     allowed_headers = ["*"]
     max_age_seconds = 3600
   }

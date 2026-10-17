@@ -1,5 +1,7 @@
-# Dispatcher: co kilka minut sprawdza kolejkę i odpala task workera, jeśli jest dość wiadomości
-# i żaden worker już nie działa. Worker sam się kończy, gdy kolejka jest pusta.
+# Dispatcher: co minutę sprawdza kolejkę i odpala task taggera, jeśli jest w niej co najmniej
+# worker_min_messages wiadomości (domyślnie 1) i żaden tagger już nie działa.
+# Tagger sam się kończy, gdy kolejka jest pusta. (Lambda/Pipes podpięte pod SQS zdejmowałyby
+# wiadomości z kolejki, dlatego sprawdzamy jej stan zamiast reagować na zdarzenie.)
 data "archive_file" "dispatcher" {
   type        = "zip"
   source_dir  = "${path.module}/../src/dispatcher"
@@ -91,7 +93,6 @@ locals {
   # reguła -> (harmonogram, minimalna liczba wiadomości)
   dispatcher_schedules = {
     threshold = { rate = var.worker_check_minutes, min_messages = var.worker_min_messages }
-    max-wait  = { rate = var.worker_max_wait_minutes, min_messages = 1 }
   }
 }
 

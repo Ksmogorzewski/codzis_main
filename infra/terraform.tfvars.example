@@ -1,2 +1,3 @@
-domain_name = "test.agm.waw.pl"
-partners    = ["demo"]
+domain_name    = "waw-out.pl"
+domain_aliases = ["www.waw-out.pl"]
+partners       = ["demo"]

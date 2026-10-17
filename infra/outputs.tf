@@ -81,7 +81,22 @@ output "events_dlq_url" {
   value = aws_sqs_queue.events_dlq.url
 }
 
-output "dns_delegation" {
-  description = "Rekordy NS do dodania u operatora domeny nadrzędnej (home.pl): <subdomena> NS <każdy z poniższych>"
-  value       = aws_route53_zone.main.name_servers
+# --- rekordy DNS do dodania ręcznie w home.pl ---
+
+output "acm_validation_records" {
+  description = "CNAME do walidacji certyfikatu (dodaj w home.pl i zostaw na stałe)"
+  value = [for o in aws_acm_certificate.portal.domain_validation_options : {
+    name  = o.resource_record_name
+    type  = o.resource_record_type
+    value = o.resource_record_value
+  }]
+}
+
+output "dns_records" {
+  description = "Domeny portalu -> CloudFront. Domena główna wymaga typu ALIAS/ANAME (CNAME na apexie jest niedozwolony)"
+  value = [for d in local.portal_domains : {
+    name  = d
+    type  = length(split(".", d)) > 2 ? "CNAME" : "ALIAS / ANAME"
+    value = aws_cloudfront_distribution.portal.domain_name
+  }]
 }

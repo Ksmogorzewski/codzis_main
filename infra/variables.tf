@@ -9,8 +9,14 @@ variable "project" {
 }
 
 variable "domain_name" {
-  description = "Domena portalu, np. test.agm.waw.pl (Terraform zakłada dla niej strefę Route53)"
+  description = "Główna (kanoniczna) domena portalu, np. waw-out.pl. DNS u zewnętrznego operatora (home.pl)"
   type        = string
+}
+
+variable "domain_aliases" {
+  description = "Dodatkowe nazwy portalu na tym samym certyfikacie i CloudFront, np. [\"www.waw-out.pl\"]"
+  type        = list(string)
+  default     = []
 }
 
 variable "partners" {
@@ -79,21 +85,15 @@ variable "log_retention_days" {
 }
 
 variable "worker_min_messages" {
-  description = "Od ilu wiadomości w kolejce dispatcher uruchamia worker ECS"
+  description = "Od ilu wiadomości w kolejce dispatcher uruchamia tagger (1 = przy każdej wiadomości)"
   type        = number
-  default     = 50
+  default     = 1
 }
 
 variable "worker_check_minutes" {
-  description = "Co ile minut dispatcher sprawdza kolejkę"
+  description = "Co ile minut dispatcher sprawdza kolejkę (1 min = ~43 tys. wywołań Lambdy/mies., w darmowym limicie)"
   type        = number
-  default     = 5
-}
-
-variable "worker_max_wait_minutes" {
-  description = "Bezpiecznik: co tyle minut worker rusza już od 1 wiadomości, żeby nic nie czekało w nieskończoność"
-  type        = number
-  default     = 60
+  default     = 1
 }
 
 variable "importer_schedule" {

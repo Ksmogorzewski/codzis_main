@@ -32,8 +32,10 @@ resource "aws_s3_bucket_policy" "website" {
 }
 
 locals {
-  website_origin = "https://${var.domain_name}"
-  web_dir        = "${path.module}/../src/web"
+  portal_domains  = concat([var.domain_name], var.domain_aliases)
+  website_origin  = "https://${var.domain_name}" # adres kanoniczny (zdjęcia, linki)
+  website_origins = [for d in local.portal_domains : "https://${d}"]
+  web_dir         = "${path.module}/../src/web"
 
   web_files = {
     "index.html"    = "text/html; charset=utf-8"
