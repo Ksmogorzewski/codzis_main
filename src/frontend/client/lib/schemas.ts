@@ -141,6 +141,10 @@ export const CardSchema = z.object({
   reason: z.string().default(""),
   reasonSource: z.string().default("rules"), // "llm" | "rules"
   score: z.number().default(0),
+  // Zapisy (GET /api/events, /api/popular, /api/events/{id}); karty rekomendacji ich nie mają -
+  // undefined = nie wiemy (wtedy liczniki dociąga GET /api/events/stats albo widać je w szczegółach).
+  saves: z.number().int().nonnegative().optional().catch(undefined),
+  saved: z.boolean().optional().catch(undefined),
 });
 
 export type Card = z.infer<typeof CardSchema>;
@@ -182,6 +186,62 @@ export const PreparingSchema = z.object({
 export type Preparing = z.infer<typeof PreparingSchema>;
 
 export const RecommendationsResponseSchema = z.union([PreparingSchema, RecommendationsSchema]);
+
+// --- Eksploruj, Popularne, szczegóły, zapisy (src/client_api: events.py, attendance.py) ---
+
+const WindowSchema = z.object({ from: z.string(), to: z.string() }).nullable().default(null).catch(null);
+
+// Zepsutą kartę pomijamy, zamiast odrzucać całą odpowiedź.
+const cardList = z.array(z.unknown()).transform((xs) =>
+  xs.flatMap((x) => {
+    const r = CardSchema.safeParse(x);
+    return r.success ? [r.data] : [];
+  }),
+);
+
+// GET /api/events?when=&date=&cat=&district=&free=&indoor=&q=  oraz  GET /api/popular
+export const EventListSchema = z.object({ window: WindowSchema, items: cardList });
+export type EventList = z.infer<typeof EventListSchema>;
+
+const OccurrenceSchema = z.object({ start: z.string(), end: nullableString, allDay: z.boolean().default(false) });
+
+// GET /api/events/{id}: karta + pełny opis bez HTML, terminy, czas importu
+export const EventDetailSchema = CardSchema.extend({
+  text: z.string().default(""),
+  occurrences: z.array(z.unknown()).default([]).transform((xs) =>
+    xs.flatMap((x) => {
+      const r = OccurrenceSchema.safeParse(x);
+      return r.success ? [r.data] : [];
+    }),
+  ),
+  importedAt: nullableString,
+});
+export type EventDetail = z.infer<typeof EventDetailSchema>;
+
+// PUT / DELETE /api/events/{id}/save
+export const SaveResultSchema = z.object({ saved: z.boolean(), saves: z.number().int().nonnegative() });
+export type SaveResult = z.infer<typeof SaveResultSchema>;
+
+// GET /api/events/{id}/attendees (max 100, najnowsi najpierw; tylko imiona, nigdy e-maile)
+export const AttendeesSchema = z.object({
+  saves: z.number().int().nonnegative().default(0),
+  saved: z.boolean().default(false),
+  people: z
+    .array(z.object({ name: z.string().nullable().default(null).catch(null), isMe: z.boolean().default(false) }))
+    .default([]),
+});
+export type Attendees = z.infer<typeof AttendeesSchema>;
+
+// GET /api/events/stats?ids=a,b (maks. 100): {id: {saves, saved}} - liczniki dla kart rekomendacji
+const StatEntrySchema = z.object({ saves: z.number().int().nonnegative(), saved: z.boolean() });
+export const EventStatsSchema = z.record(z.string(), z.unknown()).transform((raw) => {
+  const out: Record<string, z.infer<typeof StatEntrySchema>> = {};
+  for (const [id, value] of Object.entries(raw)) {
+    const r = StatEntrySchema.safeParse(value);
+    if (r.success) out[id] = r.data;
+  }
+  return out;
+});
 
 // --- błąd API: {error: "komunikat PL", fields?, code?} ---
 
