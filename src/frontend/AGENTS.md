@@ -3,8 +3,9 @@
 Jeden projekt Vite, dwie aplikacje: **portal klienta** (`client/`, tryb `client`) i **panel partnera** (`partner/`, tryb `partner`). Ten plik opisuje portal klienta. **Pilnuj struktury opisanej niżej**; jeśli zmiana jej nie pasuje, zatrzymaj się i zapytaj, zamiast tworzyć nowy wzorzec. Panelu partnera nie zmieniaj bez zgody Krzysztofa.
 
 ## Produkt (portal klienta)
-Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni/inny dzień, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia. Wygląd: mockup WarsawNow, wariant 1a Karty.
-**Poza zakresem bez zgody zespołu:** logowanie Google, „Sponsorowane”, warstwa społecznościowa, pogoda, mapa.
+Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni/inny dzień, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia (`GET /api/events/{id}`: pełny opis, lista zapisanych). **Eksploruj** (`GET /api/events`: wszystko w oknie czasu, bez profilu), **Popularne w tym tygodniu** (`GET /api/popular`), **Zapisz / Zapisano** na kartach i w szczegółach. Nawigacja: Dla Ciebie / Eksploruj / Popularne / Profil (nagłówek na desktopie, dolny pasek na telefonie). Wygląd: mockup WarsawNow, wariant 1a Karty.
+**Imię:** wymagane przy rejestracji (atrybut Cognito `name`), potem niezmienne; konta bez imienia dostają jednorazową prośbę przed pierwszym zapisem (`setMissingName` w `lib/auth.ts`). Na listach zapisanych tylko imię (brak → „Ktoś”), nigdy e-mail.
+**Poza zakresem bez zgody zespołu:** logowanie Google, „Sponsorowane”, czat (Kacper), pogoda, mapa.
 
 ## Komendy (z `src/frontend/`)
 ```sh
@@ -28,15 +29,20 @@ routes/                  trasy plikowe; routeTree.gen.ts jest GENEROWANY — nie
   __root.tsx             obudowa, not found → /
   login.tsx              logowanie / rejestracja / kod / reset hasła
   _app.tsx               strażnik sesji (beforeLoad)
-  _app/index.tsx         propozycje (search params: when, date, q, cat)
+  _app/index.tsx         Dla Ciebie: propozycje (search params: when, date, q, cat)
+  _app/eksploruj.tsx     Eksploruj (search params: when, date, cat, district, free, indoor, q — lib/explore.ts)
+  _app/popularne.tsx     Popularne w tym tygodniu
   _app/profil.tsx        ankieta
-  _app/wydarzenie.$id.tsx szczegóły
-components/<obszar>/     auth, events, survey, layout — pliki kebab-case
+  _app/wydarzenie.$id.tsx szczegóły (+ lista zapisanych)
+components/<obszar>/     auth, events, explore, popular, community (zapis, imię, zapisani), survey, layout (nagłówek, tab-bar) — pliki kebab-case
 components/ui/           prymitywy shadcn — wyłącznie przez tokeny motywu
-hooks/                   use-<x>.query.ts / use-<x>.mutation.ts (jeden hook na endpoint, queryOptions)
+hooks/                   use-<x>.query.ts / use-<x>.mutation.ts (jeden hook na endpoint, queryOptions):
+                         me, onboarding, recommendations, events, event, event-stats, popular, attendees,
+                         save-profile, save
 lib/                     config (APP_CONFIG), auth (Cognito), api (Result, błędy, ponawianie zimnego startu),
                          schemas (Zod odpowiedzi API), query-keys, search, categories, geo, wizard (walidacja ankiety),
-                         events (formaty terminów/cen), recommendations-cache, theme, storage, utils (cn)
+                         events (formaty terminów/cen), explore (filtry, sortowanie), community (zapisy: stan
+                         optymistyczny, podpisy), nav, recommendations-cache, theme, storage, utils (cn)
 styles.css               Tailwind + tokeny (jasny i ciemny) — jedyny plik CSS
 public/                  ikony i manifest PWA (config.js tylko lokalnie)
 ```
@@ -44,17 +50,18 @@ Testy obok kodu: `lib/*.test.ts`. Import: alias `@/` = `client/`.
 
 ## Zasady
 - **Nowy ekran = plik w `routes/`** (cienki), widok w `components/<obszar>/`.
-- **Dane tylko przez TanStack Query:** `queryOptions` + hook w `hooks/`, klucze w `lib/query-keys.ts`, odpowiedzi przez Zod w `lib/schemas.ts`, zapytania przez `apiGet`/`apiPut` z `lib/api.ts`. Bez `fetch` w komponentach i bez `useEffect` do pobierania danych.
+- **Dane tylko przez TanStack Query:** `queryOptions` + hook w `hooks/`, klucze w `lib/query-keys.ts`, odpowiedzi przez Zod w `lib/schemas.ts`, zapytania przez `apiGet`/`apiPut`/`apiDelete` z `lib/api.ts`. Bez `fetch` w komponentach i bez `useEffect` do pobierania danych.
 - **Kontrakt z backendem** (Python): ścieżki i kształty jak w `src/client_api/handler.py`, `onboarding.py`, `src/recommender_api/present.py`. Schematy Zod tolerancyjne (pola opcjonalne opcjonalne). Błędy API: `{error: "komunikat PL", fields?, code?}` — pokazujemy komunikat; `409` / `code: "needs_onboarding"` → `/profil`; 401 → jedno odświeżenie tokenu, potem `/login`.
 - **Rekomendacje:** `retry: false` + pomocnik zimnego startu z `lib/api.ts` (ponowienia po 5 i 10 s, komunikat „Dobieramy propozycje…”). `202 {"status": "preparing"}` (zestaw się liczy) obsługuje `pollWhilePreparing`, a `"updating": true` — `refetchInterval` co 3 s. Parametry zapytania z filtrów: `recommendationsParams` (`lib/search.ts`); `limit` = 16 jak na serwerze (inny limit = inny zapisany zestaw). Po zapisie ankiety: `setQueryData(["me"])` i `removeQueries(["recommendations"])`.
-- **Stan w adresie:** filtry ekranu głównego to search params walidowane Zodem (`lib/search.ts`). Nawigacja przez `<Link>` / `navigate`.
+- **Zapisy:** `useSave` (`hooks/use-save.mutation.ts`) zmienia stan i licznik optymistycznie we wszystkich cache (`events`, `popular`, `event`, `attendees`, `event-stats`), przy błędzie przywraca i pokazuje toast, po sukcesie unieważnia `attendees`, `popular`, `events`. Karty rekomendacji dostają `saves`/`saved` z `GET /api/events/stats?ids=` (`withStats`). Jedna karta (`EventCard`) na wszystkich listach.
+- **Stan w adresie:** filtry ekranu głównego i Eksploruj to search params walidowane Zodem (`lib/search.ts`, `lib/explore.ts`). Nawigacja przez `<Link>` / `navigate`.
 - **Lokalizacja użytkownika** służy tylko do liczenia odległości na kliencie — **nie wysyłamy jej do API**.
 - **Bezpieczeństwo:** bez `dangerouslySetInnerHTML`; linki zewnętrzne tylko `http(s)` z `rel="noopener noreferrer"`; tokenów nie logujemy.
 
 ## Recepty (wzorowane na firmowym `valinor`)
 - **Nowe pole z API na istniejącym ekranie:** backend dodaje pole (addytywnie) → dopisz je jako opcjonalne w schemacie w `lib/schemas.ts` → użyj w komponencie; formatowanie (daty, ceny, odległości) jako czysta funkcja w `lib/` z testem.
 - **Nowy endpoint:** schemat odpowiedzi w `lib/schemas.ts` → klucz w `lib/query-keys.ts` → `hooks/use-<x>.query.ts` z `queryOptions` (albo `use-<x>.mutation.ts`, a po sukcesie `setQueryData`/`invalidateQueries` zależnych kluczy) → użycie w loaderze trasy (`ensureQueryData`) i komponencie.
-- **Nowy ekran:** plik w `routes/` (np. `_app/ulubione.tsx` dla zalogowanych) z `loader`, `pendingComponent`, `errorComponent`, `component`; widok w `components/<obszar>/<nazwa>-view.tsx`; link w `components/layout/header.tsx`. Filtry/stan widoku jako search params z `validateSearch` (Zod z domyślnymi).
+- **Nowy ekran:** plik w `routes/` (np. `_app/ulubione.tsx` dla zalogowanych) z `loader`, `pendingComponent`, `errorComponent`, `component`; widok w `components/<obszar>/<nazwa>-view.tsx`; link w `NAV_ITEMS` (`lib/nav.ts`: nagłówek i dolny pasek). Filtry/stan widoku jako search params z `validateSearch` (Zod z domyślnymi).
 - **Nowy komponent UI:** najpierw sprawdź `components/ui/`; brakujący prymityw przez shadcn, komponent funkcji w `components/<obszar>/`.
 
 ## Wygląd (żeby nie wyglądało jak „AI slop”)
