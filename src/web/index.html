@@ -117,6 +117,40 @@
             <label>Dzielnica *
               <select name="district" id="district-select" required></select>
             </label>
+            <label>Gdzie odbywa się wydarzenie *
+              <select name="setting" id="setting-select" required></select>
+            </label>
+          </fieldset>
+
+          <!-- Parametry deklarowane wprost: tagger wpisuje je do tagów zamiast zgadywać (DECLARED_FIELDS w handler.py) -->
+          <fieldset>
+            <legend>Udział</legend>
+            <div class="field">
+              <span class="field-label">Koszt *</span>
+              <div class="choices" id="cost-choices"></div>
+            </div>
+            <div class="row" id="price-row" hidden>
+              <label>Cena od (PLN)
+                <input name="priceMin" type="number" min="0" max="100000" step="0.01" inputmode="decimal">
+              </label>
+              <label>Cena do (PLN)
+                <input name="priceMax" type="number" min="0" max="100000" step="0.01" inputmode="decimal">
+              </label>
+            </div>
+            <label>Wejście *
+              <select name="registration" id="registration-select" required></select>
+            </label>
+            <label id="ticket-url-label" hidden>Link do biletów / zapisów
+              <input name="ticketUrl" type="url" maxlength="500" placeholder="https://">
+            </label>
+            <div class="field">
+              <span class="field-label">Dla kogo</span>
+              <div class="choices" id="audience-choices"></div>
+            </div>
+            <div class="field">
+              <span class="field-label">Dostępność</span>
+              <div class="choices" id="accessibility-choices"></div>
+            </div>
           </fieldset>
 
           <label>Zdjęcie *

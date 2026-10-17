@@ -43,7 +43,9 @@ async function api(method, path, body, apiKey = session.get()) {
 const FIELD_LABELS = {
   title: "tytuł", lead: "krótki opis", text: "pełny opis", category: "kategoria", url: "link",
   startsAt: "początek", endsAt: "koniec", venue: "nazwa miejsca", street: "ulica",
-  streetNumber: "numer", district: "dzielnica",
+  streetNumber: "numer", district: "dzielnica", setting: "gdzie się odbywa", cost: "koszt",
+  priceMin: "cena od", priceMax: "cena do", registration: "wejście", ticketUrl: "link do biletów",
+  audience: "dla kogo", accessibility: "dostępność",
 };
 const fieldLabel = (name) => FIELD_LABELS[name] || name;
 

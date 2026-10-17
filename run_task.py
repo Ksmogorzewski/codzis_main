@@ -44,6 +44,7 @@ from tagger.client import resolve_api_key
 from tagger.dynamodb_sink import DynamoDBSink, SubmissionStatus, sanitize
 from tagger.facets import expires_at, facets
 from tagger.normalize import SOURCE_PARTNER, normalize
+from tagger.parser import apply_declared
 from tagger.prepare import prepare_record, prepare_records, tag_input_hash
 from tagger.prompt import taxonomy_version
 from tagger.sqs_source import SQSSource
@@ -191,7 +192,8 @@ def main() -> int:
 
 
 def write(sink, submissions, record: dict, taxonomy: str) -> None:
-    """Add data-derived facets + TTL and upsert; partner records also update the portal status."""
+    """Declared values over model tags, facets + TTL, upsert; partner records also update the portal status."""
+    record["tags"] = apply_declared(record.get("tags"), record.get("declared"))
     record["facets"] = facets(record)
     record["taxonomyVersion"] = taxonomy
     record["expiresAt"] = expires_at(record)

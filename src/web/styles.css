@@ -102,6 +102,12 @@ legend { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; col
 .row > label { flex: 1 1 10rem; }
 .row > label.grow { flex: 3 1 14rem; }
 textarea { resize: vertical; }
+.field { margin-bottom: 1rem; }
+.field-label { display: block; font-weight: 600; margin-bottom: .35rem; }
+.choices { display: flex; flex-wrap: wrap; gap: .4rem .9rem; }
+.choices label { display: inline-flex; align-items: center; gap: .35rem; margin: 0; font-weight: 400; }
+.choices input { width: auto; margin: 0; }
+.price { font-weight: 600; margin-top: .35rem; }
 input, textarea, select {
   display: block;
   width: 100%;

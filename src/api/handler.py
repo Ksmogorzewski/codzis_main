@@ -40,7 +40,25 @@ TEXT_FIELDS = {
     "street": (False, 200),
     "streetNumber": (False, 20),
     "url": (False, 500),
+    "ticketUrl": (False, 500),
 }
+
+# Parametry, które partner deklaruje wprost. Wartości = dokładnie opcje z taksonomii taggera
+# (tagger/prompt.py -> DIMENSIONS); tagger nadpisuje nimi zgadywania modelu.
+# Wymiar -> (wymagany, wiele wartości, opcje)
+DECLARED_FIELDS = {
+    "cost": (True, False, ["Bezpłatne", "Płatne"]),
+    "registration": (True, False, ["Wstęp wolny", "Wymagane zapisy / rejestracja", "Wymagany bilet"]),
+    "setting": (True, False, ["W pomieszczeniu", "Na zewnątrz", "W pomieszczeniu i na zewnątrz"]),
+    "audience": (False, True, ["Dzieci (0-12)", "Młodzież (13-17)", "Dorośli (18-64)", "Seniorzy (65+)", "Rodziny / wszystkie grupy"]),
+    "accessibility": (False, True, [
+        "Dostępne dla osób z niepełnosprawnością ruchową",
+        "Tłumaczenie na PJM",
+        "Audiodeskrypcja",
+        "Przyjazne sensorycznie",
+    ]),
+}
+MAX_PRICE = 100_000
 
 PHOTO_TYPES = {
     "image/jpeg": "jpg",
@@ -110,7 +128,8 @@ def get_profile(partner):
         ExpressionAttributeValues={":name": partner["partnerName"], ":start": STARTER_CREDITS},
         ReturnValues="ALL_NEW",
     )["Attributes"]
-    return {**partner, "credits": item["credits"], "eventCost": EVENT_COST}
+    options = {name: opts for name, (_, _, opts) in DECLARED_FIELDS.items()}
+    return {**partner, "credits": item["credits"], "eventCost": EVENT_COST, "formOptions": options}
 
 
 # --- ogłoszenia ---
@@ -185,8 +204,36 @@ def _event_input(body):
         else:
             data[name] = value.strip()
 
-    if data.get("url") and not re.match(r"https?://", data["url"]):
-        errors.append("url")
+    for name in ("url", "ticketUrl"):
+        if data.get(name) and not re.match(r"https?://", data[name]):
+            errors.append(name)
+
+    data["declared"] = {}
+    for name, (required, multi, options) in DECLARED_FIELDS.items():
+        value = body.get(name)
+        if multi:
+            values = value if isinstance(value, list) else []
+            if not isinstance(value, (list, type(None))) or any(v not in options for v in values):
+                errors.append(name)
+            elif values:
+                data["declared"][name] = [o for o in options if o in values]  # kolejność jak w opcjach, bez duplikatów
+            elif required:
+                errors.append(name)
+        elif value in options:
+            data["declared"][name] = value
+        elif required or not _is_blank(value):
+            errors.append(name)
+
+    data["price"] = None
+    price_min, price_max = _price(body.get("priceMin"), errors, "priceMin"), _price(body.get("priceMax"), errors, "priceMax")
+    cost = data["declared"].get("cost")
+    if (price_min is not None or price_max is not None) and cost:  # bez kosztu błąd zgłasza już pole cost
+        if cost != "Płatne":
+            errors.append("priceMin" if price_min is not None else "priceMax")  # cena przy wydarzeniu bezpłatnym
+        elif price_min is not None and price_max is not None and price_max < price_min:
+            errors.append("priceMax")
+        else:
+            data["price"] = {"min": price_min, "max": price_max, "currency": CURRENCY}
 
     data["category"] = body.get("category")
     if data["category"] not in CATEGORIES:
@@ -211,6 +258,20 @@ def _event_input(body):
     return data
 
 
+def _price(value, errors, name):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        price = Decimal(str(value))
+    except Exception:
+        errors.append(name)
+        return None
+    if not price.is_finite() or price < 0 or price > MAX_PRICE:
+        errors.append(name)
+        return None
+    return price.quantize(Decimal("0.01"))
+
+
 def _event_record(event_id, partner, data, photo_url):
     """Rekord we wspólnym schemacie v1 (opis pól: src/importer/schema.py)."""
     starts, ends = data["startsAt"], data["endsAt"]
@@ -227,7 +288,7 @@ def _event_record(event_id, partner, data, photo_url):
         "text": _to_html(data["text"]),
         "url": data["url"],
         "category": [{"id": None, "name": data["category"]}],
-        "audience": [],
+        "audience": data["declared"].get("audience", []),
         "district": data["district"],
         "online": False,
         "venue": {"name": data["venue"], "address": address},
@@ -237,8 +298,9 @@ def _event_record(event_id, partner, data, photo_url):
         "startsAt": _utc(starts),
         "endsAt": _utc(ends or starts),
         "imageUrl": photo_url,
-        "attributes": {},
-        # tylko partner
+        "attributes": {"price": data["price"], "ticketUrl": data["ticketUrl"]},
+        # tylko partner: parametry zadeklarowane wprost - tagger przepisuje je do tags zamiast zgadywać
+        "declared": data["declared"],
         "partnerId": partner["partnerId"],
         "partnerName": partner["partnerName"],
         "createdAt": now,

@@ -148,11 +148,12 @@ Jeden kształt dla wszystkich źródeł (importer i portal partnera). Pełny opi
 | `startsAt`, `endsAt` | UTC, z `occurrences` (do sortowania/indeksów) |
 | `imageUrl`, `attributes` | zdjęcie po https; dodatki specyficzne dla źródła |
 | `contentHash`, `importedAt` | wykrywanie zmian w importerze |
+| `declared` | tylko partner: koszt, wejście, miejsce, dla kogo, dostępność podane w formularzu; tagger przepisuje je do `tags` zamiast zgadywać |
 | `tags` | dopisuje tagger: 10 wymiarów z `tagger/prompt.py` |
 | `facets` | dopisuje tagger, z danych: `timeOfDay`, `days`, `weekend`, `multiDay`, `recurring` |
 | `tagInputHash`, `taxonomyVersion`, `expiresAt` | tagger: wykrywanie zmian dla modelu, wersja taksonomii, TTL (epoch) |
 
-Pola portalu partnera i ich walidacja: `TEXT_FIELDS` i `_event_input` w `src/api/handler.py`. Kategorie: zmienna `event_categories`, dzielnice: `local.warsaw_districts`.
+Pola portalu partnera i ich walidacja: `TEXT_FIELDS`, `DECLARED_FIELDS` i `_event_input` w `src/api/handler.py`. Opcje w `DECLARED_FIELDS` muszą być dokładnie opcjami z `tagger/prompt.py` (wartość spoza taksonomii tagger pominie); portal pobiera je z `GET /api/me` (`formOptions`). Cena (`priceMin`/`priceMax`, tylko przy „Płatne”) i link do biletów lądują w `attributes`. Kategorie: zmienna `event_categories`, dzielnice: `local.warsaw_districts`.
 
 ## Ograniczenia PoC
 

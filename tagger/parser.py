@@ -93,3 +93,22 @@ def parse_response(
         "unknown_values": unknown,
         "extra_ids": extra,
     }
+
+
+def apply_declared(tags: dict, declared: dict | None, dimensions: dict | None = None) -> dict:
+    """Overwrite model tags with values the organiser stated explicitly (partner portal).
+
+    Only known dimensions and allowed options are taken; anything else is ignored,
+    so a bad value can never reach the table. Single dimensions stay plain strings.
+    """
+    dimensions = dimensions or DIMENSIONS
+    result = dict(tags or {})
+    for dim, value in (declared or {}).items():
+        spec = dimensions.get(dim)
+        if not spec:
+            continue
+        values = value if isinstance(value, list) else [value]
+        allowed = [v for v in dict.fromkeys(values) if v in spec["options"]][: spec["max"]]
+        if allowed:
+            result[dim] = allowed[0] if spec["single"] else allowed
+    return result

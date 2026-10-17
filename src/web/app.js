@@ -20,6 +20,38 @@ function setStatus(node, text, kind = "") {
   node.className = `status ${kind}`;
 }
 
+// --- pola deklarowane przez partnera (opcje przychodzą z /api/me -> formOptions) ---
+
+function choice(type, name, value, required) {
+  return el("label", {}, el("input", { type, name, value, required }), value);
+}
+
+let formOptionsRendered = false;
+function renderFormOptions(options) {
+  if (formOptionsRendered || !options) return;
+  formOptionsRendered = true;
+  $("cost-choices").replaceChildren(...options.cost.map((v) => choice("radio", "cost", v, true)));
+  fillSelect($("registration-select"), options.registration);
+  fillSelect($("setting-select"), options.setting);
+  $("audience-choices").replaceChildren(...options.audience.map((v) => choice("checkbox", "audience", v, false)));
+  $("accessibility-choices").replaceChildren(...options.accessibility.map((v) => choice("checkbox", "accessibility", v, false)));
+
+  const form = $("event-form");
+  form.addEventListener("change", (e) => {
+    if (e.target.name === "cost") $("price-row").hidden = e.target.value !== "Płatne";
+    if (e.target.name === "registration") $("ticket-url-label").hidden = e.target.value === "Wstęp wolny";
+  });
+}
+
+function priceLabel(ev) {
+  if (ev.declared?.cost === "Bezpłatne") return "Bezpłatne";
+  const price = ev.attributes?.price;
+  if (!price || (price.min == null && price.max == null)) return ev.declared?.cost || "";
+  const fmt = (v) => formatMoney(v, price.currency);
+  if (price.min != null && price.max != null && price.min !== price.max) return `${fmt(price.min)} – ${fmt(price.max)}`;
+  return fmt(price.min ?? price.max);
+}
+
 // Tagi z taggera AI: {theme: [...], audience: [...], cost: "...", setting: "...", ...} (tagger/prompt.py)
 const EMPTY_TAGS = new Set(["Nieznane", "Brak informacji"]);
 const tagList = (tags) => Object.values(tags || {}).flat().filter((t) => t && !EMPTY_TAGS.has(t));
@@ -112,6 +144,7 @@ const VIEWS = {
             el("h3", { textContent: ev.title }),
             el("div", { className: "muted small", textContent: formatDate(ev.occurrences?.[0]?.start || ev.startsAt) }),
             el("div", { className: "muted small", textContent: where }),
+            el("div", { className: "price", textContent: priceLabel(ev) }),
             el("p", { className: "lead-text", textContent: ev.lead || "" }),
             tagList(ev.tags).length ? el("div", { className: "tags" }, ...tagList(ev.tags).map((t) => el("span", { textContent: t }))) : null,
           ),
@@ -121,7 +154,8 @@ const VIEWS = {
   },
 
   async dodaj() {
-    const { credits, eventCost } = await refreshProfile();
+    const { credits, eventCost, formOptions } = await refreshProfile();
+    renderFormOptions(formOptions);
     const enough = credits >= eventCost;
     const notice = $("new-cost");
     notice.replaceChildren(
@@ -243,6 +277,14 @@ $("event-form").addEventListener("submit", async (e) => {
   }
 
   const payload = Object.fromEntries(data.entries());
+  // Pola wielokrotnego wyboru (Object.fromEntries zostawiłby tylko ostatnią wartość)
+  payload.audience = data.getAll("audience");
+  payload.accessibility = data.getAll("accessibility");
+  if (payload.cost !== "Płatne") {
+    delete payload.priceMin;
+    delete payload.priceMax;
+  }
+  if (payload.registration === "Wstęp wolny") delete payload.ticketUrl;
   payload.startsAt = withTimezone(payload.startsAt);
   if (payload.endsAt) payload.endsAt = withTimezone(payload.endsAt);
   else delete payload.endsAt;
@@ -262,6 +304,8 @@ $("event-form").addEventListener("submit", async (e) => {
     const up = await fetch(created.upload.url, { method: "POST", body: upload });
 
     form.reset();
+    $("price-row").hidden = true;
+    $("ticket-url-label").hidden = true;
     setStatus(statusNode, "");
     await refreshProfile().catch(() => {});
     if (up.ok) toast("Ogłoszenie przyjęte. Pojawi się w serwisie po przetworzeniu.");
