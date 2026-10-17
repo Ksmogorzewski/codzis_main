@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { areaLabel, countLabel, mapsUrl, priceLabel, safeUrl, slotLabel } from "./events";
+import {
+  areaLabel,
+  countLabel,
+  dayLine,
+  mapsUrl,
+  outboundLink,
+  priceLabel,
+  readAtLabel,
+  safeUrl,
+  scheduleLabels,
+  slotLabel,
+  sourceLabel,
+} from "./events";
 import type { Recommendation } from "./schemas";
 
 // sobota 17.10.2026, 17:40 w Warszawie
@@ -43,5 +55,54 @@ describe("events", () => {
     expect(areaLabel({ area: "nearby", district: "Wola" })).toBe("w dzielnicy Wola i okolicy");
     expect(areaLabel({ area: "city", district: "Wola" })).toBe("w całej Warszawie");
     expect([1, 3, 12].map(countLabel)).toEqual(["1 propozycja", "3 propozycje", "12 propozycji"]);
+  });
+});
+
+describe("events: szczegóły", () => {
+  it("cena: zakres, stała, darmowe z ceny i brak danych", () => {
+    expect(priceLabel(item({ price: { min: 0, max: 0, currency: "PLN" } }))).toEqual({ label: "Darmowe", free: true });
+    expect(priceLabel(item({ price: { min: 45, max: 45, currency: "PLN" } }))?.label).toBe("45 zł");
+    expect(priceLabel(item({ price: { min: null, max: null, currency: "PLN" } }))).toBeNull();
+    expect(priceLabel(item({ tags: { cost: "Płatne" } }))).toEqual({ label: "Płatne", free: false });
+  });
+
+  it("plan zajęć cyklicznych po polsku", () => {
+    expect(
+      scheduleLabels([
+        { day: "monday", start: "18:00", end: "19:30" },
+        { day: "wednesday", start: "07:00", end: null },
+        { day: "sunday", start: null, end: null },
+        { day: "funday", start: "10:00", end: null },
+      ]),
+    ).toEqual(["Pon 18:00–19:30", "Śr 07:00", "Nd"]);
+  });
+
+  it("czas odczytu i linia daty po warszawsku", () => {
+    expect(readAtLabel("2026-10-17T08:05:00Z")).toBe("17.10, 10:05");
+    expect(readAtLabel(null)).toBeNull();
+    expect(readAtLabel("nie-data")).toBeNull();
+    expect(dayLine(NOW)).toBe("Sobota, 17 października");
+  });
+
+  it("źródło: organizator albo opis źródła miasta", () => {
+    expect(sourceLabel(item())).toBe("Kalendarz wydarzeń m.st. Warszawy");
+    expect(sourceLabel(item({ source: "um_sport" }))).toBe("Zajęcia sportowe m.st. Warszawy");
+    expect(sourceLabel(item({ origin: "partner", source: "partner", partnerName: "Klub Joga" }))).toBe("Klub Joga");
+    expect(sourceLabel(item({ origin: "partner", source: "partner" }))).toBe("Organizator wydarzenia");
+    expect(sourceLabel(item({ source: "inne" }))).toBe("dane.um.warszawa.pl");
+  });
+
+  it("link zewnętrzny: bilet ma pierwszeństwo, tylko http(s)", () => {
+    expect(outboundLink(item({ ticketUrl: "https://bilety.pl/1", url: "https://um.pl" }))).toEqual({
+      kind: "ticket",
+      label: "Kup bilet",
+      href: "https://bilety.pl/1",
+    });
+    expect(outboundLink(item({ ticketUrl: "javascript:x", url: "http://um.pl/e" }))).toEqual({
+      kind: "page",
+      label: "Zobacz szczegóły",
+      href: "http://um.pl/e",
+    });
+    expect(outboundLink(item())).toBeNull();
   });
 });

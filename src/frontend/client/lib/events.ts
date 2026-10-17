@@ -120,3 +120,62 @@ export function tint(id: string): string {
   for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
   return `oklch(0.8 0.08 ${hash} / 0.55)`;
 }
+
+// --- szczegóły wydarzenia ---
+
+// ["Pon 18:00–19:30", "Śr 07:00"] – plan zajęć cyklicznych (schedule: day monday..sunday, "HH:MM")
+export function scheduleLabels(schedule: Recommendation["schedule"]): string[] {
+  return schedule
+    .filter((s) => DAY_SHORT[s.day])
+    .map((s) => {
+      const time = s.start ? ` ${s.start}${s.end ? `–${s.end}` : ""}` : "";
+      return cap(`${DAY_SHORT[s.day]}${time}`);
+    });
+}
+
+const readAtFormat = new Intl.DateTimeFormat("pl-PL", {
+  timeZone: TZ,
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+// Czas odczytu danych (index.builtAt): "17.10, 10:05" po warszawsku
+export function readAtLabel(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = readAtFormat.formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("day")}.${get("month")}, ${get("hour")}:${get("minute")}`;
+}
+
+const dayLineFormat = new Intl.DateTimeFormat("pl-PL", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
+
+// "Sobota, 17 października" – linia daty na ekranie głównym
+export const dayLine = (now: Date) => cap(dayLineFormat.format(now));
+
+const SOURCE_LABEL: Record<string, string> = {
+  um_kalendarz: "Kalendarz wydarzeń m.st. Warszawy",
+  um_sport: "Zajęcia sportowe m.st. Warszawy",
+  partner: "Organizator wydarzenia",
+};
+
+// Skąd jest karta: nazwa organizatora albo opis zbioru danych miasta
+export function sourceLabel(item: Recommendation): string {
+  if (item.partnerName) return item.partnerName;
+  return SOURCE_LABEL[item.source] ?? "dane.um.warszawa.pl";
+}
+
+export type OutboundLink = { kind: "ticket" | "page"; label: string; href: string };
+
+// Główny link wychodzący: bilet, a bez niego strona wydarzenia (tylko http(s))
+export function outboundLink(item: Recommendation): OutboundLink | null {
+  const ticket = safeUrl(item.ticketUrl);
+  if (ticket) return { kind: "ticket", label: "Kup bilet", href: ticket };
+  const page = safeUrl(item.url);
+  if (page) return { kind: "page", label: "Zobacz szczegóły", href: page };
+  return null;
+}
