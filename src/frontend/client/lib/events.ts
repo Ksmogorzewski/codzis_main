@@ -1,6 +1,6 @@
 // Formatowanie kart rekomendacji. Czas zawsze po warszawsku, niezależnie od strefy przeglądarki.
 import { plural } from "../../shared/format";
-import type { Recommendation, Recommendations, Slot, When } from "./types";
+import type { Recommendation, Recommendations, Slot, When } from "./schemas";
 
 const TZ = "Europe/Warsaw";
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];

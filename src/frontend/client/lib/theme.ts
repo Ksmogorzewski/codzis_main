@@ -1,22 +1,30 @@
-import { useCallback, useState } from "react";
+import { useSyncExternalStore } from "react";
 
-export type Theme = "light" | "dark";
+// Tryb ciemny: klasa .dark na <html> (tokeny w styles.css). Pierwszy stan ustawia skrypt w index.html
+// (zapisany wybór albo ustawienie systemu, bez mignięcia jasnego tła); zapis tylko po kliknięciu.
 const KEY = "warsawnow-theme";
+const listeners = new Set<() => void>();
 
-// Motyw ustawia skrypt w index.html (zapisany wybór albo ustawienie systemu); zapis tylko po kliknięciu
-export function useTheme(): [Theme, () => void] {
-  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"));
-  const toggle = useCallback(() => {
-    setTheme((current) => {
-      const next: Theme = current === "dark" ? "light" : "dark";
-      document.documentElement.dataset.theme = next;
-      try {
-        localStorage.setItem(KEY, next);
-      } catch {
-        // bez zapisu motyw wróci do domyślnego po przeładowaniu
-      }
-      return next;
-    });
-  }, []);
-  return [theme, toggle];
+const isDark = () => typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+
+export function toggleDark(): void {
+  const next = !isDark();
+  document.documentElement.classList.toggle("dark", next);
+  try {
+    localStorage.setItem(KEY, next ? "dark" : "light");
+  } catch {
+    // bez zapisu motyw wróci do domyślnego po przeładowaniu
+  }
+  for (const l of listeners) l();
+}
+
+export function useDark(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    isDark,
+    () => false,
+  );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { areaLabel, countLabel, mapsUrl, priceLabel, safeUrl, slotLabel } from "./events";
-import type { Recommendation } from "./types";
+import type { Recommendation } from "./schemas";
 
 // sobota 17.10.2026, 17:40 w Warszawie
 const NOW = new Date("2026-10-17T15:40:00Z");

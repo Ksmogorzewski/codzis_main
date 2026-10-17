@@ -1,5 +1,5 @@
 // Logika kafelków profilu, bez DOM. Kroki i pola przychodzą z GET /api/onboarding.
-import type { Answers, OnboardingField, OnboardingStep } from "./types";
+import type { Answers, OnboardingField, OnboardingStep } from "./schemas";
 
 export const values = (answers: Answers, field: OnboardingField) => answers[field.id] ?? [];
 export const isRequired = (step: OnboardingStep) => step.fields.some((f) => f.required);

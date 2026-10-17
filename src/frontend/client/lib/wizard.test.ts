@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { OnboardingStep } from "./types";
+import type { OnboardingStep } from "./schemas";
 import { autoApply, clearStep, filledCount, isComplete, merge, missingRequired, pick, ready, sanitize, summary } from "./wizard";
 
 const opt = (id: string) => ({ id, label: id.toUpperCase(), icon: "star", short: `s-${id}` });

@@ -1,22 +1,35 @@
-// Logowanie przez Cognito bez SDK.
-//   - e-mail + hasło: API Cognito wprost z przeglądarki (USER_PASSWORD_AUTH; rejestracja z kodem z e-maila)
-//   - Google: Hosted UI Cognito, kod autoryzacyjny + PKCE, powrót na tę samą stronę
-// Sesja w localStorage, odświeżanie tokenów przez REFRESH_TOKEN_AUTH.
-import { readJson, writeJson } from "../../shared/storage";
+// Logowanie przez Cognito bez SDK: API Cognito wprost z przeglądarki (USER_PASSWORD_AUTH),
+// rejestracja z kodem z e-maila, reset hasła, odświeżanie tokenów (REFRESH_TOKEN_AUTH).
+// Sesja w localStorage pod tym samym kluczem co w poprzedniej wersji portalu (zalogowani zostają zalogowani).
 import { config } from "./config";
-import { decodeJwt, pkceChallenge, randomString } from "./crypto";
+import { decodeJwt } from "./crypto";
+import { err, ok, type Result } from "./result";
+import { readJson, writeJson } from "./storage";
 
 const SESSION_KEY = "warsawnow-session";
-const PKCE_KEY = "warsawnow-pkce";
+// Odświeżamy minutę przed wygaśnięciem, żeby token nie wygasł w drodze do API.
+const REFRESH_MARGIN_MS = 60_000;
+// Ile czekamy na unieważnienie refresh tokenu przy wylogowaniu (potem i tak czyścimy sesję).
+const REVOKE_TIMEOUT_MS = 1500;
 
-type Session = { idToken: string; accessToken: string; refreshToken?: string; expiresAt: number; method: "password" | "google" };
-type AuthResult = { IdToken: string; AccessToken: string; RefreshToken?: string; ExpiresIn: number };
+/** "google" zostaje w typie dla sesji zapisanych przez poprzednią wersję portalu. */
+export type Session = {
+  idToken: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+  method: "password" | "google";
+};
 
-export class AuthError extends Error {
-  constructor(public code: string, message?: string) {
-    super(message || code);
-  }
-}
+type Tokens = { idToken: string; accessToken: string; refreshToken?: string; expiresIn: number };
+type AuthenticationResult = { IdToken: string; AccessToken: string; RefreshToken?: string; ExpiresIn: number };
+
+/** Błąd logowania: kod Cognito (np. "UserNotConfirmedException") i komunikat dla użytkownika. */
+export type AuthFailure = { code: string; message: string };
+export type AuthResult<T> = Result<T, AuthFailure>;
+
+export const NETWORK_ERROR = "NetworkError";
+const FALLBACK_MESSAGE = "Coś poszło nie tak. Spróbuj ponownie.";
 
 const MESSAGES: Record<string, string> = {
   NotAuthorizedException: "Nieprawidłowy e-mail lub hasło.",
@@ -32,167 +45,201 @@ const MESSAGES: Record<string, string> = {
   TooManyFailedAttemptsException: "Za dużo nieudanych prób. Spróbuj później.",
   CodeDeliveryFailureException: "Nie udało się wysłać e-maila z kodem. Spróbuj później.",
   PasswordResetRequiredException: "Ustaw nowe hasło – użyj „Nie pamiętasz hasła?”.",
+  [NETWORK_ERROR]: "Brak połączenia. Sprawdź internet i spróbuj ponownie.",
 };
 
-async function idp<T>(action: string, body: object): Promise<T> {
+// --- czyste funkcje (testy w auth.test.ts) ---
+
+/** Komunikat po polsku dla kodu błędu Cognito. */
+export function authErrorMessage(code: string): string {
+  return MESSAGES[code] ?? FALLBACK_MESSAGE;
+}
+
+/** "com.amazonaws...#NotAuthorizedException" -> "NotAuthorizedException". */
+export function cognitoErrorCode(type: unknown): string {
+  if (typeof type !== "string" || type === "") return "Error";
+  return type.split("#").pop() || "Error";
+}
+
+export const authFailure = (code: string): AuthFailure => ({ code, message: authErrorMessage(code) });
+
+/** Co zrobić z zapisaną sesją: użyć tokenu, odświeżyć go albo uznać, że trzeba się zalogować. */
+export function tokenStatus(session: Session | null, now: number): "valid" | "refresh" | "signed_out" {
+  if (!session) return "signed_out";
+  if (now < session.expiresAt - REFRESH_MARGIN_MS) return "valid";
+  return session.refreshToken ? "refresh" : "signed_out";
+}
+
+/** Nowa sesja z tokenów; odświeżenie nie zwraca nowego refresh tokenu, więc zostawiamy poprzedni. */
+export function nextSession(tokens: Tokens, prev: Session | null, now: number, method: Session["method"]): Session {
+  return {
+    idToken: tokens.idToken,
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken || prev?.refreshToken,
+    expiresAt: now + (tokens.expiresIn || 3600) * 1000,
+    method,
+  };
+}
+
+// --- Cognito ---
+
+async function idp<T>(action: string, body: object): Promise<AuthResult<T>> {
   let res: Response;
   try {
     res = await fetch(`https://cognito-idp.${config().region}.amazonaws.com/`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-amz-json-1.1", "X-Amz-Target": `AWSCognitoIdentityProviderService.${action}` },
+      headers: {
+        "Content-Type": "application/x-amz-json-1.1",
+        "X-Amz-Target": `AWSCognitoIdentityProviderService.${action}`,
+      },
       body: JSON.stringify(body),
     });
   } catch {
-    throw new AuthError("NetworkError", "Brak połączenia. Sprawdź internet i spróbuj ponownie.");
+    return err(authFailure(NETWORK_ERROR));
   }
-  const data = (await res.json().catch(() => ({}))) as { __type?: string } & T;
-  if (!res.ok) {
-    const code = String(data.__type || "Error").split("#").pop()!;
-    throw new AuthError(code, MESSAGES[code] || "Coś poszło nie tak. Spróbuj ponownie.");
-  }
-  return data;
+  const data = (await res.json().catch(() => ({}))) as { __type?: unknown } & T;
+  if (!res.ok) return err(authFailure(cognitoErrorCode(data.__type)));
+  return ok(data);
 }
 
 // --- sesja ---
 
 const loadSession = () => readJson<Session>("local", SESSION_KEY);
+const clearSession = () => writeJson("local", SESSION_KEY, null);
 
-function storeSession(tokens: { idToken: string; accessToken: string; refreshToken?: string; expiresIn: number }, method: Session["method"]) {
-  const prev = loadSession();
-  const session: Session = {
-    idToken: tokens.idToken,
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken || prev?.refreshToken, // odświeżenie nie zwraca nowego refresh tokenu
-    expiresAt: Date.now() + (tokens.expiresIn || 3600) * 1000,
-    method,
-  };
+function storeTokens(r: AuthenticationResult, method: Session["method"]): Session {
+  const tokens = { idToken: r.IdToken, accessToken: r.AccessToken, refreshToken: r.RefreshToken, expiresIn: r.ExpiresIn };
+  const session = nextSession(tokens, loadSession(), Date.now(), method);
   writeJson("local", SESSION_KEY, session);
   return session;
 }
 
-const fromResult = (r: AuthResult, method: Session["method"]) =>
-  storeSession({ idToken: r.IdToken, accessToken: r.AccessToken, refreshToken: r.RefreshToken, expiresIn: r.ExpiresIn }, method);
-
 export type IdClaims = { sub: string; email?: string; name?: string; picture?: string };
 
+/** Dane z ID tokenu (bez weryfikacji podpisu - tylko do wyświetlenia). */
 export function currentClaims(): IdClaims | null {
   const session = loadSession();
   return session ? decodeJwt<IdClaims>(session.idToken) : null;
 }
 
-// Ważny ID token (odświeżany minutę przed wygaśnięciem) albo null, gdy trzeba się zalogować
-export async function getIdToken(): Promise<string | null> {
+let refreshing: Promise<AuthResult<string | null>> | null = null;
+
+/**
+ * Odświeża tokeny refresh tokenem. data = nowy ID token albo null (trzeba się zalogować).
+ * Błąd NetworkError = chwilowy brak sieci: sesji nie usuwamy. Równoległe wywołania dzielą jedno zapytanie.
+ */
+export function refreshSession(): Promise<AuthResult<string | null>> {
+  if (!refreshing) refreshing = doRefresh().finally(() => (refreshing = null));
+  return refreshing;
+}
+
+async function doRefresh(): Promise<AuthResult<string | null>> {
   const session = loadSession();
-  if (!session) return null;
-  if (Date.now() < session.expiresAt - 60_000) return session.idToken;
-  if (!session.refreshToken) {
-    writeJson("local", SESSION_KEY, null);
-    return null;
+  if (!session?.refreshToken) {
+    clearSession();
+    return ok(null);
   }
-  try {
-    const r = await idp<{ AuthenticationResult: AuthResult }>("InitiateAuth", {
-      AuthFlow: "REFRESH_TOKEN_AUTH",
-      ClientId: config().clientId,
-      AuthParameters: { REFRESH_TOKEN: session.refreshToken },
-    });
-    return fromResult(r.AuthenticationResult, session.method).idToken;
-  } catch (e) {
-    if (e instanceof AuthError && e.code === "NetworkError") throw e;
-    writeJson("local", SESSION_KEY, null);
-    return null;
+  const r = await idp<{ AuthenticationResult: AuthenticationResult }>("InitiateAuth", {
+    AuthFlow: "REFRESH_TOKEN_AUTH",
+    ClientId: config().clientId,
+    AuthParameters: { REFRESH_TOKEN: session.refreshToken },
+  });
+  if (r.error !== null) {
+    if (r.error.code === NETWORK_ERROR) return r;
+    clearSession(); // refresh token odrzucony: sesja skończona
+    return ok(null);
   }
+  return ok(storeTokens(r.data.AuthenticationResult, session.method).idToken);
+}
+
+/** Ważny ID token (odświeżany przed wygaśnięciem) albo null, gdy trzeba się zalogować. */
+export async function getIdToken(): Promise<AuthResult<string | null>> {
+  const session = loadSession();
+  switch (tokenStatus(session, Date.now())) {
+    case "valid":
+      return ok(session?.idToken ?? null);
+    case "refresh":
+      return refreshSession();
+    case "signed_out":
+      clearSession();
+      return ok(null);
+  }
+}
+
+/**
+ * Dla strażnika tras: czy użytkownik ma sesję. Przy braku sieci zostawiamy go w aplikacji
+ * (zapisana sesja istnieje) - ekran pokaże błąd połączenia zamiast wylogowania.
+ */
+export async function hasSession(): Promise<boolean> {
+  const r = await getIdToken();
+  if (r.error !== null) return loadSession() !== null;
+  return r.data !== null;
 }
 
 // --- e-mail + hasło ---
 
-export async function signIn(email: string, password: string) {
-  const r = await idp<{ AuthenticationResult?: AuthResult; ChallengeName?: string }>("InitiateAuth", {
+export async function signIn(email: string, password: string): Promise<AuthResult<void>> {
+  const r = await idp<{ AuthenticationResult?: AuthenticationResult; ChallengeName?: string }>("InitiateAuth", {
     AuthFlow: "USER_PASSWORD_AUTH",
     ClientId: config().clientId,
     AuthParameters: { USERNAME: email, PASSWORD: password },
   });
-  if (!r.AuthenticationResult) {
-    throw new AuthError(r.ChallengeName || "Challenge", "To konto wymaga dodatkowego kroku logowania, którego jeszcze nie obsługujemy.");
+  if (r.error !== null) return r;
+  if (!r.data.AuthenticationResult) {
+    return err({
+      code: r.data.ChallengeName || "Challenge",
+      message: "To konto wymaga dodatkowego kroku logowania, którego jeszcze nie obsługujemy.",
+    });
   }
-  fromResult(r.AuthenticationResult, "password");
+  storeTokens(r.data.AuthenticationResult, "password");
+  return ok(undefined);
 }
 
-export const signUp = (email: string, password: string) =>
-  idp<{ CodeDeliveryDetails?: { Destination?: string } }>("SignUp", {
+/** Rejestracja; data = adres, na który poszedł kod (zamaskowany przez Cognito, np. a***@e***). */
+export async function signUp(email: string, password: string): Promise<AuthResult<string>> {
+  const r = await idp<{ CodeDeliveryDetails?: { Destination?: string } }>("SignUp", {
     ClientId: config().clientId,
     Username: email,
     Password: password,
     UserAttributes: [{ Name: "email", Value: email }],
   });
+  if (r.error !== null) return r;
+  return ok(r.data.CodeDeliveryDetails?.Destination ?? email);
+}
+
+const done = async (r: Promise<AuthResult<unknown>>): Promise<AuthResult<void>> => {
+  const result = await r;
+  return result.error !== null ? result : ok(undefined);
+};
+
 export const confirmSignUp = (email: string, code: string) =>
-  idp("ConfirmSignUp", { ClientId: config().clientId, Username: email, ConfirmationCode: code });
-export const resendCode = (email: string) => idp("ResendConfirmationCode", { ClientId: config().clientId, Username: email });
-export const forgotPassword = (email: string) => idp("ForgotPassword", { ClientId: config().clientId, Username: email });
+  done(idp("ConfirmSignUp", { ClientId: config().clientId, Username: email, ConfirmationCode: code }));
+
+export const resendCode = (email: string) =>
+  done(idp("ResendConfirmationCode", { ClientId: config().clientId, Username: email }));
+
+export const forgotPassword = (email: string) =>
+  done(idp("ForgotPassword", { ClientId: config().clientId, Username: email }));
+
 export const confirmForgotPassword = (email: string, code: string, password: string) =>
-  idp("ConfirmForgotPassword", { ClientId: config().clientId, Username: email, ConfirmationCode: code, Password: password });
-
-// --- Google: Hosted UI + PKCE ---
-
-const redirectUri = () => `${window.location.origin}/`;
-
-export async function signInWithGoogle() {
-  const verifier = randomString(64);
-  const state = randomString(16);
-  writeJson("session", PKCE_KEY, { verifier, state });
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: config().clientId,
-    redirect_uri: redirectUri(),
-    scope: "openid email profile",
-    state,
-    code_challenge: await pkceChallenge(verifier),
-    code_challenge_method: "S256",
-    identity_provider: "Google", // od razu do Google, bez ekranu Cognito
-  });
-  window.location.assign(`https://${config().cognitoDomain}/oauth2/authorize?${params}`);
-}
-
-// Powrót z Hosted UI (?code=...&state=... albo ?error=...). true = zalogowano
-export async function handleRedirect(): Promise<boolean> {
-  const q = new URLSearchParams(window.location.search);
-  if (!q.has("code") && !q.has("error")) return false;
-  history.replaceState(null, "", window.location.pathname + window.location.hash); // kod jest jednorazowy
-
-  if (q.has("error")) throw new AuthError(q.get("error")!, "Logowanie przez Google nie powiodło się. Spróbuj ponownie.");
-  const pkce = readJson<{ verifier: string; state: string }>("session", PKCE_KEY);
-  writeJson("session", PKCE_KEY, null);
-  if (!pkce || pkce.state !== q.get("state")) throw new AuthError("StateMismatch", "Sesja logowania wygasła. Spróbuj ponownie.");
-
-  const res = await fetch(`https://${config().cognitoDomain}/oauth2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: config().clientId,
-      code: q.get("code")!,
-      redirect_uri: redirectUri(),
-      code_verifier: pkce.verifier,
+  done(
+    idp("ConfirmForgotPassword", {
+      ClientId: config().clientId,
+      Username: email,
+      ConfirmationCode: code,
+      Password: password,
     }),
-  });
-  const t = (await res.json().catch(() => ({}))) as { id_token: string; access_token: string; refresh_token?: string; expires_in: number; error?: string };
-  if (!res.ok) throw new AuthError(t.error || "TokenError", "Logowanie przez Google nie powiodło się. Spróbuj ponownie.");
-  storeSession({ idToken: t.id_token, accessToken: t.access_token, refreshToken: t.refresh_token, expiresIn: t.expires_in }, "google");
-  return true;
+  );
+
+/** Wylogowanie: czyści sesję i (najwyżej 1,5 s) unieważnia refresh token w Cognito. */
+export async function signOut(): Promise<void> {
+  const session = loadSession();
+  clearSession();
+  if (!session?.refreshToken) return;
+  const revoke = idp("RevokeToken", { ClientId: config().clientId, Token: session.refreshToken });
+  await Promise.race([revoke, new Promise((resolve) => setTimeout(resolve, REVOKE_TIMEOUT_MS))]);
 }
 
-// Wylogowanie: unieważnienie refresh tokenu; po Google także wylogowanie z Hosted UI (ciasteczko Cognito).
-// true = trwa przekierowanie
-export async function signOut(): Promise<boolean> {
-  const session = loadSession();
-  writeJson("local", SESSION_KEY, null);
-  if (session?.refreshToken) {
-    const revoke = idp("RevokeToken", { ClientId: config().clientId, Token: session.refreshToken }).catch(() => {});
-    await Promise.race([revoke, new Promise((resolve) => setTimeout(resolve, 1500))]);
-  }
-  if (session?.method === "google") {
-    const params = new URLSearchParams({ client_id: config().clientId, logout_uri: redirectUri() });
-    window.location.assign(`https://${config().cognitoDomain}/logout?${params}`);
-    return true;
-  }
-  return false;
-}
+/** Uwierzytelnienie w kontekście routera (context.auth). */
+export const routerAuth = { hasSession, signOut };
+export type RouterAuth = typeof routerAuth;
