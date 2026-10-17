@@ -1,6 +1,7 @@
 # Logowanie klientów: Cognito User Pool.
 #   - e-mail + hasło: własny formularz strony, wywołania API Cognito wprost z przeglądarki (USER_PASSWORD_AUTH)
-#   - Google: Hosted UI Cognito (kod autoryzacyjny + PKCE), włączane, gdy podasz google_client_id/secret
+#   - Google (domyślnie wyłączone): Hosted UI Cognito (kod autoryzacyjny + PKCE). Włącza się samo, gdy
+#     w terraform.tfvars pojawi się google_client_id/secret - wtedy powstaje też domena Hosted UI i ustawienia OAuth.
 resource "aws_cognito_user_pool" "clients" {
   name                     = "${local.name}-clients"
   username_attributes      = ["email"]
@@ -45,6 +46,8 @@ resource "aws_cognito_user_pool" "clients" {
 
 # Hosted UI: https://<prefix>.auth.<region>.amazoncognito.com (tu przekierowuje logowanie przez Google)
 resource "aws_cognito_user_pool_domain" "clients" {
+  count = local.google_enabled ? 1 : 0
+
   domain       = var.cognito_domain_prefix
   user_pool_id = aws_cognito_user_pool.clients.id
   # 1 = klasyczny Hosted UI; wersja 2 (managed login) wymaga osobnej konfiguracji brandingu
@@ -91,11 +94,12 @@ resource "aws_cognito_user_pool_client" "web" {
   prevent_user_existence_errors = "ENABLED"
   enable_token_revocation       = true
 
-  allowed_oauth_flows_user_pool_client = true
-  allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["openid", "email", "profile"]
-  callback_urls                        = local.client_app_urls
-  logout_urls                          = local.client_app_urls
+  # OAuth (Hosted UI) tylko dla logowania Google; e-mail + hasło go nie potrzebuje
+  allowed_oauth_flows_user_pool_client = local.google_enabled
+  allowed_oauth_flows                  = local.google_enabled ? ["code"] : null
+  allowed_oauth_scopes                 = local.google_enabled ? ["openid", "email", "profile"] : null
+  callback_urls                        = local.google_enabled ? local.client_app_urls : null
+  logout_urls                          = local.google_enabled ? local.client_app_urls : null
   supported_identity_providers         = local.google_enabled ? ["COGNITO", "Google"] : ["COGNITO"]
 
   id_token_validity      = 60

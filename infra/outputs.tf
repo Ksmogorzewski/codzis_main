@@ -130,11 +130,12 @@ output "client_api_url" {
 }
 
 output "cognito_hosted_ui" {
-  value = "https://${local.cognito_hosted_domain}"
+  description = "Hosted UI Cognito (istnieje tylko przy włączonym logowaniu Google)"
+  value       = local.google_enabled ? "https://${local.cognito_hosted_domain}" : null
 }
 
 output "google_oauth_redirect_uri" {
-  description = "Wpisz w Google Cloud Console jako Authorized redirect URI klienta OAuth"
+  description = "Gdy włączysz Google: wpisz w Google Cloud Console jako Authorized redirect URI klienta OAuth"
   value       = "https://${local.cognito_hosted_domain}/oauth2/idpresponse"
 }
 

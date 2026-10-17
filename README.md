@@ -97,11 +97,12 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 
 **Logowanie (Cognito):**
 - **E-mail + hasło:** własny formularz strony; rejestracja z 6-cyfrowym kodem z e-maila i reset hasła. Domyślna wysyłka Cognito ma limit ~50 e-maili dziennie.
-- **Google:** w [Google Cloud Console](https://console.cloud.google.com/apis/credentials) utwórz *OAuth client ID → Web application*:
+- **Google (domyślnie wyłączone):** bez `google_client_id` nie powstaje ani dostawca Google, ani domena Hosted UI, a strona nie pokazuje przycisku. Żeby włączyć, w [Google Cloud Console](https://console.cloud.google.com/apis/credentials) utwórz *OAuth client ID → Web application*:
   - Authorized JavaScript origins: `terraform output cognito_hosted_ui`;
   - Authorized redirect URIs: `terraform output google_oauth_redirect_uri`.
 
   Client ID i secret wpisz do `infra/terraform.tfvars` (`google_client_id`, `google_client_secret`) i zrób `terraform apply`; przycisk „Kontynuuj przez Google” pojawi się sam. Ekran zgody w trybie *Testing* wpuszcza tylko dodanych testerów.
+- **E-maile** (kod przy rejestracji, kod resetu hasła) wysyła Cognito z domyślnej skrzynki AWS (`no-reply@verificationemail.com`, temat i treść z `verification_message_template` w `infra/client_auth.tf`). Limit to ~50 e-maili dziennie na konto AWS i nie da się zmienić nadawcy. Docelowo: Amazon SES z domeną `waw-out.pl` (rekordy DKIM w home.pl + wyjście z trybu sandbox), potem w Cognito `email_sending_account = "DEVELOPER"`.
 - Sesja jest trzymana w `localStorage` (refresh token na 30 dni). Konto e-mail i konto Google z tym samym adresem to w Cognito dwa osobne konta.
 
 **API** (HTTP API, ID token Cognito w `Authorization: Bearer …`, weryfikuje go API Gateway):
