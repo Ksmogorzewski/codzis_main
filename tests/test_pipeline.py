@@ -119,7 +119,8 @@ def test_audience_filter_ranks_tagged_match_first(events, fake_model):
     """Untagged events are NOT excluded (documented no-op), but the tagged match wins."""
     retriever = Retriever(events, model=fake_model)
     ids = [c.event_id for c in retriever.retrieve(
-        {"query": "warsztaty dla dzieci", "audience": "Dzieci (7-12)"}, top_k=10)]
+        {"query": "warsztaty dla dzieci", "audience": "Dzieci (7-12)"}, top_k=10,
+        min_score=None)]  # floor off: this test is about the filter, not relevance
     assert ids[0] == "kids"
     assert "jazz" in ids          # no audience tag -> passes the filter
     assert "rock" in ids
@@ -153,14 +154,49 @@ def test_no_matches_returns_empty(events, fake_model):
 
 def test_min_score_floor(events, fake_model):
     retriever = Retriever(events, model=fake_model)
-    all_hits = retriever.retrieve({"query": "koncert jazzowy"}, top_k=10)
+    all_hits = retriever.retrieve({"query": "koncert jazzowy"}, top_k=10, min_score=None)
     kept = retriever.retrieve({"query": "koncert jazzowy"}, top_k=10, min_score=0.99)
-    assert len(kept) <= len(all_hits)
+    assert len(kept) == 0
+    # counts candidates cut by the floor, before same-title duplicates are collapsed
+    assert retriever.last_dropped >= len(all_hits)
+
+
+def test_default_floor_is_applied(events, fake_model):
+    from recommender.retriever import DEFAULT_MIN_SCORE
+
+    retriever = Retriever(events, model=fake_model)
+    hits = retriever.retrieve({"query": "koncert jazzowy"}, top_k=10)  # default floor
+    assert all(c.metadata["cosine"] >= DEFAULT_MIN_SCORE for c in hits)
+    assert retriever.last_dropped >= 0
+
+
+def test_floor_disabled_by_none_and_zero(events, fake_model):
+    retriever = Retriever(events, model=fake_model)
+    without_floor = retriever.retrieve({"query": "koncert jazzowy"}, top_k=10, min_score=None)
+    assert retriever.last_dropped == 0
+    assert len(retriever.retrieve({"query": "koncert jazzowy"}, top_k=10, min_score=0.0)) == len(
+        without_floor)
+    assert retriever.last_dropped == 0
+
+
+def test_floor_compares_raw_cosine_not_boosted_score(events, fake_model):
+    """A large soft boost must not rescue an event whose cosine is below the floor."""
+    retriever = Retriever(events, model=fake_model)
+    user = {"query": "koncert jazzowy", "themes": ["Jazz"], "home_district": "Śródmieście"}
+    reference = next(c for c in retriever.retrieve(user, top_k=10, min_score=None)
+                     if c.event_id == "jazz")
+    assert reference.metadata["boost"] > 0                       # it does get boosted
+    # floor exactly at its cosine -> kept; a hair above -> dropped despite the boost
+    assert any(c.event_id == "jazz" for c in
+               retriever.retrieve(user, top_k=10, min_score=reference.metadata["cosine"]))
+    assert not any(c.event_id == "jazz" for c in retriever.retrieve(
+        user, top_k=10, min_score=reference.metadata["cosine"] + 1e-6))
 
 
 def test_soft_preference_boost_is_recorded(events, fake_model):
     retriever = Retriever(events, model=fake_model)
-    cands = retriever.retrieve({"query": "muzyka", "themes": ["Jazz"]}, top_k=10)
+    cands = retriever.retrieve({"query": "muzyka", "themes": ["Jazz"]}, top_k=10,
+                              min_score=None)
     jazz = next(c for c in cands if c.event_id == "jazz")
     assert jazz.metadata["matched"]["themes"] == ["Jazz"]
     assert jazz.metadata["boost"] > 0
@@ -202,6 +238,14 @@ def test_recommender_explain_without_key_falls_back(events, fake_model):
     out = rec.recommend({"query": "koncert"}, top_k=2, explain=True)
     assert rec.last_ranking == "cosine"
     assert len(out) == 2
+
+
+def test_recommender_exposes_last_dropped(events, fake_model):
+    rec = Recommender(events, model=fake_model, api_key=None)
+    rec.recommend({"query": "koncert jazzowy"}, top_k=10, explain=False, min_score=0.99)
+    assert rec.last_dropped > 0
+    rec.recommend({"query": "koncert jazzowy"}, top_k=10, explain=False, min_score=None)
+    assert rec.last_dropped == 0
 
 
 def test_rerank_llm_error_keeps_cosine_order(events, fake_model):

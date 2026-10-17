@@ -87,6 +87,14 @@ for c in results:
 | `themes`, `formats`, `occasion`, `activity_level`, `setting`, `registration`, `accessibility`, `time_of_day`, `home_district`, `near_districts` | soft preferences (reorder only) |
 | `profile` | free-text profile for the LLM ranker |
 
+`recommend(..., min_score=0.30)` — weak matches are **dropped** instead of padding the list,
+so a vague query can return fewer than `top_k` good events (better 4 relevant than 10 with 6
+noise). Pass `min_score=None` to disable. The floor is applied to the raw cosine, before the
+soft-preference boosts, and is model-specific: `DEFAULT_MIN_SCORE` in
+`retriever/retriever.py` was calibrated for the mpnet model (relevant pairs 0.38+, irrelevant
+pairs 0.42 and below, medians 0.64 vs 0.23) and must be retuned after a model swap.
+`rec.last_dropped` reports how many candidates the floor removed.
+
 Hard-filter values may be a single string or a list (any-of). Each `Candidate` carries
 `metadata`: `cosine`, `boost`, `matched` (which preferences matched — usable as a reason
 without the LLM), `slot` (the first time the user could go) and, after the LLM, `reason`.
