@@ -2,6 +2,7 @@ import { getRouteApi, Link, useCanGoBack, useRouter } from "@tanstack/react-rout
 import { type ReactNode, useEffect } from "react";
 import { AttendeesSection } from "@/components/community/attendees-section";
 import { SaveButton, SavesCount } from "@/components/community/save-button";
+import { CrewEntry } from "@/components/crew/crew-entry";
 import { errorText, RouteError } from "@/components/layout/route-error";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -139,6 +140,8 @@ function Detail({ card, builtAt, detail }: DetailProps) {
           <p className="text-[17px] text-muted-foreground">{[place, card.district].filter(Boolean).join(" · ")}</p>
         )}
       </header>
+
+      <CrewEntry eventId={card.id} />
 
       <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-6">
