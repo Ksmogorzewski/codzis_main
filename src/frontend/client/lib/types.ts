@@ -103,6 +103,7 @@ export type Recommendations = {
   areaRelaxed: boolean;
   ranking: "llm" | "cosine";
   cached: boolean; // z zapisanego zestawu (tabela recommendations), bez ponownego liczenia
+  updating: boolean; // w tle liczy się nowsza wersja (AI układa kolejność albo odświeżenie po 12 h)
   items: Recommendation[];
   index: { builtAt: string | null; events: number | null };
 };

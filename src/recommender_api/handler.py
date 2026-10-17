@@ -2,14 +2,18 @@
 
     GET /api/recommendations?when=today|tomorrow|weekend|week|date&date=RRRR-MM-DD&q=...&limit=12
         HTTP API + JWT authorizer Cognito; profil z tabeli users (preferences, ragProfile).
-        Zestawy są zapisywane (tabela recommendations, results_store.py) i liczone ponownie dopiero
-        po zmianie profilu, po RESULTS_MAX_AGE_HOURS albo gdy zostało w nich za mało niezakończonych
-        wydarzeń. 202 {"status": "preparing"} = zestaw właśnie się liczy - zapytaj za chwilę.
+        Zawsze odpowiada od razu z zapisanego zestawu (tabela recommendations, results_store.py),
+        także nieaktualnego - wtedy z "updating": true i nowym liczonym w tle. 202 {"status":
+        "preparing"} = zestawu jeszcze nie ma (albo zmienił się profil) i właśnie się liczy.
+    {"action": "compute", ...}  jeden zestaw w tle (zlecany przez GET; bez limitu 30 s HTTP API)
     {"action": "precompute", "userId": "..."}  dziś, jutro i weekend dla jednej osoby
         (client-api po zapisaniu profilu i przy logowaniu)
     {"action": "precompute"}  to samo dla wszystkich aktywnych (EventBridge w nocy)
     {"action": "refresh"}  przebudowa indeksu w S3 (EventBridge co 30 min, scripts/recommender-refresh.sh)
     {"action": "warmup"}   model + indeks w pamięci, żeby liczenie nie czekało na zimny start
+
+Liczenie ma dwie fazy: najpierw filtry + wektory (sekundy; zestaw od razu trafia do zapisu,
+z "refining": true), potem DeepSeek układa kolejność i pisze uzasadnienia (do LLM_TIMEOUT s).
 
 Model i indeks ładują się dopiero, gdy trzeba coś policzyć (nie przy imporcie ani przy podawaniu
 zapisanego zestawu): faza INIT Lambdy ma limit 10 s, a sam import torcha potrafi tyle trwać.
@@ -18,8 +22,10 @@ zapisanego zestawu): faza INIT Lambdy ma limit 10 s, a sam import torcha potrafi
 import json
 import logging
 import os
+import threading
 import time
-from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import boto3
@@ -28,7 +34,7 @@ from boto3.dynamodb.conditions import Attr
 from index_store import FileStore, S3Store, load_events_file, refresh, scan_events
 from present import card, still_on
 from recommender import DEFAULT_MODEL, EmbeddingModel, Recommender
-from results_store import ResultsStore, expires_at, prefs_hash, set_key
+from results_store import ResultsStore, claimed, expires_at, prefs_hash, set_key
 from user_context import AREAS, WINDOWS, build_context, start_area, window
 
 log = logging.getLogger()
@@ -37,10 +43,10 @@ log.setLevel(logging.INFO)
 WARSAW = ZoneInfo("Europe/Warsaw")
 MODEL_PATH = os.environ.get("EMBEDDING_MODEL") or DEFAULT_MODEL  # w obrazie: katalog z zapisanym modelem
 LLM_ENABLED = os.environ.get("LLM_ENABLED", "true") == "true"
-LLM_TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "12"))  # potem ranking bez LLM; HTTP API czeka max 30 s
-LLM_POOL = 16                # tylu najlepszych kandydatów układa LLM
+LLM_TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "60"))  # LLM woła tylko liczenie w tle
 INDEX_CHECK_SECONDS = 300    # co tyle sprawdzamy, czy w S3 jest nowszy indeks
 RESULTS_MAX_AGE = timedelta(hours=float(os.environ.get("RESULTS_MAX_AGE_HOURS", "12")))  # łapie nowe eventy
+REFINE_SECONDS = 300         # dłużej faza AI nie trwa; potem zestaw zostaje z kolejnością wektorową
 PRECOMPUTE_ACTIVE_DAYS = int(os.environ.get("PRECOMPUTE_ACTIVE_DAYS", "14"))
 DEFAULT_SETS = ["today", "tomorrow", "weekend"]  # liczone z góry: w nocy, po zmianie profilu, przy logowaniu
 MIN_RESULTS = 4              # mniej propozycji -> poszerzamy obszar (okolica -> sąsiednie -> cała Warszawa)
@@ -54,6 +60,7 @@ else:
 dynamodb = boto3.resource("dynamodb")
 users = dynamodb.Table(os.environ["USERS_TABLE"]) if os.environ.get("USERS_TABLE") else None
 results = ResultsStore(dynamodb.Table(os.environ["RESULTS_TABLE"]) if os.environ.get("RESULTS_TABLE") else None)
+lambda_client = boto3.client("lambda")
 
 _model = None
 _engine = None
@@ -74,10 +81,12 @@ def handler(event, context):
     if "routeKey" in event:
         return _http(event)
     match event.get("action"):
-        case "refresh":
-            return refresh_index()
+        case "compute":
+            return compute_set(event)
         case "precompute":
             return precompute(event.get("userId"), context)
+        case "refresh":
+            return refresh_index()
         case "warmup":
             try:
                 _current_engine()
@@ -93,7 +102,7 @@ def _http(event):
             raise ApiError(404, "Nie znaleziono")
         claims = event["requestContext"]["authorizer"]["jwt"]["claims"]
         body = get_recommendations(claims["sub"], event.get("queryStringParameters") or {})
-        if body is None:  # liczy się teraz gdzie indziej (np. po zmianie profilu)
+        if body is None:
             return _response(202, {"status": "preparing", "retryAfter": 2})
         return _response(200, body)
     except ApiError as e:
@@ -120,53 +129,142 @@ def get_recommendations(user_id: str, params: dict) -> dict | None:
         span = window(when, now.date(), params.get("date"))
     except ValueError as e:
         raise ApiError(400, str(e), fields=["date"])
-    return recommendation_set(user_id, user["preferences"], user.get("ragProfile"), when, span, query, limit, now)
 
-
-def recommendation_set(user_id, prefs, rag_profile, when, span, query, limit, now) -> dict | None:
-    """Zapisany zestaw albo policzony teraz (i zapisany); None = ktoś inny właśnie go liczy."""
     key = set_key(when, span, query, limit)
-    fingerprint = prefs_hash(prefs, rag_profile)
-    item = results.get(user_id, key)
-    if item and (body := _reusable(item, fingerprint, now)):
-        return body
-    if not results.claim(user_id, key, fingerprint, now):
-        return None
+    fingerprint = prefs_hash(user["preferences"], user.get("ragProfile"))
+    body, fresh = _stored(results.get(user_id, key), fingerprint, now)
+    if not fresh and results.claim(user_id, key, fingerprint, now):
+        _start_compute(user_id, key, fingerprint, {"when": when, "from": span[0].isoformat(), "to": span[1].isoformat(),
+                                                   "q": query, "limit": limit})
+        if body:
+            body["updating"] = True
+    return body  # None -> 202, strona zapyta ponownie
+
+
+def _stored(item: dict | None, fingerprint: str, now: datetime) -> tuple[dict | None, bool]:
+    """(zestaw do pokazania albo None, czy jest aktualny). Zestaw dla innych preferencji się nie nadaje;
+    nieaktualny (starszy niż RESULTS_MAX_AGE albo z małą liczbą trwających wydarzeń) - nadaje się
+    do pokazania, dopóki w tle liczy się nowy."""
+    if not item or "body" not in item or item.get("prefsHash") != fingerprint:
+        return None, False
+    body = json.loads(item["body"])
+    items = [c for c in body["items"] if still_on(c, now)]  # zestaw na dziś ogląda się do wieczora
+    if body["items"] and not items:
+        return None, False
+    age = now - datetime.fromisoformat(body["generatedAt"])
+    fresh = age <= RESULTS_MAX_AGE and len(items) >= min(MIN_RESULTS, len(body["items"]))
+    refining = bool(body.pop("refining", False)) and age.total_seconds() < REFINE_SECONDS
+    return {**body, "items": items, "cached": True, "updating": refining or claimed(item, now)}, fresh
+
+
+def _start_compute(user_id: str, key: str, fingerprint: str, job: dict) -> None:
+    """Liczenie w tle: asynchroniczne wywołanie tej samej Lambdy (lokalnie: wątek)."""
+    payload = {"action": "compute", "userId": user_id, **job}
     try:
-        body = compute(prefs, rag_profile, when, span, query, limit, now)
+        if name := os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+            lambda_client.invoke(FunctionName=name, InvocationType="Event", Payload=json.dumps(payload))
+        else:
+            threading.Thread(target=handler, args=(payload, None), daemon=True).start()
     except Exception:
         results.release(user_id, key, fingerprint)
         raise
-    results.put(user_id, key, fingerprint, body, expires_at(span))
-    return {**body, "cached": False}
 
 
-def _reusable(item: dict, fingerprint: str, now: datetime) -> dict | None:
-    if item.get("status") != "ready" or item.get("prefsHash") != fingerprint:
-        return None
-    if now - datetime.fromisoformat(item["generatedAt"]) > RESULTS_MAX_AGE:
-        return None
-    body = json.loads(item["body"])
-    # Zestaw na dziś ogląda się do wieczora: bez wydarzeń, które już się skończyły
-    items = [c for c in body["items"] if still_on(c, now)]
-    if len(items) < min(MIN_RESULTS, len(body["items"])):
-        return None
-    return {**body, "items": items, "cached": True}
+def compute_set(event: dict) -> dict:
+    """Jeden zestaw zlecony przez GET (claim już jest)."""
+    user = users.get_item(Key={"userId": event["userId"]}, ConsistentRead=True).get("Item") or {}
+    span = (date.fromisoformat(event["from"]), date.fromisoformat(event["to"]))
+    key = set_key(event["when"], span, event.get("q", ""), event["limit"])
+    if not user.get("preferences"):
+        return {"computed": 0}
+    done = _compute_sets(event["userId"], user["preferences"], user.get("ragProfile"),
+                         [(event["when"], span, key)], event.get("q", ""), event["limit"], datetime.now(WARSAW))
+    return {"computed": done}
 
 
-def compute(prefs, rag_profile, when, span, query, limit, now) -> dict:
-    engine = _current_engine()
+def precompute(user_id: str | None = None, context=None) -> dict:
+    """Zestawy na dziś, jutro i weekend: dla jednej osoby (po zmianie profilu, przy logowaniu) albo dla
+    wszystkich aktywnych w ostatnich PRECOMPUTE_ACTIVE_DAYS dniach (w nocy). Aktualne zestawy zostają."""
+    if user_id:
+        item = users.get_item(Key={"userId": user_id}, ConsistentRead=True).get("Item")
+        todo = [item] if item and item.get("preferences") else []
+    else:
+        todo = _active_users()
+
+    stats = {"users": 0, "computed": 0, "reused": 0, "busy": 0, "stopped": False}
+    for user in todo:
+        if context and context.get_remaining_time_in_millis() < 120_000:
+            stats["stopped"] = True  # reszta policzy się przy wejściu na stronę
+            break
+        stats["users"] += 1
+        uid, prefs, rag = user["userId"], user["preferences"], user.get("ragProfile")
+        fingerprint = prefs_hash(prefs, rag)
+        now = datetime.now(WARSAW)
+        jobs = []
+        for when in DEFAULT_SETS:
+            span = window(when, now.date())
+            key = set_key(when, span, "", DEFAULT_LIMIT)
+            if _stored(results.get(uid, key), fingerprint, now)[1]:
+                stats["reused"] += 1
+            elif results.claim(uid, key, fingerprint, now):
+                jobs.append((when, span, key))
+            else:
+                stats["busy"] += 1  # liczy go już ktoś inny (np. strona otwarta zaraz po zmianie profilu)
+        stats["computed"] += _compute_sets(uid, prefs, rag, jobs, "", DEFAULT_LIMIT, now)
+    log.info("Przeliczenie zestawów: %s", stats)
+    return stats
+
+
+def _compute_sets(user_id, prefs, rag_profile, jobs, query, limit, now) -> int:
+    """Liczy zestawy, na które mamy claim: 1) od razu zapisuje kolejność wektorową z uzasadnieniem
+    z reguł, 2) potem AI układa kolejność i pisze uzasadnienia (równolegle dla kilku zestawów)."""
+    if not jobs:
+        return 0
+    fingerprint = prefs_hash(prefs, rag_profile)
+    try:
+        engine = _current_engine()
+    except Exception:
+        for _, _, key in jobs:
+            results.release(user_id, key, fingerprint)
+        raise
+    use_llm = LLM_ENABLED and engine.client is not None
+
+    first = []
+    for when, span, key in jobs:
+        try:
+            body, context, found = compute(engine, prefs, rag_profile, span, query, limit, now, when)
+        except Exception:
+            log.exception("Nie udało się policzyć zestawu %s", key)
+            results.release(user_id, key, fingerprint)
+            continue
+        refine_it = use_llm and bool(found)
+        results.put(user_id, key, fingerprint, {**body, "refining": refine_it}, expires_at(span))
+        if refine_it:
+            first.append((key, span, body, context, found))
+
+    def finish(job):
+        key, span, body, context, found = job
+        started = time.monotonic()
+        ranked = engine.rerank(context, found)
+        log.info("AI dla %s: %s w %.1f s", key, "OK" if ranked else f"brak ({engine.last_error})", time.monotonic() - started)
+        better = {**body, "ranking": "llm", "items": [card(c, query) for c in ranked]} if ranked else body
+        results.put(user_id, key, fingerprint, {**better, "refining": False}, expires_at(span))
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        list(pool.map(finish, first))
+    return len(jobs)
+
+
+def compute(engine, prefs, rag_profile, span, query, limit, now, when) -> tuple[dict, dict, list]:
+    """Faza 1: filtry + podobieństwo wektorowe. -> (zestaw kart, user_context, kandydaci dla AI)"""
     first_area = start_area(prefs)
     for area in AREAS[AREAS.index(first_area):]:
         context = build_context(prefs, rag_profile, span, query, now, area)
         if len(engine.retriever.retrieve(context, top_k=MIN_RESULTS)) >= MIN_RESULTS:
             break
-
-    started = time.monotonic()
-    found = engine.recommend(context, top_k=limit, pool=max(limit, LLM_POOL), explain=LLM_ENABLED)
-    log.info("Rekomendacje: when=%s area=%s query=%s -> %d (%s) w %.1f s%s", when, area, bool(query), len(found),
-             engine.last_ranking, time.monotonic() - started, f"; LLM: {engine.last_error}" if engine.last_error else "")
-    return {
+    found = engine.recommend(context, top_k=limit, explain=False)
+    log.info("Rekomendacje: when=%s area=%s query=%s -> %d", when, area, bool(query), len(found))
+    body = {
         "generatedAt": now.isoformat(timespec="seconds"),
         "when": when,
         "window": {"from": context["date_from"], "to": context["date_to"]},
@@ -174,39 +272,11 @@ def compute(prefs, rag_profile, when, span, query, limit, now) -> dict:
         "district": prefs.get("district"),
         "area": area,
         "areaRelaxed": area != first_area,
-        "ranking": engine.last_ranking,
+        "ranking": "cosine",
         "items": [card(c, query) for c in found],
         "index": {"builtAt": _engine_meta.get("builtAt"), "events": _engine_meta.get("events")},
     }
-
-
-def precompute(user_id: str | None = None, context=None) -> dict:
-    """Zestawy na dziś, jutro i weekend: dla jednej osoby (po zmianie profilu, przy logowaniu) albo dla
-    wszystkich aktywnych w ostatnich PRECOMPUTE_ACTIVE_DAYS dniach (w nocy). Ważne zestawy zostają."""
-    if user_id:
-        item = users.get_item(Key={"userId": user_id}, ConsistentRead=True).get("Item")
-        todo = [item] if item and item.get("preferences") else []
-    else:
-        todo = _active_users()
-
-    stats = {"users": 0, "computed": 0, "reused": 0, "busy": 0, "failed": 0, "stopped": False}
-    for user in todo:
-        if context and context.get_remaining_time_in_millis() < 90_000:
-            stats["stopped"] = True  # reszta policzy się przy wejściu na stronę
-            break
-        stats["users"] += 1
-        now = datetime.now(WARSAW)
-        for when in DEFAULT_SETS:
-            try:
-                body = recommendation_set(user["userId"], user["preferences"], user.get("ragProfile"), when,
-                                          window(when, now.date()), "", DEFAULT_LIMIT, now)
-            except Exception:
-                log.exception("Nie udało się przeliczyć zestawu %s", when)
-                stats["failed"] += 1
-                continue
-            stats["busy" if body is None else "reused" if body["cached"] else "computed"] += 1
-    log.info("Przeliczenie zestawów: %s", stats)
-    return stats
+    return body, context, found
 
 
 def _active_users() -> list[dict]:

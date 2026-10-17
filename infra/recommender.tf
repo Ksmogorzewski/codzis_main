@@ -2,7 +2,8 @@
 # Indeks wektorów eventów leży w buckecie danych (recommender/index.npz). EventBridge odświeża go
 # przyrostowo i trzyma model w pamięci. GET /api/recommendations idzie przez HTTP API klienta (JWT Cognito).
 # Gotowe zestawy kart trafiają do tabeli recommendations: na dziś, jutro i weekend liczą się w nocy,
-# po zmianie profilu i przy logowaniu (client-api wywołuje Lambdę asynchronicznie), resztę przy pierwszym zapytaniu.
+# po zmianie profilu i przy logowaniu (client-api wywołuje Lambdę asynchronicznie), resztę przy pierwszym
+# zapytaniu - zawsze w tle (GET zleca liczenie samej sobie), więc limit 30 s HTTP API nie ogranicza AI.
 #
 # Lambda wymaga istniejącego obrazu, więc pierwsze wdrożenie jest dwuetapowe:
 #   terraform apply -target=aws_ecr_repository.recommender
@@ -135,6 +136,13 @@ resource "aws_iam_role_policy" "recommender" {
         Action   = ["ssm:GetParameter"]
         Resource = aws_ssm_parameter.deepseek_api_key.arn
       },
+      {
+        # GET zleca liczenie zestawu w tle (asynchroniczne wywołanie samej siebie);
+        # ARN złożony ręcznie, bo funkcja zależy od tej polityki
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = "arn:aws:lambda:${var.region}:${local.suffix}:function:${local.name}-recommender"
+      },
     ]
   })
 }
@@ -167,10 +175,12 @@ resource "aws_lambda_function" "recommender" {
   depends_on = [aws_cloudwatch_log_group.recommender, aws_iam_role_policy.recommender, aws_ecr_repository_policy.recommender]
 }
 
-# Wywołania z EventBridge: bez ponawiania (następne i tak przyjdzie za chwilę)
+# Wywołania asynchroniczne (EventBridge, liczenie zestawów w tle): bez ponawiania i bez kolejkowania na
+# długo - następne i tak przyjdzie za chwilę, a claim liczenia wygasa po 3 min
 resource "aws_lambda_function_event_invoke_config" "recommender" {
-  function_name          = aws_lambda_function.recommender.function_name
-  maximum_retry_attempts = 0
+  function_name                = aws_lambda_function.recommender.function_name
+  maximum_retry_attempts       = 0
+  maximum_event_age_in_seconds = 600
 }
 
 resource "aws_apigatewayv2_integration" "recommender" {

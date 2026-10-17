@@ -18,6 +18,8 @@ const DEFAULT_SETS: When[] = ["today", "tomorrow", "weekend"];
 const RETRY_STATUSES = [0, 502, 503, 504];
 const RETRY_DELAYS = [5000, 10000];
 const PREPARING_LIMIT_MS = 150_000; // zestaw liczony po zmianie profilu: czekamy najwyżej tyle
+const FOLLOW_EVERY_MS = 3000; // pokazany zestaw z "updating": dopytujemy o nowszą wersję
+const FOLLOW_LIMIT_MS = 180_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -61,6 +63,26 @@ export function Recommendations() {
   // Zestawy z tej wizyty: przełączanie dni bez kolejnych zapytań (zapisane są też na serwerze)
   const sets = useRef(new Map<string, Result>());
   const inFlight = useRef(new Map<string, Promise<Result>>());
+  const following = useRef(new Set<string>());
+  const [, setVersion] = useState(0); // przerysowanie po podmianie zestawu w `sets`
+
+  // Zestaw pokazany z "updating": co chwilę pytamy o nowszą wersję i podmieniamy listę
+  const follow = useCallback(async (key: string) => {
+    if (following.current.has(key)) return;
+    following.current.add(key);
+    try {
+      for (const started = Date.now(); Date.now() - started < FOLLOW_LIMIT_MS; ) {
+        await sleep(FOLLOW_EVERY_MS);
+        const data = await request(key).catch(() => null);
+        if (!data) return;
+        sets.current.set(key, data);
+        setVersion((n) => n + 1);
+        if (!data.updating) return;
+      }
+    } finally {
+      following.current.delete(key);
+    }
+  }, []);
 
   const fetchSet = useCallback((c: Choice, q: string): Promise<Result> => {
     const key = setParams(c, q);
@@ -71,13 +93,14 @@ export function Recommendations() {
       running = request(key)
         .then((data) => {
           sets.current.set(key, data);
+          if (data.updating) void follow(key);
           return data;
         })
         .finally(() => inFlight.current.delete(key));
       inFlight.current.set(key, running);
     }
     return running;
-  }, []);
+  }, [follow]);
 
   // Po pierwszym zestawie po cichu, po kolei, dociągamy pozostałe: dziś / jutro / weekend
   const prefetch = useCallback(async () => {
@@ -222,6 +245,12 @@ export function Recommendations() {
               </button>
             )}
           </p>
+          {view.data.updating && (
+            <p className="rec-note">
+              <span className="spinner spinner-sm" aria-hidden="true" />
+              Dopracowujemy propozycje – za chwilę lista może się zmienić.
+            </p>
+          )}
           {view.data.areaRelaxed && (
             <p className="rec-note">
               <Icon name="travel_explore" />W Twojej okolicy było mało propozycji, więc poszerzyliśmy obszar.

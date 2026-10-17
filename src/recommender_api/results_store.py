@@ -3,11 +3,10 @@
 Klucz: userId + setKey = rodzaj okna, daty, limit i wpisana fraza, np.
 "today#2026-10-17#2026-10-17#12#" albo "date#2026-10-30#2026-10-30#12#jazz".
 
-status "ready"   zestaw kart (body); ważny, dopóki profil się nie zmienił (prefsHash), nie minął
-                 max_age i zostało w nim dość niezakończonych wydarzeń (handler._reusable)
-status "pending" ktoś właśnie liczy ten zestaw (claim) - inni czekają, zamiast liczyć drugi raz;
-                 po PENDING_SECONDS uznajemy, że liczenie padło, i można je przejąć
-Stare zestawy usuwa TTL (expiresAt = dzień po końcu okna).
+Rekord: body (zestaw kart jako JSON), prefsHash (odcisk preferencji, dla których policzony),
+generatedAt, expiresAt (TTL: dzień po końcu okna). Podczas liczenia na tym samym rekordzie
+leży claim (claimHash + claimedAt): inni nie liczą drugi raz, a stary zestaw dalej się wyświetla.
+Po CLAIM_SECONDS claim wygasa (liczenie padło) i można go przejąć.
 
 Bez tabeli (lokalnie) zestawy trzymane są w pamięci procesu.
 """
@@ -22,7 +21,7 @@ from botocore.exceptions import ClientError
 WARSAW = ZoneInfo("Europe/Warsaw")
 # Zmiana logiki rankingu lub formatu kart -> podbij, żeby zapisane zestawy policzyły się od nowa
 RESULTS_VERSION = 1
-PENDING_SECONDS = 120
+CLAIM_SECONDS = 180  # liczenie dwóch faz (wektory + AI) trwa zwykle do minuty
 
 
 def set_key(when: str, span: tuple[date, date], query: str, limit: int) -> str:
@@ -38,6 +37,11 @@ def expires_at(span: tuple[date, date]) -> int:
     return int(datetime.combine(span[1] + timedelta(days=1), time(), tzinfo=WARSAW).timestamp())
 
 
+def claimed(item: dict | None, now: datetime) -> bool:
+    """Czy ktoś właśnie liczy ten zestaw."""
+    return bool(item and item.get("claimedAt") and int(item["claimedAt"]) >= int(now.timestamp()) - CLAIM_SECONDS)
+
+
 class ResultsStore:
     def __init__(self, table=None):
         self.table = table
@@ -46,28 +50,26 @@ class ResultsStore:
     def get(self, user_id: str, key: str) -> dict | None:
         if self.table is None:
             return self._memory.get((user_id, key))
-        # Spójny odczyt: "pending" -> "ready" ma być widać od razu
+        # Spójny odczyt: claim i nowy zestaw mają być widoczne od razu
         return self.table.get_item(Key={"userId": user_id, "setKey": key}, ConsistentRead=True).get("Item")
 
     def claim(self, user_id: str, key: str, fingerprint: str, now: datetime) -> bool:
-        """Oznacza zestaw jako liczony. False, gdy ktoś inny właśnie liczy go dla tych samych preferencji."""
-        claimed_at = int(now.timestamp())
-        item = {"userId": user_id, "setKey": key, "status": "pending", "prefsHash": fingerprint,
-                "claimedAt": claimed_at, "expiresAt": claimed_at + 86400}
+        """Zaznacza, że zestaw liczy się dla tych preferencji. False, gdy ktoś już go liczy."""
+        stamp = int(now.timestamp())
         if self.table is None:
-            current = self._memory.get((user_id, key))
-            busy = (current and current.get("status") == "pending" and current.get("prefsHash") == fingerprint
-                    and current["claimedAt"] >= claimed_at - PENDING_SECONDS)
-            if busy:
+            current = self._memory.get((user_id, key)) or {}
+            if claimed(current, now) and current.get("claimHash") == fingerprint:
                 return False
-            self._memory[(user_id, key)] = item
+            self._memory[(user_id, key)] = {"userId": user_id, "setKey": key, "expiresAt": stamp + 86400,
+                                            **current, "claimHash": fingerprint, "claimedAt": stamp}
             return True
         try:
-            self.table.put_item(
-                Item=item,
-                ConditionExpression="attribute_not_exists(setKey) OR prefsHash <> :h OR #s <> :pending OR claimedAt < :cutoff",
-                ExpressionAttributeNames={"#s": "status"},
-                ExpressionAttributeValues={":h": fingerprint, ":pending": "pending", ":cutoff": claimed_at - PENDING_SECONDS},
+            self.table.update_item(
+                Key={"userId": user_id, "setKey": key},
+                UpdateExpression="SET claimHash = :h, claimedAt = :now, expiresAt = if_not_exists(expiresAt, :exp)",
+                ConditionExpression="attribute_not_exists(claimedAt) OR claimedAt < :cutoff OR claimHash <> :h",
+                ExpressionAttributeValues={":h": fingerprint, ":now": stamp, ":exp": stamp + 86400,
+                                           ":cutoff": stamp - CLAIM_SECONDS},
             )
             return True
         except ClientError as e:
@@ -76,11 +78,11 @@ class ResultsStore:
             raise
 
     def put(self, user_id: str, key: str, fingerprint: str, body: dict, expires: int) -> None:
-        """Zapisuje gotowy zestaw - chyba że w międzyczasie profil się zmienił i ktoś liczy już nowy."""
+        """Zapisuje zestaw (cały rekord, bez claimu) - chyba że w międzyczasie zestaw przejął ktoś,
+        kto liczy go dla nowszych preferencji."""
         item = {
             "userId": user_id,
             "setKey": key,
-            "status": "ready",
             "prefsHash": fingerprint,
             "generatedAt": body["generatedAt"],
             # JSON jako tekst: bez konwersji liczb na Decimal i z powrotem
@@ -88,30 +90,31 @@ class ResultsStore:
             "expiresAt": expires,
         }
         if self.table is None:
-            current = self._memory.get((user_id, key))
-            if not current or current.get("prefsHash") == fingerprint:
+            current = self._memory.get((user_id, key)) or {}
+            if current.get("claimHash") in (None, fingerprint):
                 self._memory[(user_id, key)] = item
             return
         try:
-            self.table.put_item(Item=item, ConditionExpression="attribute_not_exists(setKey) OR prefsHash = :h",
+            self.table.put_item(Item=item, ConditionExpression="attribute_not_exists(claimHash) OR claimHash = :h",
                                 ExpressionAttributeValues={":h": fingerprint})
         except ClientError as e:
             if e.response["Error"]["Code"] != "ConditionalCheckFailedException":
                 raise
 
     def release(self, user_id: str, key: str, fingerprint: str) -> None:
-        """Zwalnia "pending" po nieudanym liczeniu, żeby inni nie czekali do końca PENDING_SECONDS."""
+        """Zdejmuje claim po nieudanym liczeniu, żeby następne zapytanie od razu spróbowało ponownie."""
         if self.table is None:
             current = self._memory.get((user_id, key))
-            if current and current.get("status") == "pending" and current.get("prefsHash") == fingerprint:
-                del self._memory[(user_id, key)]
+            if current and current.get("claimHash") == fingerprint:
+                current.pop("claimHash", None)
+                current.pop("claimedAt", None)
             return
         try:
-            self.table.delete_item(
+            self.table.update_item(
                 Key={"userId": user_id, "setKey": key},
-                ConditionExpression="#s = :pending AND prefsHash = :h",
-                ExpressionAttributeNames={"#s": "status"},
-                ExpressionAttributeValues={":pending": "pending", ":h": fingerprint},
+                UpdateExpression="REMOVE claimHash, claimedAt",
+                ConditionExpression="claimHash = :h",
+                ExpressionAttributeValues={":h": fingerprint},
             )
         except ClientError as e:
             if e.response["Error"]["Code"] != "ConditionalCheckFailedException":

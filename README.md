@@ -147,14 +147,15 @@ Zakładka **Rekomendacje** w portalu klienta: wybór dnia (dziś / jutro / weeke
   - od razu po zmianie preferencji (client-api wywołuje rekomender asynchronicznie);
   - przy logowaniu, jeśli któregoś brakuje.
 - **Na żądanie** liczy się inny dzień i wyszukiwanie frazą, potem też z zapisu.
-- **Ponowne liczenie** następuje dopiero po zmianie profilu (odcisk preferencji), po 12 h (`recommender_results_max_age_hours`, żeby złapać nowe eventy) albo gdy w zestawie zostanie za mało niezakończonych wydarzeń. Zakończone wydarzenia znikają z zapisanego zestawu same.
-- **Bez dublowania:** zestaw w trakcie liczenia ma status `pending`, więc drugi chętny dostaje `202 preparing` i czeka, zamiast liczyć to samo. Strona po pierwszym zestawie dociąga w tle pozostałe z dziś / jutro / weekend.
+- **Odświeżanie:** zestaw starszy niż 12 h (`recommender_results_max_age_hours`, żeby złapać nowe eventy) albo z małą liczbą trwających jeszcze wydarzeń pokazuje się od razu i jednocześnie liczy się od nowa w tle (`"updating": true`). Zakończone wydarzenia znikają z kart same. Czekać trzeba tylko wtedy, gdy zestawu jeszcze nie ma albo zmienił się profil (`202 preparing`, strona dopytuje co 2 s).
+- **Liczenie zawsze w tle** (GET zleca je asynchronicznie tej samej Lambdzie, więc nie ogranicza go limit 30 s HTTP API), w dwóch fazach: najpierw filtry + wektory (sekundy, zestaw od razu do zapisu), potem DeepSeek (do 60 s, dla dziś / jutro / weekend równolegle). Strona sama podmienia listę, gdy wersja z AI jest gotowa.
+- **Bez dublowania:** liczony zestaw dostaje claim w tabeli, więc drugi chętny czeka, zamiast liczyć to samo; claim wygasa po 3 min, gdyby liczenie padło. Strona po pierwszym zestawie dociąga w tle pozostałe z dziś / jutro / weekend.
 
 **Jak dobieramy propozycje** (`src/recommender_api/user_context.py` mapuje `preferences` z onboardingu):
 1. **Twarde filtry:** termin w wybranym oknie (już zakończone odpadają; zajęcia cykliczne wg dni tygodnia), dzielnica wg zasięgu dojazdu (okolica / sąsiednie dzielnice / cała Warszawa), koszt („tylko bezpłatne”), forma (na żywo / online), grupa odbiorców, budżet.
 2. **Podobieństwo wektorowe:** model `paraphrase-multilingual-MiniLM-L12-v2` (lokalnie, CPU) porównuje profil (tematy, formaty, kategorie) albo wpisaną frazę z tekstem eventu (tytuł, kategorie, tagi AI, opis).
 3. **Miękkie preferencje:** drobne punkty za zgodność tagów (tematy, formaty, z kim, aktywność, plener / pod dachem, zapisy, dostępność), porę dnia, bliskość dzielnicy; mniej za „wydarzenia” trwające miesiącami (to zwykle programy, nie propozycja na dziś). Potem dedupe tytułów i różnorodność (nie 5 kart z jednej pływalni).
-4. **DeepSeek** (opcjonalnie, ten sam klucz co tagger): układa 16 najlepszych kandydatów i pisze uzasadnienia. Przy błędzie lub po 12 s zostaje kolejność wektorowa z uzasadnieniem z reguł.
+4. **DeepSeek** (opcjonalnie, ten sam klucz co tagger): układa 12 najlepszych kandydatów i pisze uzasadnienia. Przy błędzie lub po 60 s zostaje kolejność wektorowa z uzasadnieniem z reguł.
 
 Gdy w okolicy wyjdą mniej niż 4 propozycje, obszar poszerza się sam (strona to pokazuje).
 
