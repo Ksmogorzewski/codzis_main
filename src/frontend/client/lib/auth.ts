@@ -1,6 +1,7 @@
 // Logowanie przez Cognito bez SDK: API Cognito wprost z przeglądarki (USER_PASSWORD_AUTH),
 // rejestracja z kodem z e-maila, reset hasła, odświeżanie tokenów (REFRESH_TOKEN_AUTH).
 // Sesja w localStorage pod tym samym kluczem co w poprzedniej wersji portalu (zalogowani zostają zalogowani).
+import { nameError, normalizeName } from "./auth-form";
 import { config } from "./config";
 import { err, ok, type Result } from "./result";
 import { readJson, writeJson } from "./storage";
@@ -62,17 +63,17 @@ export function cognitoErrorCode(type: unknown): string {
 
 export const authFailure = (code: string): AuthFailure => ({ code, message: authErrorMessage(code) });
 
-const MAX_NAME = 40;
-
-/** Imię do Cognito: przycięte, pojedyncze spacje, maks. 40 znaków ("" = brak). */
-export const normalizeName = (raw: string) => raw.split(/\s+/).filter(Boolean).join(" ").slice(0, MAX_NAME);
-
 /** Atrybuty przy rejestracji: e-mail i imię (pokazywane innym na listach zapisanych). */
 export function signUpAttributes(email: string, name: string): { Name: string; Value: string }[] {
   return [
     { Name: "email", Value: email },
     { Name: "name", Value: normalizeName(name) },
   ];
+}
+
+/** Body zapytania Cognito SignUp: e-mail jako login, imię jako atrybut `name` (trafia do ID tokenu). */
+export function signUpRequest(clientId: string, email: string, password: string, name: string) {
+  return { ClientId: clientId, Username: email, Password: password, UserAttributes: signUpAttributes(email, name) };
 }
 
 /** Claim "name" z ID tokenu (bez weryfikacji podpisu - to robi API Gateway); null = brak imienia. */
@@ -216,12 +217,12 @@ export async function signIn(email: string, password: string): Promise<AuthResul
 
 /** Rejestracja; data = adres, na który poszedł kod (zamaskowany przez Cognito, np. a***@e***). */
 export async function signUp(email: string, password: string, name: string): Promise<AuthResult<string>> {
-  const r = await idp<{ CodeDeliveryDetails?: { Destination?: string } }>("SignUp", {
-    ClientId: config().clientId,
-    Username: email,
-    Password: password,
-    UserAttributes: signUpAttributes(email, name),
-  });
+  const badName = nameError(name);
+  if (badName) return err({ code: "InvalidParameterException", message: badName });
+  const r = await idp<{ CodeDeliveryDetails?: { Destination?: string } }>(
+    "SignUp",
+    signUpRequest(config().clientId, email, password, name),
+  );
   if (r.error !== null) return r;
   return ok(r.data.CodeDeliveryDetails?.Destination ?? email);
 }
@@ -261,8 +262,9 @@ export const currentName = (): string | null => idTokenName(loadSession()?.idTok
  * Imienia ustawionego raz nie zmieniamy - przy istniejącym nic nie wysyłamy.
  */
 export async function setMissingName(raw: string): Promise<AuthResult<void>> {
+  const badName = nameError(raw);
+  if (badName) return err({ code: "InvalidParameterException", message: badName });
   const name = normalizeName(raw);
-  if (!name) return err({ code: "InvalidParameterException", message: "Podaj imię." });
   if (currentName()) return ok(undefined);
 
   const token = await getIdToken(); // odświeża sesję przed wygaśnięciem

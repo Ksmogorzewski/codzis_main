@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { setMissingName } from "@/lib/auth";
+import { MAX_NAME, nameError } from "@/lib/auth-form";
 import { meKey } from "@/lib/query-keys";
 
 type Props = { open: boolean; onOpenChange: (open: boolean) => void; onDone: () => void };
@@ -23,8 +24,9 @@ export function NameDialog({ open, onOpenChange, onDone }: Props) {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!name.trim()) {
-      setError("Podaj imię.");
+    const problem = nameError(name);
+    if (problem) {
+      setError(problem);
       return;
     }
     setBusy(true);
@@ -55,7 +57,7 @@ export function NameDialog({ open, onOpenChange, onDone }: Props) {
               id="missing-name"
               autoComplete="given-name"
               placeholder="np. Anna"
-              maxLength={40}
+              maxLength={MAX_NAME}
               value={name}
               aria-invalid={error ? true : undefined}
               onChange={(e) => setName(e.target.value)}

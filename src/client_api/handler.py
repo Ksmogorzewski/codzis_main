@@ -167,10 +167,11 @@ def get_event(claims: dict, event_id: str) -> dict:
 
 
 def put_save(claims: dict, event_id: str) -> dict:
-    """Zapis na wydarzenie (kopiuje imię z tokenu). Ponowny zapis nic nie zmienia."""
+    """Zapis na wydarzenie (kopiuje imię z tokenu, a bez niego `displayName` z users; nigdy e-mail).
+    Ponowny zapis nic nie zmienia."""
     if not store.get_event(event_id):
         raise ApiError(404, "Nie znaleziono wydarzenia")
-    store.save(event_id, claims["sub"], _name(claims), now_iso())
+    store.save(event_id, claims["sub"], _name(claims) or _stored_name(claims["sub"]), now_iso())
     return {"saved": True, "saves": store.saves_of(event_id)}
 
 
@@ -223,7 +224,17 @@ def _window(date_from: date, date_to: date) -> dict:
 
 def _name(claims: dict) -> str | None:
     """Imię z ID tokenu (atrybut Cognito `name`); puste -> None (na listach "Ktoś")."""
-    name = " ".join(str(claims.get("name") or "").split())[:MAX_NAME]
+    return _clean_name(claims.get("name"))
+
+
+def _stored_name(user_id: str) -> str | None:
+    """Zapas, gdy token nie ma imienia: `displayName` zapisany przez GET /api/me (kopia claimu `name`)."""
+    item = users.get_item(Key={"userId": user_id}, ProjectionExpression="displayName").get("Item") or {}
+    return _clean_name(item.get("displayName"))
+
+
+def _clean_name(value: object) -> str | None:
+    name = " ".join(str(value or "").split())[:MAX_NAME]
     return name or None
 
 

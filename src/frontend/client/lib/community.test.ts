@@ -4,6 +4,7 @@ import {
   patchAttendees,
   patchSaveInList,
   rankLabel,
+  savedAsText,
   savesLabel,
   toggleSave,
   weekLabel,
@@ -86,6 +87,18 @@ describe("lista zapisanych: optymistycznie", () => {
     const added = patchAttendees(list, { saved: true, saves: 3 }, "Dawid");
     expect(added).toEqual({ saves: 3, saved: true, people: [{ name: "Dawid", isMe: true }, ...list.people] });
     expect(patchAttendees(added, { saved: false, saves: 2 }, "Dawid")).toEqual(list);
+  });
+
+  it("własny wpis z serwera bez imienia dostaje imię z tokenu", () => {
+    const stale = { saves: 1, saved: true, people: [{ name: "Ktoś", isMe: true }] };
+    expect(patchAttendees(stale, { saved: true, saves: 1 }, "Dawid").people).toEqual([{ name: "Dawid", isMe: true }]);
+    // bez imienia w tokenie zostaje to, co przyszło z serwera
+    expect(patchAttendees(stale, { saved: true, saves: 1 }, null).people).toEqual([{ name: "Ktoś", isMe: true }]);
+  });
+
+  it("potwierdzenie zapisu z imieniem", () => {
+    expect(savedAsText("Dawid")).toBe("Zapisano jako Dawid");
+    expect(savedAsText(null)).toBe("Zapisano");
   });
 
   it("bez zmiany stanu nie dubluje wpisu", () => {

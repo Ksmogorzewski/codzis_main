@@ -22,6 +22,7 @@ import {
   AUTH_SUBMIT,
   AUTH_TITLES,
   type AuthMode,
+  MAX_NAME,
   normalizeCode,
   PASSWORD_HINT,
   showsCode,
@@ -161,7 +162,7 @@ export function AuthForm() {
             id="auth-name"
             autoComplete="given-name"
             placeholder="np. Anna"
-            maxLength={40}
+            maxLength={MAX_NAME}
             value={name}
             aria-invalid={error ? true : undefined}
             aria-describedby="auth-name-hint"

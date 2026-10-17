@@ -2,7 +2,7 @@
 
 Tabele (infra/community.tf), jedyny zapisujący: client-api (+ scripts/seed_demo.py, tylko rekordy seed):
 
-    attendance   PK eventId, SK userId; name (imię z tokenu w chwili zapisu - kopia dla wygody,
+    attendance   PK eventId, SK userId; name (imię z tokenu, bez niego displayName z users, w chwili zapisu - kopia,
                  ustawiana tylko w save()), savedAt (ISO UTC), seed?: true.
                  GSI byUser (userId, savedAt; KEYS_ONLY) - "na co się zapisałem".
     event-stats  PK eventId; saves (licznik, ADD), kind = "event" (stała pod GSI).
@@ -167,6 +167,7 @@ def attendees(event_id: str) -> list[dict]:
         "KeyConditionExpression": Key("eventId").eq(event_id),
         "ProjectionExpression": "userId, #name, savedAt",
         "ExpressionAttributeNames": {"#name": "name"},
+        "ConsistentRead": True,  # front odświeża listę zaraz po zapisie - własny wpis musi już być
     }
     rows: list[dict] = []
     while True:

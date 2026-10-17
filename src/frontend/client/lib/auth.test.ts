@@ -4,9 +4,9 @@ import {
   cognitoErrorCode,
   idTokenName,
   nextSession,
-  normalizeName,
   type Session,
   signUpAttributes,
+  signUpRequest,
   tokenStatus,
 } from "./auth";
 
@@ -86,10 +86,16 @@ const jwt = (payload: object) => {
 };
 
 describe("imię (atrybut Cognito name)", () => {
-  it("normalizuje imię: przycięte, pojedyncze spacje, maks. 40 znaków", () => {
-    expect(normalizeName("  Anna   Maria ")).toBe("Anna Maria");
-    expect(normalizeName("a".repeat(60))).toHaveLength(40);
-    expect(normalizeName("   ")).toBe("");
+  it("zapytanie SignUp: e-mail jako login, hasło i atrybut name (przycięty)", () => {
+    expect(signUpRequest("klient", "anna@example.pl", "haslo1234", "  Anna  Maria ")).toEqual({
+      ClientId: "klient",
+      Username: "anna@example.pl",
+      Password: "haslo1234",
+      UserAttributes: [
+        { Name: "email", Value: "anna@example.pl" },
+        { Name: "name", Value: "Anna Maria" },
+      ],
+    });
   });
 
   it("rejestracja wysyła e-mail i imię", () => {
