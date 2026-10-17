@@ -14,13 +14,15 @@ target-table events (schema v1, `src/importer/schema.py`) with the `tags` produc
 
 1. **Chunk** — each event → one embeddable text (`Title. Category1, Category2. Theme, Format. Lead`;
    theme/format are the tagger's taxonomy, the same vocabulary as user interests).
-2. **Embed** — local multilingual model `paraphrase-multilingual-MiniLM-L12-v2` (384-dim),
+2. **Embed** — local multilingual model `paraphrase-multilingual-mpnet-base-v2` (768-dim),
    running in-process on CPU (no GPU needed).
 3. **Index** — in-memory numpy cosine index (top-k via normalized dot product). It can be built
    elsewhere and passed in (`index=`), so serving never re-embeds the events.
-4. **Retrieve** — encode the user context, apply hard filters (district/cost/mode/audience/
-   price/date), score the filtered events on the prebuilt index, add small soft-preference
-   boosts (`retriever/scoring.py`), collapse same-title duplicates and pick a varied top-N.
+4. **Retrieve** — expand the query (optional DeepSeek step: a short/vague request is rewritten
+   into a richer Polish search text, cached, with fallback to the raw query), encode the user
+   context, apply hard filters (district/cost/mode/audience/price/date), score the filtered
+   events on the prebuilt index, add small soft-preference boosts (`retriever/scoring.py`),
+   collapse same-title duplicates and pick a varied top-N.
 5. **Rank** (optional) — DeepSeek re-ranks candidates and adds a one-line reason (in Polish)
    per event. Any LLM error falls back to the cosine order.
 
@@ -110,9 +112,9 @@ request.
 
 ## Notes / limitations
 
-- Embeddings run on CPU; ~1200 events embed in ~40 s on a laptop (a few minutes on a small
-  Lambda), so the index is built once and only new texts are embedded later. A query is
-  ~0.2–0.4 s including filtering (plus the LLM call when enabled).
+- Embeddings run on CPU; ~1200 events embed in ~2 min on a laptop (mpnet-base, several
+  minutes on a small Lambda), so the index is built once and only new texts are embedded
+  later. A query is ~0.3–0.6 s including filtering (plus the LLM call when enabled).
 - Hard filters on `cost`/`mode`/`audience` read the event's `tags` dict (as produced by the
   `tagger` pipeline into DynamoDB). When a tag is absent, that filter is a no-op; `district`
   and date always apply (schema v1 `district`/`occurrences`/`schedule`, or the raw API's

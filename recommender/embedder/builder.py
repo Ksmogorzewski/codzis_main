@@ -24,7 +24,7 @@ def build_index(
     chunks = chunk_events(list(events))
     if not chunks:
         return VectorIndex(), model
-    vectors = model.encode([c.embedding_input() for c in chunks])
+    vectors = model.encode([c.embedding_input() for c in chunks], prompt_name="passage")
     index = VectorIndex()
     index.add(chunks, vectors)
     return index, model
