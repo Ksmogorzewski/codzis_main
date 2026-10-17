@@ -50,7 +50,7 @@ Testy obok kodu: `lib/*.test.ts`. Import: alias `@/` = `client/`.
 - **Rekomendacje:** `retry: false` + pomocnik zimnego startu z `lib/api.ts` (ponowienia po 5 i 10 s, komunikat „Dobieramy propozycje…”). `202 {"status": "preparing"}` (zestaw się liczy) obsługuje `pollWhilePreparing`, a `"updating": true` — `refetchInterval` co 3 s. Parametry zapytania z filtrów: `recommendationsParams` (`lib/search.ts`); `limit` = 16 jak na serwerze (inny limit = inny zapisany zestaw). Po zapisie ankiety: `setQueryData(["me"])` i `removeQueries(["recommendations"])`.
 - **Stan w adresie:** filtry ekranu głównego to search params walidowane Zodem (`lib/search.ts`). Nawigacja przez `<Link>` / `navigate`.
 - **Lokalizacja użytkownika** służy do liczenia odległości na kliencie i — gdy użytkownik się zgodzi — jako punkt startu trasy w osadzonej mapie Google (Maps Embed API, `lib/maps.ts`; bez zgody start z dzielnicy z profilu). **Do naszego API jej nie wysyłamy** i nie logujemy.
-- **Mapa dojazdu:** iframe Maps Embed API (`components/events/route-map.tsx`) tylko z kluczem `mapsEmbedKey` z `config.js` (Terraform: `google_maps_embed_key`); bez klucza zostaje link do Map Google (`mapsUrl`, tryb komunikacji miejskiej).
+- **Mapa dojazdu:** iframe Maps Embed API (`components/events/route-map.tsx`) tylko z kluczem `mapsEmbedKey` z `config.js` (SSM `/codzis/google-maps-embed-key` → Terraform → `config.js`); bez klucza zostaje link do Map Google (`mapsUrl`, tryb komunikacji miejskiej).
 - **Bezpieczeństwo:** bez `dangerouslySetInnerHTML`; linki zewnętrzne tylko `http(s)` z `rel="noopener noreferrer"`; tokenów nie logujemy.
 
 ## Recepty (wzorowane na firmowym `valinor`)

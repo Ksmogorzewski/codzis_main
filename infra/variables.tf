@@ -177,12 +177,6 @@ variable "google_client_id" {
   default     = ""
 }
 
-variable "google_maps_embed_key" {
-  description = "Klucz Google Maps Embed API (mapa z trasą komunikacją w szczegółach wydarzenia); puste = sam link do Map Google. Trafia do publicznego config.js, więc w Google Cloud ogranicz go do Maps Embed API i domen portalu"
-  type        = string
-  default     = ""
-}
-
 variable "google_client_secret" {
   description = "OAuth client secret z Google Cloud Console (trafia do state'u Terraforma)"
   type        = string

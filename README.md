@@ -115,7 +115,12 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 3. *APIs & Services → Credentials → Create credentials → API key*, a potem w ustawieniach klucza:
    - *Application restrictions → Websites*: `https://portal.waw-out.pl/*` i `http://localhost:8000/*`;
    - *API restrictions*: tylko **Maps Embed API**.
-4. Wpisz klucz do `infra/terraform.tfvars` (`google_maps_embed_key = "AIza..."`) i zrób `terraform apply`. Klucz trafia do publicznego `config.js`, więc ograniczenia z punktu 3 są obowiązkowe.
+4. Klucz trzymamy w SSM (`terraform output google_maps_embed_key_parameter`, domyślnie `CHANGE_ME` = sama mapa wyłączona):
+   ```sh
+   aws ssm put-parameter --name /codzis/google-maps-embed-key --type SecureString --overwrite --value "AIza..."
+   terraform -chdir=infra apply      # wstawia klucz do config.js
+   ```
+   Klucz trafia do publicznego `config.js`, więc ograniczenia z punktu 3 są obowiązkowe.
 
 **API** (HTTP API, ID token Cognito w `Authorization: Bearer …`, weryfikuje go API Gateway):
 
