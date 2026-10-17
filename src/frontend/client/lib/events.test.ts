@@ -50,6 +50,7 @@ describe("events", () => {
     expect(safeUrl("javascript:alert(1)")).toBeNull();
     expect(safeUrl("https://um.warszawa.pl/x")).toBe("https://um.warszawa.pl/x");
     expect(mapsUrl(item({ location: { lat: 52.2, lon: 21 } }))).toContain("destination=52.2,21");
+    expect(mapsUrl(item({ location: { lat: 52.2, lon: 21 } }))).toContain("travelmode=transit");
     expect(mapsUrl(item({ venue: { name: "Hala Koło", address: "Obozowa 60" } }))).toContain("Obozowa%2060%2C%20Warszawa");
     expect(mapsUrl(item())).toBeNull();
   });

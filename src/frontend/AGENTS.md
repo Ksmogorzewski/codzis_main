@@ -3,8 +3,8 @@
 Jeden projekt Vite, dwie aplikacje: **portal klienta** (`client/`, tryb `client`) i **panel partnera** (`partner/`, tryb `partner`). Ten plik opisuje portal klienta. **Pilnuj struktury opisanej niżej**; jeśli zmiana jej nie pasuje, zatrzymaj się i zapytaj, zamiast tworzyć nowy wzorzec. Panelu partnera nie zmieniaj bez zgody Krzysztofa.
 
 ## Produkt (portal klienta)
-Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni/inny dzień, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia. Wygląd: mockup WarsawNow, wariant 1a Karty.
-**Poza zakresem bez zgody zespołu:** logowanie Google, „Sponsorowane”, warstwa społecznościowa, pogoda, mapa.
+Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni/inny dzień, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia (z mapą Google i trasą komunikacją miejską). Wygląd: mockup WarsawNow, wariant 1a Karty.
+**Poza zakresem bez zgody zespołu:** logowanie Google, „Sponsorowane”, warstwa społecznościowa, pogoda.
 
 ## Komendy (z `src/frontend/`)
 ```sh
@@ -36,7 +36,8 @@ components/ui/           prymitywy shadcn — wyłącznie przez tokeny motywu
 hooks/                   use-<x>.query.ts / use-<x>.mutation.ts (jeden hook na endpoint, queryOptions)
 lib/                     config (APP_CONFIG), auth (Cognito), api (Result, błędy, ponawianie zimnego startu),
                          schemas (Zod odpowiedzi API), query-keys, search, categories, geo, wizard (walidacja ankiety),
-                         events (formaty terminów/cen), recommendations-cache, theme, storage, utils (cn)
+                         events (formaty terminów/cen), maps (osadzona mapa z trasą), recommendations-cache, theme,
+                         storage, utils (cn)
 styles.css               Tailwind + tokeny (jasny i ciemny) — jedyny plik CSS
 public/                  ikony i manifest PWA (config.js tylko lokalnie)
 ```
@@ -48,7 +49,8 @@ Testy obok kodu: `lib/*.test.ts`. Import: alias `@/` = `client/`.
 - **Kontrakt z backendem** (Python): ścieżki i kształty jak w `src/client_api/handler.py`, `onboarding.py`, `src/recommender_api/present.py`. Schematy Zod tolerancyjne (pola opcjonalne opcjonalne). Błędy API: `{error: "komunikat PL", fields?, code?}` — pokazujemy komunikat; `409` / `code: "needs_onboarding"` → `/profil`; 401 → jedno odświeżenie tokenu, potem `/login`.
 - **Rekomendacje:** `retry: false` + pomocnik zimnego startu z `lib/api.ts` (ponowienia po 5 i 10 s, komunikat „Dobieramy propozycje…”). `202 {"status": "preparing"}` (zestaw się liczy) obsługuje `pollWhilePreparing`, a `"updating": true` — `refetchInterval` co 3 s. Parametry zapytania z filtrów: `recommendationsParams` (`lib/search.ts`); `limit` = 16 jak na serwerze (inny limit = inny zapisany zestaw). Po zapisie ankiety: `setQueryData(["me"])` i `removeQueries(["recommendations"])`.
 - **Stan w adresie:** filtry ekranu głównego to search params walidowane Zodem (`lib/search.ts`). Nawigacja przez `<Link>` / `navigate`.
-- **Lokalizacja użytkownika** służy tylko do liczenia odległości na kliencie — **nie wysyłamy jej do API**.
+- **Lokalizacja użytkownika** służy do liczenia odległości na kliencie i — gdy użytkownik się zgodzi — jako punkt startu trasy w osadzonej mapie Google (Maps Embed API, `lib/maps.ts`; bez zgody start z dzielnicy z profilu). **Do naszego API jej nie wysyłamy** i nie logujemy.
+- **Mapa dojazdu:** iframe Maps Embed API (`components/events/route-map.tsx`) tylko z kluczem `mapsEmbedKey` z `config.js` (Terraform: `google_maps_embed_key`); bez klucza zostaje link do Map Google (`mapsUrl`, tryb komunikacji miejskiej).
 - **Bezpieczeństwo:** bez `dangerouslySetInnerHTML`; linki zewnętrzne tylko `http(s)` z `rel="noopener noreferrer"`; tokenów nie logujemy.
 
 ## Recepty (wzorowane na firmowym `valinor`)

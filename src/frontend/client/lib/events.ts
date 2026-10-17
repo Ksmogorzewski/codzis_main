@@ -116,11 +116,14 @@ export function safeUrl(url?: string | null): string | null {
 
 export const placeLabel = (item: Recommendation) => [item.venue?.name, item.venue?.address].filter(Boolean).join(", ");
 
+// Trasa w Mapach Google (na telefonie od miejsca, w którym jest użytkownik), domyślnie komunikacją miejską
 export function mapsUrl(item: Recommendation): string | null {
-  if (item.location) return `https://www.google.com/maps/dir/?api=1&destination=${item.location.lat},${item.location.lon}`;
+  if (item.location) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${item.location.lat},${item.location.lon}&travelmode=transit`;
+  }
   const place = placeLabel(item);
   if (!place || item.online) return null;
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${place}, Warszawa`)}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${place}, Warszawa`)}&travelmode=transit`;
 }
 
 export function areaLabel(r: Pick<Recommendations, "area" | "district">): string {

@@ -1,4 +1,5 @@
-// Pozycja z przeglądarki – tylko do liczenia odległości na kartach (lib/geo.ts). Nie wysyłamy jej do API.
+// Pozycja z przeglądarki – do liczenia odległości (lib/geo.ts) i jako start trasy w osadzonej mapie Google
+// w szczegółach (lib/maps.ts). Do naszego API jej nie wysyłamy.
 import { useSyncExternalStore } from "react";
 import type { Point } from "./geo";
 

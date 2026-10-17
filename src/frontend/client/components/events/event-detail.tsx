@@ -6,7 +6,9 @@ import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Separator } from "@/components/ui/separator";
 import { useEventCard } from "@/hooks/use-event-card.query";
+import { useMe } from "@/hooks/use-me.query";
 import { CATEGORY_LABEL, categoryOf } from "@/lib/categories";
+import { config } from "@/lib/config";
 import {
   mapsUrl,
   outboundLink,
@@ -20,11 +22,13 @@ import {
 } from "@/lib/events";
 import { walkLabel } from "@/lib/geo";
 import { startLocation, useLocation } from "@/lib/location";
+import { destinationOf, districtOf, mapsEmbedUrl, originOf } from "@/lib/maps";
 import type { Card as CardData } from "@/lib/schemas";
 import { lastSearch } from "@/lib/search";
 import { DetailSkeleton } from "./detail-skeleton";
 import { EventBadges } from "./event-badges";
 import { EventImage } from "./event-image";
+import { RouteMap } from "./route-map";
 
 const route = getRouteApi("/_app/wydarzenie/$id");
 
@@ -70,6 +74,16 @@ function NotFound() {
 
 function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
   const { position, status } = useLocation();
+  const me = useMe();
+  const district = districtOf(me.data?.profile?.preferences);
+  // Mapa z trasą komunikacją: start z lokalizacji (gdy jest zgoda), inaczej z dzielnicy z profilu
+  const origin = originOf(position, district);
+  const mapSrc = mapsEmbedUrl({ key: config().mapsEmbedKey, origin, destination: destinationOf(card) });
+  const mapCaption = position
+    ? "Trasa komunikacją miejską z Twojej lokalizacji"
+    : origin
+      ? `Trasa komunikacją miejską z dzielnicy ${district}`
+      : "Miejsce wydarzenia na mapie";
   const now = new Date();
   const when = slotLabel(card.slot, now);
   const plan = scheduleLabels(card.schedule);
@@ -139,6 +153,7 @@ function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
             <Fact label="Cena">{price?.label ?? "—"}</Fact>
             <Fact label="Odległość">{distance}</Fact>
           </dl>
+          {mapSrc && <RouteMap src={mapSrc} eventTitle={card.title} caption={mapCaption} />}
           {(route || link) && (
             <>
               <Separator />
@@ -146,8 +161,8 @@ function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
                 {route && (
                   <Button asChild variant="outline" size="lg">
                     <a href={route} target="_blank" rel="noopener noreferrer">
-                      <Icon name="directions" size={22} />
-                      Wyznacz trasę
+                      <Icon name={mapSrc ? "open_in_new" : "directions"} size={22} />
+                      {mapSrc ? "Otwórz w Mapach Google" : "Wyznacz trasę"}
                     </a>
                   </Button>
                 )}
