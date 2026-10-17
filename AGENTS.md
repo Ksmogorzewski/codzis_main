@@ -52,7 +52,7 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 
 **DynamoDB w kodzie**
 - Odczyt/zapis po kluczu: `get_item`, `put_item`, `update_item` z `UpdateExpression` i `ExpressionAttributeValues`; `if_not_exists(createdAt, :now)` dla pól ustawianych raz; `ReturnValues="ALL_NEW"`, gdy zwracamy rekord.
-- Liczby wracają jako `Decimal` (serializuje `_json_default`); `None` i puste wartości nie są zapisywane (tagger ma `sanitize()`).
+- Liczby wracają jako `Decimal` (serializuje `json_default` z `codzis_common.http`); `None` i puste wartości nie są zapisywane (tagger ma `sanitize()`).
 - **Bez `scan` w ścieżce żądania** (wolne i drogie przy wzroście) — wyjątki w tle: budowa indeksu rekomendera i nocne przeliczenie zestawów (`codzis-users`).
 - Każda tabela ma jednego właściciela, który do niej zapisuje (sekcja „Dane”).
 
