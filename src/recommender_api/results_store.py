@@ -21,7 +21,8 @@ from botocore.exceptions import ClientError
 WARSAW = ZoneInfo("Europe/Warsaw")
 # Zmiana modelu, logiki rankingu lub formatu kart -> podbij: zapisane zestawy ze starszą wersją
 # są pokazywane dalej, ale traktowane jak nieaktualne, więc przy wejściu liczą się od nowa w tle.
-#   2: model paraphrase-multilingual-mpnet-base-v2 + rozwijanie frazy przez LLM (PR #7)
+#   2: PR #7 - model paraphrase-multilingual-mpnet-base-v2, rozwijanie frazy przez LLM, próg podobieństwa,
+#      kary za sprzeczne preferencje, ranking LLM z temperaturą 0
 RESULTS_VERSION = 2
 # Wersja samego odcisku preferencji - NIE podbijać (inna wartość = żaden zapisany zestaw nie pasuje
 # do profilu i wszyscy czekają na nowe liczenie zamiast widzieć dotychczasowe propozycje).

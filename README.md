@@ -168,8 +168,8 @@ Zakładka **Rekomendacje** w portalu klienta: wybór dnia (dziś / jutro / weeke
 
 **Jak dobieramy propozycje** (`src/recommender_api/user_context.py` mapuje `preferences` z onboardingu):
 1. **Twarde filtry:** termin w wybranym oknie (już zakończone odpadają; zajęcia cykliczne wg dni tygodnia), dzielnica wg zasięgu dojazdu (okolica / sąsiednie dzielnice / cała Warszawa), koszt („tylko bezpłatne”), forma (na żywo / online), grupa odbiorców, budżet.
-2. **Podobieństwo wektorowe:** model `paraphrase-multilingual-mpnet-base-v2` (768 wymiarów, lokalnie, CPU) porównuje profil (tematy, formaty, kategorie) albo wpisaną frazę z tekstem eventu (tytuł, kategorie, tagi AI, opis).
-3. **Miękkie preferencje:** drobne punkty za zgodność tagów (tematy, formaty, z kim, aktywność, plener / pod dachem, zapisy, dostępność), porę dnia, bliskość dzielnicy; mniej za „wydarzenia” trwające miesiącami (to zwykle programy, nie propozycja na dziś). Potem dedupe tytułów i różnorodność (nie 5 kart z jednej pływalni).
+2. **Podobieństwo wektorowe:** model `paraphrase-multilingual-mpnet-base-v2` (768 wymiarów, lokalnie, CPU) porównuje profil (tematy, formaty, kategorie) albo wpisaną frazę z tekstem eventu (tytuł, kategorie, tagi AI, opis). Słabe dopasowania (podobieństwo < 0,30, `DEFAULT_MIN_SCORE`) odpadają, więc zestaw może mieć mniej niż 16 kart zamiast dopełnienia szumem.
+3. **Miękkie preferencje:** drobne punkty za zgodność tagów i drobne kary za sprzeczność (np. pora dnia poza wybraną, online bez prośby o online) (tematy, formaty, z kim, aktywność, plener / pod dachem, zapisy, dostępność), porę dnia, bliskość dzielnicy; mniej za „wydarzenia” trwające miesiącami (to zwykle programy, nie propozycja na dziś). Potem dedupe tytułów i różnorodność (nie 5 kart z jednej pływalni).
 4. **DeepSeek** (opcjonalnie, ten sam klucz co tagger): układa najlepszych kandydatów (tylu, ile kart prosi strona: 16) i pisze uzasadnienia. Przy błędzie lub po 60 s zostaje kolejność wektorowa z uzasadnieniem z reguł.
 
 Gdy w okolicy wyjdą mniej niż 4 propozycje, obszar poszerza się sam (strona to pokazuje).
