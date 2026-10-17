@@ -55,6 +55,11 @@ terraform output acm_validation_records        # home.pl: CNAME <name> -> <value
 # 2. reszta; apply czeka (do 2 h), aż certyfikat zostanie wydany (~5-30 min po dodaniu rekordów)
 terraform apply
 terraform output dns_records                   # home.pl: www -> CNAME <value>; domena główna -> ALIAS/ANAME <value>
+```
+
+**Zmiana domeny w działającym deployu:** zrób od razu pełny `terraform apply`, bez etapu 1. Przy `-target` Terraform próbuje usunąć stary certyfikat, który jest jeszcze podpięty pod CloudFront, i apply kończy się błędem. Gdy apply czeka na `aws_acm_certificate_validation`, w drugim terminalu uruchom `scripts/acm-records.sh`: pokaże rekordy do wpisania w home.pl. Domena musi już działać w DNS (świeżo zarejestrowana `.pl` potrzebuje na to od kilku minut do kilku godzin).
+
+```sh
 terraform output -json partner_api_keys        # klucze do przekazania partnerom
 aws ssm put-parameter --name "$(terraform output -raw um_api_token_parameter)" \
   --type SecureString --overwrite --value "<token dane.um.warszawa.pl>"
