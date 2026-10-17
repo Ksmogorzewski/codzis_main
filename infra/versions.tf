@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.6"
+  required_version = ">= 1.10" # use_lockfile w backendzie s3
 
   required_providers {
     aws = {
@@ -12,7 +12,14 @@ terraform {
     }
   }
 
-  # PoC: lokalny state. Przy pracy w zespole przenieś na backend "s3" (z use_lockfile = true).
+  # Bucket tworzy scripts/bootstrap-tfstate.sh. Lock: plik <key>.tflock w tym samym buckecie (bez DynamoDB).
+  backend "s3" {
+    bucket       = "codzis-tfstate-370478231901"
+    key          = "codzis/terraform.tfstate"
+    region       = "eu-central-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {

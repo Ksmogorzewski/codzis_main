@@ -65,7 +65,8 @@ DNS domeny jest w home.pl, bez Route53. Portal działa pod `domain_name` (`partn
 
 ```sh
 cd infra
-cp terraform.tfvars.example terraform.tfvars   # domena, aliasy, partnerzy
+# terraform.tfvars (domena, aliasy, partnerzy) jest w repo - edytuj go zamiast kopiować .example
+../scripts/bootstrap-tfstate.sh                # jednorazowo: bucket S3 na state (lock: .tflock w buckecie)
 terraform init
 
 # 1. certyfikat -> rekordy walidacyjne w home.pl (zostają na stałe: dzięki nim certyfikat sam się odnawia)
@@ -105,7 +106,7 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
   - Authorized JavaScript origins: `terraform output cognito_hosted_ui`;
   - Authorized redirect URIs: `terraform output google_oauth_redirect_uri`.
 
-  Client ID i secret wpisz do `infra/terraform.tfvars` (`google_client_id`, `google_client_secret`) i zrób `terraform apply`; przycisk „Kontynuuj przez Google” pojawi się sam. Ekran zgody w trybie *Testing* wpuszcza tylko dodanych testerów.
+  Client ID i secret wpisz do `infra/secrets.auto.tfvars` (`google_client_id`, `google_client_secret`; plik jest w `.gitignore`, Terraform wczytuje go sam) i zrób `terraform apply`; przycisk „Kontynuuj przez Google” pojawi się sam. Ekran zgody w trybie *Testing* wpuszcza tylko dodanych testerów.
 - **E-maile** (kod przy rejestracji, kod resetu hasła) wysyła Cognito z domyślnej skrzynki AWS (`no-reply@verificationemail.com`, temat i treść z `verification_message_template` w `infra/client_auth.tf`). Limit to ~50 e-maili dziennie na konto AWS i nie da się zmienić nadawcy. Docelowo: Amazon SES z domeną `waw-out.pl` (rekordy DKIM w home.pl + wyjście z trybu sandbox), potem w Cognito `email_sending_account = "DEVELOPER"`.
 - Sesja jest trzymana w `localStorage` (refresh token na 30 dni). Konto e-mail i konto Google z tym samym adresem to w Cognito dwa osobne konta.
 
