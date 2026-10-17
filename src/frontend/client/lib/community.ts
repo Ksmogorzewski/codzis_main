@@ -32,7 +32,10 @@ export function patchAttendees<T extends KnownSaveState & { people: Person[] }>(
   myName: string | null,
 ): T {
   const others = list.people.filter((p) => !p.isMe);
-  const people = next.saved ? [list.people.find((p) => p.isMe) ?? { name: myName, isMe: true }, ...others] : others;
+  const mine = list.people.find((p) => p.isMe);
+  // imię z tokenu ma pierwszeństwo (serwer mógł zapisać wpis bez imienia: „Ktoś”)
+  const me = { ...mine, name: myName ?? mine?.name ?? null, isMe: true };
+  const people = next.saved ? [me, ...others] : others;
   return { ...list, saves: next.saves, saved: next.saved, people };
 }
 
@@ -48,6 +51,9 @@ export function withStats(cards: Card[], stats: StatsMap | undefined): Card[] {
 }
 
 export const savesLabel = (n: number) => `Zapisanych: ${n}`;
+
+/** Potwierdzenie zapisu: pod jakim imieniem zobaczą mnie inni. */
+export const savedAsText = (name: string | null) => (name ? `Zapisano jako ${name}` : "Zapisano");
 
 /** Numer na liście Popularnych (od 1). */
 export const rankLabel = (index: number) => String(index + 1);

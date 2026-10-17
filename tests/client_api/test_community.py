@@ -158,6 +158,47 @@ def test_save_without_name_stores_no_name(api, attendance_table):
     assert "name" not in item
 
 
+def test_save_without_name_claim_uses_display_name(api, attendance_table, users_table):
+    # token bez claimu "name" (np. stara sesja), ale GET /api/me zapisał już imię w users
+    users_table.put_item(Item={"userId": "user-3", "email": "anon@example.com", "displayName": "  Cezary  "})
+    save(api, "today", NONAME)
+    item = attendance_table.get_item(Key={"eventId": "today", "userId": "user-3"})["Item"]
+    assert item["name"] == "Cezary"
+
+
+def test_save_never_falls_back_to_email(api, attendance_table, users_table):
+    users_table.put_item(Item={"userId": "user-3", "email": "anon@example.com"})
+    save(api, "today", NONAME)
+    item = attendance_table.get_item(Key={"eventId": "today", "userId": "user-3"})["Item"]
+    assert "name" not in item
+    _, body = call(api, "GET /api/events/{id}/attendees", claims=NONAME, path={"id": "today"})
+    assert body["people"] == [{"name": "Ktoś", "isMe": True}]
+
+
+def test_save_name_claim_wins_over_display_name(api, attendance_table, users_table):
+    users_table.put_item(Item={"userId": "user-1", "displayName": "Stare"})
+    save(api, "today")
+    item = attendance_table.get_item(Key={"eventId": "today", "userId": "user-1"})["Item"]
+    assert item["name"] == "Ala"
+
+
+def test_attendees_read_is_consistent(api, monkeypatch):
+    # lista zaraz po zapisie (front odświeża ją od razu) musi już zawierać własny wpis
+    calls = []
+    client = api.store.attendance_table.meta.client
+    original = client.query
+
+    def spy(**kwargs):
+        calls.append(kwargs)
+        return original(**kwargs)
+
+    monkeypatch.setattr(client, "query", spy)
+    save(api, "today")
+    _, body = call(api, "GET /api/events/{id}/attendees", claims=ALA, path={"id": "today"})
+    assert body["people"] == [{"name": "Ala", "isMe": True}]
+    assert calls and all(c.get("ConsistentRead") is True for c in calls if "IndexName" not in c)
+
+
 def test_save_unknown_event_404(api, stats_table):
     status, body = save(api, "nie-ma")
     assert status == 404

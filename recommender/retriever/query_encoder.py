@@ -71,13 +71,13 @@ class QueryEncoder:
         ]
         if not texts:
             return None
-        vecs = self.model.encode(texts)          # (m, dim), normalized
+        vecs = self.model.encode(texts, prompt_name="passage")  # (m, dim), normalized
         return np.mean(vecs, axis=0).astype(np.float32)
 
     # ------------------------------------------------------------------ #
     def encode(self, user: dict) -> np.ndarray:
         """Return a single L2-normalized query vector for the user context."""
-        text_vec = self.model.encode([build_query_text(user)])[0]
+        text_vec = self.model.encode([build_query_text(user)], prompt_name="query")[0]
 
         taste_vec = self._taste_vector(user)
         if taste_vec is None or self.taste_weight == 0.0:

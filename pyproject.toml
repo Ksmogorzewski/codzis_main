@@ -8,7 +8,7 @@ pythonpath = ["src/layers/common/python"]
 addopts = "-ra"
 
 # Lint i formatowanie: na razie tylko Lambdy API (klient, partner, dispatcher), wspólna warstwa i testy.
-# recommender/, tagger/, src/importer/, src/recommender_api/ - do objęcia w przyszłości.
+# recommender/ (z testami w tests/recommender/), tagger/, src/importer/, src/recommender_api/ - do objęcia w przyszłości.
 [tool.ruff]
 target-version = "py313"
 line-length = 120
@@ -19,6 +19,7 @@ include = [
     "src/layers/**/*.py",
     "tests/**/*.py",
 ]
+extend-exclude = ["tests/recommender"]
 
 [tool.ruff.lint]
 # pyflakes, pycodestyle (błędy + ostrzeżenia), isort, bugbear, pyupgrade
@@ -41,3 +42,4 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true
 mypy_path = "src/layers/common/python"
+exclude = ["^tests/recommender/"]  # jak recommender/ w ruff (wyżej)

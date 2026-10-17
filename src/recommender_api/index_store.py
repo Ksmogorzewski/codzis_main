@@ -159,7 +159,7 @@ def refresh(raw_events: list[dict], previous: Index | None, load_model, model_na
     missing = [h for h in texts if h not in cache]
     if missing:
         log.info("Embedding %d nowych tekstów", len(missing))
-        cache.update(zip(missing, load_model().encode([texts[h] for h in missing])))
+        cache.update(zip(missing, load_model().encode([texts[h] for h in missing], prompt_name="passage")))
         stats["embedded"] = len(missing)
 
     dim = len(next(iter(cache.values()))) if cache else 0

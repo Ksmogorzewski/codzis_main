@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCode, validateAuthForm } from "./auth-form";
+import { nameError, normalizeCode, normalizeName, validateAuthForm } from "./auth-form";
 
 const values = { name: "Anna", email: "anna@example.pl", password: "haslo1234", code: "123456", newPassword: "nowehaslo1" };
 
@@ -19,6 +19,33 @@ describe("formularz logowania", () => {
   it("rejestracja wymaga imienia", () => {
     expect(validateAuthForm("register", { ...values, name: "   " })).toBe("Podaj imię.");
     expect(validateAuthForm("login", { ...values, name: "" })).toBeNull();
+  });
+
+  it("imię: litery (także polskie), spacje i myślnik", () => {
+    for (const ok of ["Anna", "Łucja", "Żaneta", "Anna Maria", "Anna-Maria", "  Jan  ", "Zoë", "Ś"]) {
+      expect(nameError(ok)).toBeNull();
+    }
+    expect(nameError("")).toBe("Podaj imię.");
+    expect(nameError("   ")).toBe("Podaj imię.");
+    for (const bad of ["Anna1", "anna@example.pl", "<b>", "-Anna", "Anna-", "Ann_a"]) {
+      expect(nameError(bad)).toBe("Imię może zawierać tylko litery, spacje i myślnik.");
+    }
+    expect(nameError("a".repeat(41))).toBe("Imię może mieć najwyżej 40 znaków.");
+    expect(nameError("a".repeat(40))).toBeNull();
+    expect(nameError("Z\u0307aneta")).toBeNull();
+  });
+
+  it("rejestracja sprawdza imię tak samo", () => {
+    expect(validateAuthForm("register", { ...values, name: "Anna2" })).toBe(
+      "Imię może zawierać tylko litery, spacje i myślnik.",
+    );
+  });
+
+  it("normalizuje imię: przycięte, pojedyncze spacje, NFC, maks. 40 znaków", () => {
+    expect(normalizeName("  Anna   Maria ")).toBe("Anna Maria");
+    expect(normalizeName("a".repeat(60))).toHaveLength(40);
+    expect(normalizeName("   ")).toBe("");
+    expect(normalizeName("Z\u0307aneta")).toBe("Żaneta"); // litera + znak łączący (np. z klawiatury macOS)
   });
 
   it("kod musi mieć 6 cyfr", () => {
