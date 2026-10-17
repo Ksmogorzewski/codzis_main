@@ -21,7 +21,7 @@ import { SearchBox } from "./search-box";
 
 const route = getRouteApi("/_app/");
 
-/** Na ekranie do 12 kart (API zwraca do 24, żeby po filtrze kategorii nadal było co pokazać). */
+/** Na ekranie do 12 kart (API zwraca do 16, żeby po filtrze kategorii nadal było co pokazać). */
 const MAX_CARDS = 12;
 
 const TITLE: Record<When, string> = {

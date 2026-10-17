@@ -20,7 +20,7 @@ export function EventCard({ card, position, now }: Props) {
   const when = slotLabel(card.slot, now);
   const place = [placeLabel(card) || null, card.district].filter(Boolean).join(" · ");
   const dist = walkLabel(position, card.location);
-  const route = card.location ? mapsUrl(card) : null;
+  const route = mapsUrl(card);
   const to = "/wydarzenie/$id" as const;
   const params = { id: card.id };
 

@@ -42,10 +42,11 @@ export type ApiDeps = {
 };
 
 const networkError = (): ApiError => ({ status: 0, code: "network", message: MESSAGES.network, fields: [] });
+const abortedError = (): ApiError => ({ status: 0, code: "aborted", message: "Zapytanie anulowane.", fields: [] });
 const unauthorized = (): ApiError => toApiError(401, null);
 
 export function createApi(deps: ApiDeps) {
-  async function send(method: string, path: string, body: unknown, token: string): Promise<Response | null> {
+  async function send(method: string, path: string, body: unknown, token: string, signal?: AbortSignal): Promise<Response | null> {
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     try {
@@ -53,26 +54,33 @@ export function createApi(deps: ApiDeps) {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
+        signal,
       });
     } catch {
       return null;
     }
   }
 
-  async function request<T>(method: string, path: string, body: unknown, schema: z.ZodType<T>): Promise<ApiResult<T>> {
+  async function request<T>(
+    method: string,
+    path: string,
+    body: unknown,
+    schema: z.ZodType<T>,
+    signal?: AbortSignal,
+  ): Promise<ApiResult<T>> {
     const token = await deps.getToken();
     if (token.error !== null) return err(networkError());
     if (token.data === null) return err(unauthorized());
 
-    let res = await send(method, path, body, token.data);
+    let res = await send(method, path, body, token.data, signal);
     // 401: token mógł wygasnąć po drodze - jedno odświeżenie i jedno ponowienie.
     if (res?.status === 401) {
       const fresh = await deps.refreshToken();
       if (fresh.error !== null) return err(networkError());
       if (fresh.data === null) return err(unauthorized());
-      res = await send(method, path, body, fresh.data);
+      res = await send(method, path, body, fresh.data, signal);
     }
-    if (!res) return err(networkError());
+    if (!res) return err(signal?.aborted ? abortedError() : networkError());
 
     const json: unknown = await res.json().catch(() => null);
     if (!res.ok) return err(toApiError(res.status, json));
@@ -82,7 +90,7 @@ export function createApi(deps: ApiDeps) {
   }
 
   return {
-    apiGet: <T>(path: string, schema: z.ZodType<T>) => request("GET", path, undefined, schema),
+    apiGet: <T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal) => request("GET", path, undefined, schema, signal),
     apiPut: <T>(path: string, body: unknown, schema: z.ZodType<T>) => request("PUT", path, body, schema),
   };
 }
@@ -119,7 +127,7 @@ export function unwrap<T>(r: ApiResult<T>): T {
 /** Błąd, który może zniknąć sam: brak sieci (0) albo 5xx. 4xx i złe dane - nigdy. */
 export function isTransientError(error: unknown): boolean {
   if (!(error instanceof ApiRequestError)) return false;
-  return error.code !== "bad_response" && (error.status === 0 || error.status >= 500);
+  return error.code !== "bad_response" && error.code !== "aborted" && (error.status === 0 || error.status >= 500);
 }
 
 /** Predykat `retry` dla QueryClient: najwyżej jedno ponowienie i tylko błędu przejściowego. */
@@ -168,4 +176,18 @@ export async function withColdStartRetry<T>(fn: () => Promise<ApiResult<T>>, opt
     result = await fn();
   }
   return result;
+}
+
+/**
+ * Uruchamia fn; jeśli trwa dłużej niż ms, wywołuje onSlow (np. komunikat „Dobieramy propozycje…”,
+ * gdy API Gateway trzyma pierwsze zapytanie ~30 s). onDone zawsze po zakończeniu, timer czyszczony.
+ */
+export async function withSlowHint<T>(fn: () => Promise<T>, ms: number, onSlow: () => void, onDone: () => void): Promise<T> {
+  const timer = setTimeout(onSlow, ms);
+  try {
+    return await fn();
+  } finally {
+    clearTimeout(timer);
+    onDone();
+  }
 }

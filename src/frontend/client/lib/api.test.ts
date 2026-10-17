@@ -4,10 +4,12 @@ import {
   ApiRequestError,
   createApi,
   isNeedsOnboarding,
+  isTransientError,
   shouldRetry,
   toApiError,
   unwrap,
   withColdStartRetry,
+  withSlowHint,
 } from "./api";
 import { err, ok } from "./result";
 
@@ -96,6 +98,53 @@ describe("apiGet / apiPut", () => {
     });
     const r = await api.apiGet("/api/me", Schema);
     expect(r.error).toMatchObject({ status: 0, code: "network" });
+  });
+});
+
+describe("anulowanie zapytania", () => {
+  it("przekazuje signal do fetch", async () => {
+    const { api, fetch } = setup([json(200, { value: 1 })]);
+    const ctrl = new AbortController();
+    await api.apiGet("/api/me", Schema, ctrl.signal);
+    expect(fetch.mock.calls[0]![1].signal).toBe(ctrl.signal);
+  });
+
+  it("przerwane zapytanie: code aborted, bez ponowienia", async () => {
+    const ctrl = new AbortController();
+    const fetch = vi.fn(async () => {
+      ctrl.abort();
+      throw new DOMException("aborted", "AbortError");
+    });
+    const api = createApi({ fetch, baseUrl: () => "", getToken: async () => ok("t"), refreshToken: async () => ok("t") });
+    const r = await api.apiGet("/api/me", Schema, ctrl.signal);
+    expect(r.error).toMatchObject({ code: "aborted" });
+    expect(isTransientError(new ApiRequestError(r.error!))).toBe(false);
+  });
+});
+
+describe("withSlowHint", () => {
+  it("po czasie wywołuje onSlow, po zakończeniu czyści", async () => {
+    vi.useFakeTimers();
+    const onSlow = vi.fn();
+    const onDone = vi.fn();
+    const p = withSlowHint(() => new Promise<string>((res) => setTimeout(() => res("ok"), 10_000)), 6000, onSlow, onDone);
+    await vi.advanceTimersByTimeAsync(5999);
+    expect(onSlow).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onSlow).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(await p).toBe("ok");
+    expect(onDone).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("szybka odpowiedź: onSlow nie wywołane", async () => {
+    vi.useFakeTimers();
+    const onSlow = vi.fn();
+    await withSlowHint(async () => 1, 6000, onSlow, () => {});
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(onSlow).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
 

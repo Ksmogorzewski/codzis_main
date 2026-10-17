@@ -6,7 +6,7 @@ import { MeSchema } from "@/lib/schemas";
 // GET /api/me: profil zalogowanego (backend przy okazji zapisuje ostatnie logowanie).
 export const meQueryOptions = queryOptions({
   queryKey: meKey(),
-  queryFn: async () => unwrap(await apiGet("/api/me", MeSchema)),
+  queryFn: async ({ signal }) => unwrap(await apiGet("/api/me", MeSchema, signal)),
 });
 
 export const useMe = () => useQuery(meQueryOptions);

@@ -95,7 +95,9 @@ const DatedSlotSchema = z.object({
 export const SlotSchema = z.union([RecurringSlotSchema, DatedSlotSchema]);
 export type Slot = z.infer<typeof SlotSchema>;
 
-const LocationSchema = z.object({ lat: z.number(), lon: z.number() });
+// Współrzędne bywają stringami (API UM); z pustego stringa nie robimy 0.
+const coordinate = z.preprocess((v) => (typeof v === "string" && v.trim() !== "" ? Number(v) : v), z.number().finite());
+const LocationSchema = z.object({ lat: coordinate, lon: coordinate });
 
 export const CardSchema = z.object({
   id: z.string(),
@@ -153,7 +155,13 @@ export const RecommendationsSchema = z.object({
   area: z.enum(["local", "nearby", "city"]).default("city"),
   areaRelaxed: z.boolean().default(false),
   ranking: z.string().default("cosine"), // "llm" | "cosine"
-  items: z.array(CardSchema),
+  // Zepsutą kartę pomijamy, zamiast odrzucać całą odpowiedź.
+  items: z.array(z.unknown()).transform((xs) =>
+    xs.flatMap((x) => {
+      const r = CardSchema.safeParse(x);
+      return r.success ? [r.data] : [];
+    }),
+  ),
   index: z
     .object({ builtAt: nullableString, events: z.number().nullable().default(null) })
     .default({ builtAt: null, events: null }),

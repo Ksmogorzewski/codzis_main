@@ -6,7 +6,7 @@ import { OnboardingSchema } from "@/lib/schemas";
 // GET /api/onboarding: kroki ankiety (zmieniają się tylko z nową wersją backendu).
 export const onboardingQueryOptions = queryOptions({
   queryKey: onboardingKey(),
-  queryFn: async () => unwrap(await apiGet("/api/onboarding", OnboardingSchema)),
+  queryFn: async ({ signal }) => unwrap(await apiGet("/api/onboarding", OnboardingSchema, signal)),
   staleTime: 10 * 60_000,
 });
 

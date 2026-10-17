@@ -76,7 +76,7 @@ function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
   const price = priceLabel(card);
   const place = placeLabel(card);
   const dist = walkLabel(position, card.location);
-  const route = card.location ? mapsUrl(card) : null;
+  const route = mapsUrl(card);
   const link = outboundLink(card);
   const page = safeUrl(card.url);
   const readAt = readAtLabel(builtAt);

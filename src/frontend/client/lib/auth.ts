@@ -2,7 +2,6 @@
 // rejestracja z kodem z e-maila, reset hasła, odświeżanie tokenów (REFRESH_TOKEN_AUTH).
 // Sesja w localStorage pod tym samym kluczem co w poprzedniej wersji portalu (zalogowani zostają zalogowani).
 import { config } from "./config";
-import { decodeJwt } from "./crypto";
 import { err, ok, type Result } from "./result";
 import { readJson, writeJson } from "./storage";
 
@@ -112,14 +111,6 @@ function storeTokens(r: AuthenticationResult, method: Session["method"]): Sessio
   const session = nextSession(tokens, loadSession(), Date.now(), method);
   writeJson("local", SESSION_KEY, session);
   return session;
-}
-
-export type IdClaims = { sub: string; email?: string; name?: string; picture?: string };
-
-/** Dane z ID tokenu (bez weryfikacji podpisu - tylko do wyświetlenia). */
-export function currentClaims(): IdClaims | null {
-  const session = loadSession();
-  return session ? decodeJwt<IdClaims>(session.idToken) : null;
 }
 
 let refreshing: Promise<AuthResult<string | null>> | null = null;

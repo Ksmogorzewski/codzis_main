@@ -1,13 +1,16 @@
 import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
-import { apiGet, unwrap, withColdStartRetry } from "@/lib/api";
+import { apiGet, unwrap, withColdStartRetry, withSlowHint } from "@/lib/api";
 import { recommendationsKey } from "@/lib/query-keys";
 import { RecommendationsSchema, type When } from "@/lib/schemas";
 
 export type RecommendationsParams = { when: When; q: string };
 
-// API zwraca do 24 kart; na ekranie pokazujemy 12 po filtrze kategorii (lib/categories.ts).
-export const RECOMMENDATIONS_LIMIT = 24;
+// API zwraca do 16 kart (pula dla LLM); na ekranie pokazujemy do 12 po filtrze kategorii (lib/categories.ts).
+export const RECOMMENDATIONS_LIMIT = 16;
+
+// Po tylu ms bez odpowiedzi pokazujemy komunikat zimnego startu.
+export const SLOW_HINT_MS = 6000;
 
 export function recommendationsPath({ when, q }: RecommendationsParams): string {
   const params = new URLSearchParams({ when });
@@ -33,15 +36,17 @@ export const recommendationsQueryOptions = (p: RecommendationsParams) =>
     queryKey: recommendationsKey(p),
     queryFn: async ({ signal }) => {
       const key = hashKey(p);
-      try {
-        const result = await withColdStartRetry(() => apiGet(recommendationsPath(p), RecommendationsSchema), {
-          signal,
-          onRetry: () => setColdStart(key, true),
-        });
-        return unwrap(result);
-      } finally {
-        setColdStart(key, false);
-      }
+      const result = await withSlowHint(
+        () =>
+          withColdStartRetry(() => apiGet(recommendationsPath(p), RecommendationsSchema, signal), {
+            signal,
+            onRetry: () => setColdStart(key, true),
+          }),
+        SLOW_HINT_MS,
+        () => setColdStart(key, true),
+        () => setColdStart(key, false),
+      );
+      return unwrap(result);
     },
     // Ponawia już withColdStartRetry (5 s, 10 s); globalny retry dodałby czwarte wywołanie.
     retry: false,

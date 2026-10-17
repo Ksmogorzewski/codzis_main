@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useSaveProfile } from "@/hooks/use-save-profile.mutation";
 import { ApiRequestError } from "@/lib/api";
-import type { Answers, Me, OnboardingStep } from "@/lib/schemas";
+import { type Answers, AnswersSchema, type Me, type OnboardingStep } from "@/lib/schemas";
 import { lastSearch } from "@/lib/search";
 import { readJson, writeJson } from "@/lib/storage";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,12 @@ function tileState(step: OnboardingStep, skipped: boolean): string {
   return isRequired(step) ? "Wybierz" : "Opcjonalne · wybierz";
 }
 
+/** Szkic z localStorage; uszkodzony albo w starym kształcie jest ignorowany. */
+function readDraft(key: string): Answers | null {
+  const parsed = AnswersSchema.safeParse(readJson<unknown>("local", key));
+  return parsed.success ? parsed.data : null;
+}
+
 /** Ankieta profilu: kafelki z GET /api/onboarding, okno pytania, zapis PUT /api/profile. */
 export function SurveyView({ me, steps }: Props) {
   const navigate = useNavigate();
@@ -41,7 +47,7 @@ export function SurveyView({ me, steps }: Props) {
   const key = draftKey(me.userId);
   // Niezapisane odpowiedzi przetrwają przeładowanie strony (localStorage, jak w ich App.tsx).
   const [answers, setAnswersState] = useState<Answers>(() =>
-    initialAnswers(steps, readJson<Answers>("local", key), me.profile?.answers),
+    initialAnswers(steps, readDraft(key), me.profile?.answers),
   );
   const [open, setOpen] = useState<number | null>(null);
   const [skipped, setSkipped] = useState<Set<string>>(() => new Set());

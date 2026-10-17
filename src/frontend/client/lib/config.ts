@@ -7,8 +7,6 @@ const ClientConfigSchema = z.object({
   region: z.string().min(1),
   userPoolId: z.string().min(1),
   clientId: z.string().min(1),
-  cognitoDomain: z.string().default(""), // np. warsawnow.auth.eu-central-1.amazoncognito.com
-  googleEnabled: z.boolean().default(false), // logowanie Google poza zakresem MVP portalu
   apiUrl: z.string().min(1).transform((url) => url.replace(/\/+$/, "")),
   partnerPortal: z.string().default(""),
 });
