@@ -138,7 +138,7 @@ export function SurveyView({ me, steps }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {steps.map((s, i) => {
           const done = isFilled(s, answers);
           const bad = invalid.has(s.id);
