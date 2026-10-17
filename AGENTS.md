@@ -71,6 +71,14 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 - **Niczego nie zmyślamy.** Wszystko, co widzi użytkownik, pochodzi z API miasta albo od partnerów i ma źródło.
 - **API UM** (`POST https://dane.um.warszawa.pl/api/action/<akcja>`) nie ma historii ani stronicowania i **blokuje adresy IP AWS** — import uruchamiamy z laptopa (`scripts/import-local.sh`).
 
+## Nowe dane w DynamoDB (decyzja zespołu: zostajemy przy DynamoDB, bez Postgresa)
+1. **Zacznij od listy zapytań**, które funkcja musi obsłużyć („lista osób idących na wydarzenie X w dniu D”, „moje wydarzenia”), dopiero potem projektuj tabelę.
+2. **Klucz pod najczęstsze zapytanie** (`PK` + opcjonalnie `SK` do sortowania, np. `eventId#dzień` + `userId`, `rozmowa` + `czas`); drugie zapytanie = GSI (np. po `userId`). Każde zapytanie to `get_item` / `query` po kluczu lub GSI.
+3. **Bez `scan` w ścieżce żądania.** Liczniki („ile osób idzie”) aktualizuj atomowo przy zapisie (`ADD count :one`), nie licz przy odczycie.
+4. **Dane powielone dla wygody** (np. tytuł wydarzenia w rekordzie deklaracji) opisz w docstringu i aktualizuj w jednym miejscu kodu.
+5. **Raporty i analityka** (zliczenia po wielu polach) — nie w DynamoDB: eksport tabeli do S3 i zapytania SQL w Athenie.
+6. **Nowa tabela = Terraform** (`PAY_PER_REQUEST`, `point_in_time_recovery` dla danych, których nie da się odtworzyć, TTL gdy dane wygasają) + jeden właściciel, który do niej zapisuje (dopisz do sekcji „Dane”).
+
 ## Bezpieczeństwo
 - Sekrety (`WARSAW_API_TOKEN`, klucz DeepSeek, klucze AWS) tylko w `.env` (w `.gitignore`) albo w SSM. `config.js` frontu zawiera tylko dane publiczne (adres API, id puli i klienta Cognito).
 - Nigdy sekretów, tokenów ani danych osobowych w kodzie, logach, commitach ani na czacie. W logach Lambd bez treści żądań i lokalizacji użytkownika.
