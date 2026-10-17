@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>codziś · Portal partnera</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#">co<b>dziś</b> <span>Partner</span></a>
+    <nav id="nav" class="tabs" hidden>
+      <a href="#ogloszenia">Moje ogłoszenia</a>
+      <a href="#dodaj">Dodaj nowe</a>
+      <a href="#profil">Profil</a>
+      <a href="#platnosci">Płatności</a>
+    </nav>
+    <div id="account" class="account" hidden>
+      <a href="#platnosci" class="pill" title="Twoje kredyty"><span id="credits-pill">–</span></a>
+      <button id="logout" class="link" type="button">Wyloguj</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Landing (niezalogowany) -->
+    <section id="landing" hidden>
+      <div class="hero">
+        <div>
+          <h1>Promuj swoje eventy w&nbsp;codziś</h1>
+          <p class="lead">Dodawaj ogłoszenia wydarzeń, które zobaczą osoby szukające, co dziś robić w&nbsp;mieście. Płacisz tylko za opublikowane ogłoszenia.</p>
+          <ol class="steps">
+            <li><b>Zaloguj się</b> kluczem partnera</li>
+            <li><b>Kup kredyty</b> w wybranym pakiecie</li>
+            <li><b>Dodaj ogłoszenie</b>: <span id="landing-cost"></span></li>
+          </ol>
+        </div>
+
+        <form id="login-form" class="card login">
+          <h2>Logowanie partnera</h2>
+          <label>Klucz API
+            <input name="apiKey" type="password" autocomplete="current-password" required>
+          </label>
+          <button class="primary" type="submit">Zaloguj</button>
+          <p class="muted small">Nie masz klucza? Skontaktuj się z nami, żeby zostać partnerem.</p>
+          <p id="login-status" class="status" role="status"></p>
+        </form>
+      </div>
+
+      <h2 class="section-title">Cennik</h2>
+      <div id="landing-packages" class="packages"></div>
+    </section>
+
+    <!-- Portal (zalogowany) -->
+    <section id="portal" hidden>
+      <div data-view="ogloszenia" hidden>
+        <div class="view-head">
+          <h1>Moje ogłoszenia</h1>
+          <a class="button primary" href="#dodaj">+ Dodaj nowe</a>
+        </div>
+        <div id="events-list" class="grid"></div>
+        <div id="events-empty" class="empty" hidden>
+          <p>Nie masz jeszcze żadnych ogłoszeń.</p>
+          <a class="button primary" href="#dodaj">Dodaj pierwsze ogłoszenie</a>
+        </div>
+      </div>
+
+      <div data-view="dodaj" hidden>
+        <h1>Dodaj ogłoszenie</h1>
+        <p id="new-cost" class="notice"></p>
+
+        <form id="event-form" class="card form">
+          <!-- Pola formularza: walidacja w _event_input w src/api/handler.py -->
+          <fieldset>
+            <legend>Wydarzenie</legend>
+            <label>Tytuł *
+              <input name="title" maxlength="200" required>
+            </label>
+            <label>Krótki opis *
+              <textarea name="lead" maxlength="500" rows="3" required placeholder="1–2 zdania widoczne na liście wydarzeń"></textarea>
+            </label>
+            <label>Pełny opis
+              <textarea name="text" maxlength="5000" rows="6" placeholder="Pusta linia rozdziela akapity"></textarea>
+            </label>
+            <label>Kategoria *
+              <select name="category" id="category-select" required></select>
+            </label>
+            <label>Link do strony wydarzenia
+              <input name="url" type="url" maxlength="500" placeholder="https://">
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Termin</legend>
+            <div class="row">
+              <label>Początek *
+                <input name="startsAt" type="datetime-local" required>
+              </label>
+              <label>Koniec
+                <input name="endsAt" type="datetime-local">
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Miejsce</legend>
+            <label>Nazwa miejsca *
+              <input name="venue" maxlength="200" required placeholder="np. OCH-Teatr">
+            </label>
+            <div class="row">
+              <label class="grow">Ulica
+                <input name="street" maxlength="200" placeholder="ul. Grójecka">
+              </label>
+              <label>Numer
+                <input name="streetNumber" maxlength="20">
+              </label>
+            </div>
+            <label>Dzielnica *
+              <select name="district" id="district-select" required></select>
+            </label>
+          </fieldset>
+
+          <label>Zdjęcie *
+            <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required>
+          </label>
+
+          <button class="primary" type="submit">Opublikuj</button>
+          <p id="event-status" class="status" role="status"></p>
+        </form>
+      </div>
+
+      <div data-view="profil" hidden>
+        <h1>Profil</h1>
+        <div class="profile">
+          <div class="card">
+            <p class="muted small">Partner</p>
+            <p id="profile-name" class="big"></p>
+            <p class="muted small">ID: <code id="profile-id"></code></p>
+          </div>
+          <div class="card credits">
+            <p class="muted small">Dostępne kredyty</p>
+            <p id="profile-credits" class="huge"></p>
+            <p id="profile-capacity" class="muted small"></p>
+            <a class="button primary" href="#platnosci">Kup kredyty</a>
+          </div>
+        </div>
+      </div>
+
+      <div data-view="platnosci" hidden>
+        <h1>Płatności</h1>
+        <h2 class="section-title">Kup kredyty</h2>
+        <div id="portal-packages" class="packages"></div>
+
+        <h2 class="section-title">Historia</h2>
+        <div class="card table-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Pakiet</th><th>Kredyty</th><th>Kwota</th><th>Status</th></tr></thead>
+            <tbody id="payments-list"></tbody>
+          </table>
+          <p id="payments-empty" class="muted" hidden>Brak płatności.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="common.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

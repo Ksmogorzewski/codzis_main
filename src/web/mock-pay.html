@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bramka płatności (MOCK)</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <div class="card gateway">
+      <div class="mock-banner">To jest <b>symulacja</b> bramki płatności. Żadne pieniądze nie zostaną pobrane.</div>
+      <h1>MockPay</h1>
+
+      <div id="details" hidden>
+        <dl>
+          <dt>Odbiorca</dt><dd>codziś</dd>
+          <dt>Pakiet</dt><dd id="package"></dd>
+          <dt>Kredyty</dt><dd id="credits"></dd>
+          <dt>Do zapłaty</dt><dd id="amount"></dd>
+        </dl>
+        <div id="actions" class="actions">
+          <button id="cancel" type="button">Anuluj</button>
+          <button id="pay" class="primary" type="button">Zapłać</button>
+        </div>
+      </div>
+
+      <p id="status" class="status" role="status">Ładowanie…</p>
+      <p><a href="/#platnosci">← Wróć do portalu</a></p>
+    </div>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="common.js"></script>
+  <script src="mock-pay.js"></script>
+</body>
+</html>
