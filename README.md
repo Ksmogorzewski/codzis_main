@@ -109,6 +109,14 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 - **E-maile** (kod przy rejestracji, kod resetu hasła) wysyła Cognito z domyślnej skrzynki AWS (`no-reply@verificationemail.com`, temat i treść z `verification_message_template` w `infra/client_auth.tf`). Limit to ~50 e-maili dziennie na konto AWS i nie da się zmienić nadawcy. Docelowo: Amazon SES z domeną `waw-out.pl` (rekordy DKIM w home.pl + wyjście z trybu sandbox), potem w Cognito `email_sending_account = "DEVELOPER"`.
 - Sesja jest trzymana w `localStorage` (refresh token na 30 dni). Konto e-mail i konto Google z tym samym adresem to w Cognito dwa osobne konta.
 
+**Mapa dojazdu (szczegóły wydarzenia):** osadzona mapa Google z trasą komunikacją miejską (Maps Embed API). Start trasy to lokalizacja z przeglądarki, gdy użytkownik się zgodzi, a bez zgody dzielnica z profilu; do naszego API lokalizacja nie trafia. Bez klucza strona pokazuje sam przycisk do Map Google. Klucz:
+1. W [Google Cloud Console](https://console.cloud.google.com/) utwórz projekt z podpiętym kontem rozliczeniowym (Maps Embed API jest bezpłatne, ale Google Maps Platform wymaga rozliczeń).
+2. *APIs & Services → Library*: włącz **Maps Embed API**.
+3. *APIs & Services → Credentials → Create credentials → API key*, a potem w ustawieniach klucza:
+   - *Application restrictions → Websites*: `https://portal.waw-out.pl/*` i `http://localhost:8000/*`;
+   - *API restrictions*: tylko **Maps Embed API**.
+4. Wpisz klucz do `infra/terraform.tfvars` (`google_maps_embed_key = "AIza..."`) i zrób `terraform apply`. Klucz trafia do publicznego `config.js`, więc ograniczenia z punktu 3 są obowiązkowe.
+
 **API** (HTTP API, ID token Cognito w `Authorization: Bearer …`, weryfikuje go API Gateway):
 
 | Endpoint | Opis |

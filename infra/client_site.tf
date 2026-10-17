@@ -125,5 +125,6 @@ locals {
     googleEnabled = local.google_enabled
     apiUrl        = aws_apigatewayv2_api.client.api_endpoint
     partnerPortal = local.website_origin
+    mapsEmbedKey  = var.google_maps_embed_key
   }
 }

@@ -9,3 +9,6 @@ client_domain_aliases = []
 # logowanie Google (opcjonalne): Google Cloud Console -> OAuth client "Web application"
 # google_client_id     = "....apps.googleusercontent.com"
 # google_client_secret = "..."
+
+# Mapa z trasą komunikacją w szczegółach wydarzenia (Maps Embed API, README: „Mapa dojazdu”)
+# google_maps_embed_key = "AIza..."
