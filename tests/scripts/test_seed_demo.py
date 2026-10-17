@@ -10,6 +10,7 @@ from moto import mock_aws
 SPEC = importlib.util.spec_from_file_location(
     "seed_demo", Path(__file__).resolve().parents[2] / "scripts" / "seed_demo.py"
 )
+assert SPEC and SPEC.loader
 seed = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(seed)
 
