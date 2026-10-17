@@ -22,6 +22,17 @@ from .filters import make_event_filter, next_slot
 from .query_encoder import QueryEncoder, DEFAULT_TASTE_WEIGHT
 from .scoring import diversify, preference_boost
 
+# Cosine floor applied by default: candidates below this are dropped instead of
+# padding the answer. Without it a vague query ("coś ciekawego") returns top-10 filled
+# with events scoring 0.05-0.15, which is noise. Calibrated on the real
+# paraphrase-multilingual-mpnet-base-v2 model over Warsaw event text: relevant pairs
+# score from 0.38 up (p10 = 0.43, median 0.64) while irrelevant pairs top out near
+# 0.42 (median 0.23). 0.30 keeps every relevant pair in that sample and drops ~70% of
+# the irrelevant ones; the exact best separator was 0.43, but that is too aggressive
+# for a top-k list and would leave most queries with 1-2 results.
+# NOTE: model-specific - retune (or pass min_score=None to disable) after a model swap.
+DEFAULT_MIN_SCORE = 0.30
+
 
 @dataclass
 class Candidate:
@@ -64,13 +75,16 @@ class Retriever:
         # Query encoder needs id->text to resolve liked_event_ids.
         self.encoder = QueryEncoder(self.model, taste_weight=taste_weight)
         self.encoder.set_event_texts({e.get("id", ""): build_event_text(e) for e in self.events})
+        self.last_dropped: int = 0   # candidates the min_score floor removed (pre-dedupe)
 
     # ------------------------------------------------------------------ #
-    def retrieve(self, user: dict, top_k: int = 10, min_score: float | None = None) -> list[Candidate]:
+    def retrieve(self, user: dict, top_k: int = 10, min_score: float | None = DEFAULT_MIN_SCORE) -> list[Candidate]:
         """Return up to top_k filtered, relevance-ranked candidate events.
 
-        min_score: optional cosine-similarity floor (0..1). Results scoring strictly
-        below this are dropped. Useful to surface only high-confidence matches.
+        min_score: cosine-similarity floor (0..1) applied to the RAW cosine, before the
+        soft-preference boosts. Candidates scoring below it are dropped, so a weak query
+        returns fewer than top_k results instead of padding the list with noise.
+        Defaults to DEFAULT_MIN_SCORE; pass None (or 0.0) to disable the floor.
         """
         predicate = make_event_filter(user)
         allowed = {e.get("id", "") for e in self.events if predicate(e)}
@@ -100,8 +114,11 @@ class Retriever:
             c.score += boost
 
         candidates = sorted(best.values(), key=lambda c: c.score, reverse=True)
-        if min_score is not None:
-            candidates = [c for c in candidates if c.metadata["cosine"] >= min_score]
+        self.last_dropped = 0
+        if min_score:
+            kept = [c for c in candidates if c.metadata["cosine"] >= min_score]
+            self.last_dropped = len(candidates) - len(kept)
+            candidates = kept
         return diversify(_dedupe(candidates), top_k)
 
 

@@ -34,7 +34,7 @@ from boto3.dynamodb.conditions import Attr
 from index_store import FileStore, S3Store, load_events_file, refresh, scan_events
 from present import card, still_on
 from recommender import DEFAULT_MODEL, EmbeddingModel, Recommender
-from results_store import ResultsStore, claimed, expires_at, prefs_hash, set_key
+from results_store import RESULTS_VERSION, ResultsStore, claimed, expires_at, prefs_hash, set_key
 from user_context import AREAS, WINDOWS, build_context, start_area, window
 
 log = logging.getLogger()
@@ -69,6 +69,7 @@ _engine = None
 _engine_version = None
 _engine_meta: dict = {}
 _checked_at = 0.0
+_rejected_version = None  # indeks zbudowany innym modelem niż ten w obrazie (czeka na przebudowę)
 _api_key: str | None | bool = False  # False = jeszcze nie pobrany
 
 
@@ -161,7 +162,8 @@ def _stored(item: dict | None, fingerprint: str, now: datetime) -> tuple[dict | 
     if body["items"] and not items:
         return None, False
     age = now - datetime.fromisoformat(body["generatedAt"])
-    fresh = age <= RESULTS_MAX_AGE and len(items) >= min(MIN_RESULTS, len(body["items"]))
+    fresh = (age <= RESULTS_MAX_AGE and len(items) >= min(MIN_RESULTS, len(body["items"]))
+             and body.get("resultsVersion", 1) >= RESULTS_VERSION)  # starsza wersja: pokaż, policz od nowa
     refining = bool(body.pop("refining", False)) and age.total_seconds() < REFINE_SECONDS
     return {**body, "items": items, "cached": True, "updating": refining or claimed(item, now)}, fresh
 
@@ -254,9 +256,15 @@ def _compute_sets(user_id, prefs, rag_profile, jobs, query, limit, now) -> int:
     def finish(job):
         key, span, body, context, found = job
         started = time.monotonic()
-        ranked = engine.rerank(context, found)
-        log.info("AI dla %s: %s w %.1f s", key, "OK" if ranked else f"brak ({engine.last_error})", time.monotonic() - started)
-        better = {**body, "ranking": "llm", "items": [card(c, query) for c in ranked]} if ranked else body
+        # Fraza od użytkownika: AI najpierw rozwija ją (recommender/expand.py) i wybieramy kandydatów
+        # jeszcze raz - w fazie 1 tego nie robimy, żeby pierwsze karty były od razu.
+        expanded = engine.expand(context) if context.get("query") else context
+        pool = engine.retriever.retrieve(expanded, top_k=limit) if expanded is not context else found
+        ranked = engine.rerank(expanded, pool)
+        log.info("AI dla %s: %s%s w %.1f s", key, "OK" if ranked else f"brak ({engine.last_error})",
+                 " (fraza rozwinięta)" if expanded is not context else "", time.monotonic() - started)
+        items = ranked or (pool if expanded is not context else None)
+        better = {**body, "ranking": "llm" if ranked else body["ranking"], "items": [card(c, query) for c in items]} if items else body
         results.put(user_id, key, fingerprint, {**better, "refining": False}, expires_at(span))
 
     with ThreadPoolExecutor(max_workers=3) as pool:
@@ -271,7 +279,7 @@ def compute(engine, prefs, rag_profile, span, query, limit, now, when) -> tuple[
         context = build_context(prefs, rag_profile, span, query, now, area)
         if len(engine.retriever.retrieve(context, top_k=MIN_RESULTS)) >= MIN_RESULTS:
             break
-    found = engine.recommend(context, top_k=limit, explain=False)
+    found = engine.recommend(context, top_k=limit, explain=False, expand=False)  # LLM dopiero w fazie 2
     log.info("Rekomendacje: when=%s area=%s query=%s -> %d", when, area, bool(query), len(found))
     body = {
         "generatedAt": now.isoformat(timespec="seconds"),
@@ -284,6 +292,7 @@ def compute(engine, prefs, rag_profile, span, query, limit, now, when) -> tuple[
         "ranking": "cosine",
         "items": [card(c, query) for c in found],
         "index": {"builtAt": _engine_meta.get("builtAt"), "events": _engine_meta.get("events")},
+        "resultsVersion": RESULTS_VERSION,
     }
     return body, context, found
 
@@ -319,13 +328,19 @@ def refresh_index() -> dict:
 
 def _current_engine() -> Recommender:
     """Recommender na aktualnym indeksie (sprawdzanym co INDEX_CHECK_SECONDS)."""
-    global _engine, _engine_version, _engine_meta, _checked_at
+    global _engine, _engine_version, _engine_meta, _checked_at, _rejected_version
     if _engine is not None and time.monotonic() - _checked_at < INDEX_CHECK_SECONDS:
         return _engine
     _checked_at = time.monotonic()
     version = store.version()
-    if version is not None and version != _engine_version:
+    if version is not None and version not in (_engine_version, _rejected_version):
         index = store.load()
+        if index is not None and index.meta.get("model") != DEFAULT_MODEL:
+            # Np. zaraz po wdrożeniu obrazu z nowym modelem: wektory mają inny wymiar niż zapytania.
+            # Zapisane zestawy dalej się wyświetlają; liczenie ruszy po przebudowie indeksu.
+            log.warning("Indeks z modelem %s, obraz ma %s - czekam na przebudowę (scripts/recommender-refresh.sh)",
+                        index.meta.get("model"), DEFAULT_MODEL)
+            _rejected_version, index = version, None
         if index is not None:
             _engine = Recommender(index.events, model=_load_model(), api_key=_deepseek_key(),
                                   index=index.vector_index(), llm_timeout=LLM_TIMEOUT)
