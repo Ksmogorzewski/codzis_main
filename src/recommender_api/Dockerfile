@@ -14,8 +14,10 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
       "$(sed -n 's/^\(torch==[^ ]*\).*/\1/p' /tmp/requirements.txt)" \
  && pip install --no-cache-dir -r /tmp/requirements.txt "boto3==1.43.*"
 
-# Model zapisany w obrazie: zimny start bez pobierania z Hugging Face
+# Model zapisany w obrazie: zimny start bez pobierania z Hugging Face. Wagi zapisują się z prawami 600,
+# a Lambda uruchamia kod jako zwykły użytkownik - stąd chmod (inaczej "No such file" przy wczytywaniu)
 RUN python -c "from sentence_transformers import SentenceTransformer as S; S('${EMBEDDING_MODEL_NAME}').save('/opt/model')" \
+ && chmod -R a+rX /opt/model \
  && rm -rf /tmp/.cache
 ENV EMBEDDING_MODEL=/opt/model HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TQDM_DISABLE=1
 

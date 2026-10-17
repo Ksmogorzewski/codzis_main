@@ -10,7 +10,10 @@ type State =
   | { kind: "error"; message: string; status: number }
   | { kind: "ready"; data: Result };
 
-const RETRY_STATUSES = [0, 502, 503, 504]; // zimny start Lambdy z modelem - drugie podejście trafia w ciepłą
+// Zimny start Lambdy z modelem trwa do ~30 s i HTTP API odpowiada wtedy 503. Ponawiamy z przerwą, żeby
+// trafić w rozgrzany już kontener, a nie uruchamiać kolejnego.
+const RETRY_STATUSES = [0, 502, 503, 504];
+const RETRY_DELAYS = [5000, 10000];
 
 export function Recommendations() {
   const [when, setWhen] = useState<When>("today");
@@ -27,13 +30,16 @@ export function Recommendations() {
     const params = new URLSearchParams({ when: w });
     if (q) params.set("q", q);
     try {
-      let data: Result;
-      try {
-        data = await api<Result>("GET", `/api/recommendations?${params}`);
-      } catch (e) {
-        if (!(e instanceof ApiError) || !RETRY_STATUSES.includes(e.status)) throw e;
-        await new Promise((r) => setTimeout(r, 2000));
-        data = await api<Result>("GET", `/api/recommendations?${params}`);
+      let data: Result | undefined;
+      for (let retry = 0; !data; retry++) {
+        try {
+          data = await api<Result>("GET", `/api/recommendations?${params}`);
+        } catch (e) {
+          const delay = RETRY_DELAYS[retry];
+          if (!(e instanceof ApiError) || !RETRY_STATUSES.includes(e.status) || delay === undefined || id !== latest.current) throw e;
+          setState({ kind: "loading", slow: true });
+          await new Promise((r) => setTimeout(r, delay));
+        }
       }
       if (id === latest.current) setState({ kind: "ready", data });
     } catch (e) {

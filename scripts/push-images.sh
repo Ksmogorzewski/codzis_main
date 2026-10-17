@@ -34,6 +34,9 @@ if [[ $WHICH == recommender ]]; then
       --query 'imageDetails[0].imageDigest' --output text)
     aws lambda update-function-code --region "$REGION" --function-name "$FUNCTION" --image-uri "$REPO@$DIGEST" \
       --query 'LastUpdateStatus' --output text
+    # Do końca aktualizacji wywołania trafiają jeszcze w stary obraz
+    echo "Czekam, aż Lambda przełączy się na nowy obraz..."
+    aws lambda wait function-updated --region "$REGION" --function-name "$FUNCTION"
   else
     echo "Teraz: terraform -chdir=infra apply (utworzy Lambdę z tego obrazu)"
   fi
