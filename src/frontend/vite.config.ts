@@ -1,12 +1,28 @@
 import { fileURLToPath } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 
 // Dwie aplikacje w jednym projekcie:
 //   vite --mode client   -> portal klienta WarsawNow (waw-out.pl), dev: http://localhost:8000
 //   vite --mode partner  -> panel organizatora (partner.waw-out.pl), dev: http://localhost:8001
 // config.js nie jest bundlowany: generuje go Terraform (S3), lokalnie scripts/frontend-dev.sh.
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
+
+// Portal klienta: trasy plikowe TanStack Router (generuje client/routeTree.gen.ts) i Tailwind 4.
+// Panel partnera zostaje bez zmian (zwykły CSS, routing na hashu ręcznie).
+const clientPlugins = (): PluginOption[] => [
+  // Musi być przed pluginem React.
+  tanstackRouter({
+    target: "react",
+    autoCodeSplitting: true,
+    routesDirectory: here("./client/routes"),
+    generatedRouteTree: here("./client/routeTree.gen.ts"),
+  }),
+  react(),
+  tailwindcss(),
+];
 
 export default defineConfig(({ mode }) => {
   const app = mode === "partner" ? "partner" : "client";
@@ -15,7 +31,9 @@ export default defineConfig(({ mode }) => {
   return {
     root,
     publicDir: `${root}/public`,
-    plugins: [react()],
+    plugins: app === "client" ? clientPlugins() : [react()],
+    // "@/..." = katalog źródeł portalu klienta (client/); partner używa ścieżek względnych.
+    resolve: { alias: { "@": here("./client") } },
     build: {
       outDir: here(`./dist/${app}`),
       emptyOutDir: true,
