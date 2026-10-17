@@ -3,8 +3,8 @@
 Klucz: userId + setKey = rodzaj okna, daty, limit i wpisana fraza, np.
 "today#2026-10-17#2026-10-17#12#" albo "date#2026-10-30#2026-10-30#12#jazz".
 
-Rekord: body (zestaw kart jako JSON), prefsHash (odcisk preferencji, dla których policzony),
-generatedAt, expiresAt (TTL: dzień po końcu okna). Podczas liczenia na tym samym rekordzie
+Rekord: body (zestaw kart jako JSON, z resultsVersion), prefsHash (odcisk preferencji, dla których
+policzony), generatedAt, expiresAt (TTL: dzień po końcu okna). Podczas liczenia na tym samym rekordzie
 leży claim (claimHash + claimedAt): inni nie liczą drugi raz, a stary zestaw dalej się wyświetla.
 Po CLAIM_SECONDS claim wygasa (liczenie padło) i można go przejąć.
 
@@ -19,8 +19,13 @@ from zoneinfo import ZoneInfo
 from botocore.exceptions import ClientError
 
 WARSAW = ZoneInfo("Europe/Warsaw")
-# Zmiana logiki rankingu lub formatu kart -> podbij, żeby zapisane zestawy policzyły się od nowa
-RESULTS_VERSION = 1
+# Zmiana modelu, logiki rankingu lub formatu kart -> podbij: zapisane zestawy ze starszą wersją
+# są pokazywane dalej, ale traktowane jak nieaktualne, więc przy wejściu liczą się od nowa w tle.
+#   2: model paraphrase-multilingual-mpnet-base-v2 + rozwijanie frazy przez LLM (PR #7)
+RESULTS_VERSION = 2
+# Wersja samego odcisku preferencji - NIE podbijać (inna wartość = żaden zapisany zestaw nie pasuje
+# do profilu i wszyscy czekają na nowe liczenie zamiast widzieć dotychczasowe propozycje).
+PREFS_HASH_VERSION = 1
 CLAIM_SECONDS = 180  # liczenie dwóch faz (wektory + AI) trwa zwykle do minuty
 
 
@@ -29,7 +34,7 @@ def set_key(when: str, span: tuple[date, date], query: str, limit: int) -> str:
 
 
 def prefs_hash(prefs: dict, rag_profile: str | None) -> str:
-    payload = json.dumps([RESULTS_VERSION, prefs, rag_profile], sort_keys=True, ensure_ascii=False, default=str)
+    payload = json.dumps([PREFS_HASH_VERSION, prefs, rag_profile], sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 

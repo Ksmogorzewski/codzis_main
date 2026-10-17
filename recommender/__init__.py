@@ -143,6 +143,15 @@ class Recommender:
         return candidates[:top_k]
 
     # ------------------------------------------------------------------ #
+    def expand(self, user_context: dict) -> dict:
+        """The user context with its query expanded by the LLM (see `_maybe_expand`).
+
+        For callers that retrieve in two passes: a fast one without the LLM, then this
+        expansion + `retriever.retrieve` + `rerank` in the background.
+        """
+        return self._maybe_expand(user_context, True)
+
+    # ------------------------------------------------------------------ #
     def _maybe_expand(self, user_context: dict, expand: bool) -> dict:
         """Append the LLM expansion to the query (cached per query+interests).
 
