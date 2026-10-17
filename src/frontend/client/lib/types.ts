@@ -52,7 +52,8 @@ export type Me = {
 
 // --- rekomendacje (src/recommender_api/handler.py, present.py) ---
 
-export type When = "today" | "tomorrow" | "weekend" | "week";
+// "date" = wybrany dzień (?date=RRRR-MM-DD); "week" obsługuje API, strona go nie pokazuje
+export type When = "today" | "tomorrow" | "weekend" | "week" | "date";
 
 // Najbliższy termin w wybranym oknie: konkretne wydarzenie albo zajęcia co tydzień
 export type Slot =
@@ -101,6 +102,11 @@ export type Recommendations = {
   area: "local" | "nearby" | "city";
   areaRelaxed: boolean;
   ranking: "llm" | "cosine";
+  cached: boolean; // z zapisanego zestawu (tabela recommendations), bez ponownego liczenia
+  updating: boolean; // w tle liczy się nowsza wersja (AI układa kolejność albo odświeżenie po 12 h)
   items: Recommendation[];
   index: { builtAt: string | null; events: number | null };
 };
+
+// 202: zestaw właśnie się liczy (np. zaraz po zmianie profilu) - zapytać ponownie za retryAfter s
+export type Preparing = { status: "preparing"; retryAfter: number };

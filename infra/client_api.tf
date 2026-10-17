@@ -59,6 +59,12 @@ resource "aws_iam_role_policy" "client_api" {
         Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
         Resource = aws_dynamodb_table.users.arn
       },
+      {
+        # Po zapisaniu profilu i przy logowaniu: przeliczenie rekomendacji w tle
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = aws_lambda_function.recommender.arn
+      },
     ]
   })
 }
@@ -76,8 +82,9 @@ resource "aws_lambda_function" "client_api" {
 
   environment {
     variables = {
-      USERS_TABLE = aws_dynamodb_table.users.name
-      DISTRICTS   = jsonencode(local.warsaw_districts)
+      USERS_TABLE          = aws_dynamodb_table.users.name
+      DISTRICTS            = jsonencode(local.warsaw_districts)
+      RECOMMENDER_FUNCTION = aws_lambda_function.recommender.function_name
     }
   }
 

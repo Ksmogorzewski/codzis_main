@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { areaLabel, countLabel, mapsUrl, priceLabel, safeUrl, slotLabel } from "./events";
+import { areaLabel, chosenDayLabel, countLabel, dateBounds, mapsUrl, preparedLabel, priceLabel, safeUrl, slotLabel } from "./events";
 import type { Recommendation } from "./types";
 
 // sobota 17.10.2026, 17:40 w Warszawie
@@ -37,6 +37,13 @@ describe("events", () => {
     expect(mapsUrl(item({ location: { lat: 52.2, lon: 21 } }))).toContain("destination=52.2,21");
     expect(mapsUrl(item({ venue: { name: "Hala Koło", address: "Obozowa 60" } }))).toContain("Obozowa%2060%2C%20Warszawa");
     expect(mapsUrl(item())).toBeNull();
+  });
+
+  it("inny dzień: zakres wyboru i etykiety", () => {
+    expect(dateBounds(NOW)).toEqual({ min: "2026-10-17", max: "2026-12-16" });
+    expect(chosenDayLabel("2026-10-30", NOW)).toBe("Pt 30.10");
+    expect(chosenDayLabel("2026-10-18", NOW)).toBe("Jutro");
+    expect(preparedLabel("2026-10-17T05:02:11+02:00", NOW)).toBe("Przygotowane dziś o 05:02");
   });
 
   it("opis obszaru i liczba propozycji", () => {

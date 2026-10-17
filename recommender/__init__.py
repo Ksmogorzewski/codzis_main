@@ -127,35 +127,47 @@ class Recommender:
         self.last_error = None
         if not candidates:
             return []
-
-        if explain and self.client is not None:
-            try:
-                result = rank_candidates(self.client, user_context, candidates)
-            except Exception as exc:  # the LLM is optional: keep the cosine order
-                self.last_error = f"{type(exc).__name__}: {exc}"
-                return candidates[:top_k]
-            self.last_ranking = "llm"
-            self.last_usage = result["usage"]
-            self.last_notes = result["data"].get("notes")
-            ranking = result["data"].get("ranking") or []
-            reasons = {r.get("id"): r.get("reason", "") for r in ranking if isinstance(r, dict)}
-            by_id = {c.event_id: c for c in candidates}
-            ordered: list[Candidate] = []
-            seen: set[str] = set()
-            for r in ranking:
-                cid = r.get("id") if isinstance(r, dict) else None
-                c = by_id.get(cid)
-                if c and cid not in seen:
-                    c.metadata["reason"] = reasons.get(cid, "")
-                    ordered.append(c)
-                    seen.add(cid)
-            # Append any candidate the LLM dropped, preserving cosine order.
-            for c in candidates:
-                if c.event_id not in seen:
-                    ordered.append(c)
-            candidates = ordered
-
+        if explain:
+            ranked = self.rerank(user_context, candidates)
+            if ranked is not None:
+                candidates = ranked
         return candidates[:top_k]
+
+    # ------------------------------------------------------------------ #
+    def rerank(self, user_context: dict, candidates: list[Candidate]) -> list[Candidate] | None:
+        """DeepSeek re-rank + one-line reasons for already retrieved candidates.
+
+        Returns None when the LLM is unavailable or fails (the caller keeps the cosine
+        order). Lets a caller show cosine results first and ask the LLM afterwards
+        without retrieving again.
+        """
+        if self.client is None or not candidates:
+            return None
+        try:
+            result = rank_candidates(self.client, user_context, candidates)
+        except Exception as exc:  # the LLM is optional: keep the cosine order
+            self.last_error = f"{type(exc).__name__}: {exc}"
+            return None
+        self.last_ranking = "llm"
+        self.last_usage = result["usage"]
+        self.last_notes = result["data"].get("notes")
+        ranking = result["data"].get("ranking") or []
+        reasons = {r.get("id"): r.get("reason", "") for r in ranking if isinstance(r, dict)}
+        by_id = {c.event_id: c for c in candidates}
+        ordered: list[Candidate] = []
+        seen: set[str] = set()
+        for r in ranking:
+            cid = r.get("id") if isinstance(r, dict) else None
+            c = by_id.get(cid)
+            if c and cid not in seen:
+                c.metadata["reason"] = reasons.get(cid, "")
+                ordered.append(c)
+                seen.add(cid)
+        # Append any candidate the LLM dropped, preserving cosine order.
+        for c in candidates:
+            if c.event_id not in seen:
+                ordered.append(c)
+        return ordered
 
 
 # --------------------------------------------------------------------------- #

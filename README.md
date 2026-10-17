@@ -116,7 +116,7 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 | `GET /api/me` | profil (pierwsze wywołanie zakłada rekord), `needsOnboarding`, `onboardingOutdated` |
 | `GET /api/onboarding` | kafelki z pytaniami (ikony, limity wyborów, wymagane pola) |
 | `PUT /api/profile` | `{"answers": {"who": ["kids"], ...}}` → walidacja, preferencje, zapis |
-| `GET /api/recommendations` | `?when=today\|tomorrow\|weekend\|week&q=jazz&limit=12` → karty wydarzeń z uzasadnieniem (sekcja Rekomendacje); `409` bez profilu, `503` zanim powstanie indeks |
+| `GET /api/recommendations` | `?when=today\|tomorrow\|weekend\|date&date=2026-10-30&q=jazz&limit=12` → karty wydarzeń z uzasadnieniem (sekcja Rekomendacje); `202 {"status": "preparing"}` gdy zestaw właśnie się liczy, `409` bez profilu, `503` zanim powstanie indeks |
 
 **Onboarding:** pytania i mapowanie odpowiedzi są w jednym miejscu, `src/client_api/onboarding.py`; frontend tylko je wyświetla. Jest 10 kafelków:
 - wymagane: z kim, klimat (maks. 2), co odkryć (maks. 2), gdzie (dzielnica i zasięg);
@@ -139,17 +139,27 @@ Testy frontendu: `npm --prefix src/frontend test`.
 
 ## Rekomendacje (RAG)
 
-Zakładka **Rekomendacje** w portalu klienta: wybór dnia (dziś / jutro / weekend / 7 dni), wyszukiwanie tekstem („jazz”, „joga”) i karty jak w makiecie (cena, miejsce, termin, „Pasuje: …”, Trasa, Bilet / Szczegóły). Silnik to pakiet [`recommender/`](recommender) z brancha `llm`, dostosowany do schematu v1 eventów.
+Zakładka **Rekomendacje** w portalu klienta: wybór dnia (dziś / jutro / weekend / inny dzień do 60 dni naprzód), wyszukiwanie tekstem („jazz”, „joga”) i karty jak w makiecie (cena, miejsce, termin, „Pasuje: …”, Trasa, Bilet / Szczegóły). Silnik to pakiet [`recommender/`](recommender) z brancha `llm`, dostosowany do schematu v1 eventów.
+
+**Zapisane zestawy (tabela `codzis-recommendations`):** rekomendacje liczą się raz i są zapisywane per użytkownik (`userId` + okno, daty i fraza). Ponowne wejście, przełączanie dni i odświeżanie strony czytają zapis.
+- **Z góry** liczą się zestawy na dziś, jutro i najbliższy weekend:
+  - w nocy dla osób aktywnych w ostatnich 14 dniach (`recommender_precompute_schedule`, domyślnie 3:00 UTC);
+  - od razu po zmianie preferencji (client-api wywołuje rekomender asynchronicznie);
+  - przy logowaniu, jeśli któregoś brakuje.
+- **Na żądanie** liczy się inny dzień i wyszukiwanie frazą, potem też z zapisu.
+- **Odświeżanie:** zestaw starszy niż 12 h (`recommender_results_max_age_hours`, żeby złapać nowe eventy) albo z małą liczbą trwających jeszcze wydarzeń pokazuje się od razu i jednocześnie liczy się od nowa w tle (`"updating": true`). Zakończone wydarzenia znikają z kart same. Czekać trzeba tylko wtedy, gdy zestawu jeszcze nie ma albo zmienił się profil (`202 preparing`, strona dopytuje co 2 s).
+- **Liczenie zawsze w tle** (GET zleca je asynchronicznie tej samej Lambdzie, więc nie ogranicza go limit 30 s HTTP API), w dwóch fazach: najpierw filtry + wektory (sekundy, zestaw od razu do zapisu), potem DeepSeek (do 60 s, dla dziś / jutro / weekend równolegle). Strona sama podmienia listę, gdy wersja z AI jest gotowa.
+- **Bez dublowania:** liczony zestaw dostaje claim w tabeli, więc drugi chętny czeka, zamiast liczyć to samo; claim wygasa po 3 min, gdyby liczenie padło. Strona po pierwszym zestawie dociąga w tle pozostałe z dziś / jutro / weekend.
 
 **Jak dobieramy propozycje** (`src/recommender_api/user_context.py` mapuje `preferences` z onboardingu):
 1. **Twarde filtry:** termin w wybranym oknie (już zakończone odpadają; zajęcia cykliczne wg dni tygodnia), dzielnica wg zasięgu dojazdu (okolica / sąsiednie dzielnice / cała Warszawa), koszt („tylko bezpłatne”), forma (na żywo / online), grupa odbiorców, budżet.
 2. **Podobieństwo wektorowe:** model `paraphrase-multilingual-MiniLM-L12-v2` (lokalnie, CPU) porównuje profil (tematy, formaty, kategorie) albo wpisaną frazę z tekstem eventu (tytuł, kategorie, tagi AI, opis).
 3. **Miękkie preferencje:** drobne punkty za zgodność tagów (tematy, formaty, z kim, aktywność, plener / pod dachem, zapisy, dostępność), porę dnia, bliskość dzielnicy; mniej za „wydarzenia” trwające miesiącami (to zwykle programy, nie propozycja na dziś). Potem dedupe tytułów i różnorodność (nie 5 kart z jednej pływalni).
-4. **DeepSeek** (opcjonalnie, ten sam klucz co tagger): układa 16 najlepszych kandydatów i pisze uzasadnienia. Przy błędzie lub po 12 s zostaje kolejność wektorowa z uzasadnieniem z reguł.
+4. **DeepSeek** (opcjonalnie, ten sam klucz co tagger): układa 12 najlepszych kandydatów i pisze uzasadnienia. Przy błędzie lub po 60 s zostaje kolejność wektorowa z uzasadnieniem z reguł.
 
 Gdy w okolicy wyjdą mniej niż 4 propozycje, obszar poszerza się sam (strona to pokazuje).
 
-**Indeks:** `s3://<data_bucket>/recommender/index.npz` (wektory + odchudzone eventy). EventBridge co 30 min (`recommender_refresh_minutes`) skanuje tabelę `events` i liczy embeddingi tylko dla nowych lub zmienionych tekstów. Drugi harmonogram co 5 min trzyma model w pamięci (`recommender_keep_warm`), bo zimny start z torchem trwa kilkanaście sekund. Koszt: grosze miesięcznie (Lambda płatna za czas wywołań, ECR ~0,25 USD/mies. za obraz 2,3 GB).
+**Indeks:** `s3://<data_bucket>/recommender/index.npz` (wektory + odchudzone eventy). EventBridge co 30 min (`recommender_refresh_minutes`) skanuje tabelę `events` i liczy embeddingi tylko dla nowych lub zmienionych tekstów. Nowe eventy trafiają do zapisanych zestawów przy ich kolejnym przeliczeniu (najpóźniej po 12 h). Drugi harmonogram co 5 min trzyma model w pamięci (`recommender_keep_warm`), bo zimny start z torchem trwa kilkanaście sekund. Koszt: grosze miesięcznie (Lambda płatna za czas wywołań, ECR ~0,25 USD/mies. za obraz 2,3 GB).
 
 **Wdrożenie** (Lambda potrzebuje istniejącego obrazu, więc za pierwszym razem dwa applye):
 ```sh
@@ -264,7 +274,8 @@ Pola portalu partnera i ich walidacja: `TEXT_FIELDS`, `DECLARED_FIELDS` i `_even
 - Kredyt jest pobierany przy zapisie ogłoszenia, przed uploadem zdjęcia. Jeśli upload się nie uda, `image.highlighted.path` wskazuje na nieistniejący plik.
 - Czas z formularza jest interpretowany w strefie przeglądarki partnera.
 - **Domena główna bez subdomeny** (np. samo `waw-out.pl`) nie zadziała z CloudFront przez home.pl: CNAME wymaga hosta, a rekord A wymagałby stałego IP, którego CloudFront nie ma. Dlatego obie strony są na subdomenach (`partner.`, `portal.`).
-- Rekomendacje: nowy event pojawia się w nich po odświeżeniu indeksu (do 30 min); sąsiedztwo dzielnic jest przybliżone; brak jeszcze sygnałów zwrotnych (polubienia → `liked_event_ids`), które recommender już obsługuje.
+- Rekomendacje: nowy event trafia do indeksu w ciągu 30 min, a do zapisanych zestawów przy ich przeliczeniu (najpóźniej po 12 h); sąsiedztwo dzielnic jest przybliżone; brak jeszcze sygnałów zwrotnych (polubienia → `liked_event_ids`), które recommender już obsługuje.
+- Nocne przeliczenie to jedno wywołanie Lambdy (do 15 min, ~15-25 s na osobę z LLM): wystarczy na kilkadziesiąt aktywnych osób, przy większej skali trzeba je rozłożyć (np. SQS).
 - Pierwsze zapytanie po zimnym starcie Lambdy rekomendera trwa kilkanaście sekund (strona pokazuje komunikat i raz ponawia); harmonogram „warmup” zwykle temu zapobiega.
 - Ogłoszenie partnera pojawia się w tabeli `events` po ~2-5 min (start kontenera + tagowanie).
 - Brak alarmu na DLQ: zepsute wiadomości trzeba sprawdzać ręcznie.

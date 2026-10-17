@@ -7,8 +7,9 @@ odbiorców, budżet i okno czasowe. Reszta preferencji tylko podbija ranking
 
 from datetime import date, datetime, timedelta
 
-# Okna czasowe (parametr ?when=)
-WINDOWS = {"today": "dziś", "tomorrow": "jutro", "weekend": "w weekend", "week": "w ciągu 7 dni"}
+# Okna czasowe (parametr ?when=; "date" = wybrany dzień z ?date=RRRR-MM-DD)
+WINDOWS = {"today": "dziś", "tomorrow": "jutro", "weekend": "w weekend", "week": "w ciągu 7 dni", "date": "w wybrany dzień"}
+MAX_DAYS_AHEAD = 60
 # Zasięg dojazdu z onboardingu (travelRange), od najwęższego
 AREAS = ["local", "nearby", "city"]
 
@@ -33,8 +34,16 @@ for _a, _b in _BORDERS:
     NEIGHBOURS.setdefault(_b, []).append(_a)
 
 
-def window(when: str, today: date) -> tuple[date, date]:
-    """Okno dat (włącznie) dla ?when=, w czasie warszawskim."""
+def window(when: str, today: date, day: str | None = None) -> tuple[date, date]:
+    """Okno dat (włącznie) dla ?when=, w czasie warszawskim. ValueError przy złej dacie."""
+    if when == "date":
+        try:
+            chosen = date.fromisoformat(day or "")
+        except ValueError:
+            raise ValueError("Podaj datę w formacie RRRR-MM-DD")
+        if not today <= chosen <= today + timedelta(days=MAX_DAYS_AHEAD):
+            raise ValueError(f"Wybierz dzień od dziś do {MAX_DAYS_AHEAD} dni naprzód")
+        return chosen, chosen
     if when == "tomorrow":
         return today + timedelta(days=1), today + timedelta(days=1)
     if when == "weekend":
@@ -51,10 +60,10 @@ def start_area(prefs: dict) -> str:
     return prefs.get("travelRange") if prefs.get("travelRange") in AREAS else "city"
 
 
-def build_context(prefs: dict, rag_profile: str | None, when: str, query: str, now: datetime, area: str) -> dict:
+def build_context(prefs: dict, rag_profile: str | None, span: tuple[date, date], query: str, now: datetime, area: str) -> dict:
     home = prefs.get("district")
     near = NEIGHBOURS.get(home, [])
-    date_from, date_to = window(when, now.date())
+    date_from, date_to = span
     max_price = prefs.get("maxPrice")
 
     if area == "local" and home:
