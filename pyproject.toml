@@ -1,0 +1,6 @@
+# Konfiguracja narzędzi deweloperskich backendu (pytest, ruff, mypy).
+# Zależności: requirements-dev.txt. Uruchomienie wszystkiego: scripts/backend-check.sh
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
