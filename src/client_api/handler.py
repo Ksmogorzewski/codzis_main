@@ -5,9 +5,12 @@
     PUT /api/profile     {"answers": {...}} -> walidacja, preferencje, zapis w tabeli users
 
 Token weryfikuje API Gateway; tu korzystamy już tylko z jego claims (ID token Cognito).
+Po zapisaniu profilu i przy logowaniu rekomender w tle liczy zestawy na dziś, jutro i weekend
+(GET /api/recommendations obsługuje osobna Lambda: src/recommender_api).
 """
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 
@@ -17,11 +20,16 @@ from onboarding import build_steps, compute_preferences, onboarding_version, pub
 
 USERS_TABLE = os.environ["USERS_TABLE"]
 DISTRICTS = json.loads(os.environ["DISTRICTS"])
+RECOMMENDER_FUNCTION = os.environ.get("RECOMMENDER_FUNCTION")
 
 STEPS = build_steps(DISTRICTS)
 ONBOARDING_VERSION = onboarding_version(STEPS)
 
 users = boto3.resource("dynamodb").Table(USERS_TABLE)
+lambda_client = boto3.client("lambda")
+
+log = logging.getLogger()
+log.setLevel(logging.INFO)
 
 
 class ApiError(Exception):
@@ -62,6 +70,8 @@ def get_me(claims: dict) -> dict:
         ExpressionAttributeValues=values,
         ReturnValues="ALL_NEW",
     )["Attributes"]
+    if item.get("preferences"):
+        _precompute(claims["sub"])  # liczy tylko brakujące lub nieaktualne zestawy
     return _view(item)
 
 
@@ -86,7 +96,20 @@ def put_profile(claims: dict, body: dict) -> dict:
         },
         ReturnValues="ALL_NEW",
     )["Attributes"]
+    _precompute(claims["sub"])  # nowe preferencje -> od razu nowe zestawy na dziś, jutro i weekend
     return _view(item)
+
+
+def _precompute(user_id: str) -> None:
+    """Asynchroniczne wywołanie rekomendera; odpowiedź nie czeka na liczenie."""
+    if not RECOMMENDER_FUNCTION:
+        return
+    try:
+        lambda_client.invoke(FunctionName=RECOMMENDER_FUNCTION, InvocationType="Event",
+                             Payload=json.dumps({"action": "precompute", "userId": user_id}))
+    except Exception:
+        # Profil i tak jest zapisany; zestawy policzą się przy wejściu na stronę
+        log.exception("Nie udało się zlecić przeliczenia rekomendacji")
 
 
 def _view(item: dict) -> dict:

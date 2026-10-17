@@ -204,6 +204,24 @@ variable "recommender_refresh_minutes" {
   default     = 30
 }
 
+variable "recommender_precompute_schedule" {
+  description = "Kiedy liczyć zestawy na dziś, jutro i weekend dla aktywnych użytkowników (UTC; 3:00 = 5:00 latem, 4:00 zimą)"
+  type        = string
+  default     = "cron(0 3 * * ? *)"
+}
+
+variable "recommender_precompute_active_days" {
+  description = "Nocne przeliczenie obejmuje osoby zalogowane w ciągu tylu ostatnich dni"
+  type        = number
+  default     = 14
+}
+
+variable "recommender_results_max_age_hours" {
+  description = "Po ilu godzinach zapisany zestaw liczy się od nowa (żeby złapać nowe eventy)"
+  type        = number
+  default     = 12
+}
+
 variable "recommender_keep_warm" {
   description = "Wywołanie co 5 min, żeby model był w pamięci (zimny start z torchem trwa kilkanaście sekund)"
   type        = bool

@@ -1,6 +1,9 @@
 """Kandydat z rekomendera -> karta wydarzenia dla frontendu (+ uzasadnienie bez LLM)."""
 
+from datetime import datetime
+
 from recommender import plain_text
+from recommender.retriever import next_slot
 
 # Wymiary taggera pokazywane na karcie
 CARD_TAGS = ["theme", "format", "cost", "mode", "setting", "registration", "audience", "activity_level"]
@@ -69,3 +72,16 @@ def rule_reason(event: dict, matched: dict, query: str | None) -> str:
         return f"Pasuje do wyszukiwania „{query}”" if query else "Podobne do Twoich zainteresowań"
     text = " · ".join(parts[:4])
     return text[0].upper() + text[1:]
+
+
+def still_on(card: dict, now: datetime) -> bool:
+    """Czy termin z karty jeszcze się nie skończył (zapisany zestaw ogląda się przez cały dzień)."""
+    slot = card.get("slot")
+    if not slot:
+        return True
+    if slot.get("recurring"):
+        if not slot.get("date"):
+            return True
+        weekly = {"kind": "recurring", "schedule": [{"day": slot["day"], "start": slot.get("start"), "end": slot.get("end")}]}
+        return next_slot(weekly, slot["date"], slot["date"], now) is not None
+    return next_slot({"occurrences": [slot]}, now=now) is not None

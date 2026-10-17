@@ -8,12 +8,13 @@ const DAY_SHORT: Record<string, string> = {
   monday: "pon", tuesday: "wt", wednesday: "śr", thursday: "czw", friday: "pt", saturday: "sob", sunday: "nd",
 };
 
+// Zestawy liczone z góry (w nocy, po zmianie profilu); inny dzień liczy się przy pierwszym wyborze
 export const WHEN_OPTIONS: { id: When; label: string }[] = [
   { id: "today", label: "Dziś" },
   { id: "tomorrow", label: "Jutro" },
   { id: "weekend", label: "Weekend" },
-  { id: "week", label: "7 dni" },
 ];
+export const MAX_DAYS_AHEAD = 60; // = MAX_DAYS_AHEAD w src/recommender_api/user_context.py
 
 const dateFormat = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
 const timeFormat = new Intl.DateTimeFormat("pl-PL", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
@@ -38,6 +39,19 @@ export function dayLabel(iso: string, now: Date): string {
   const weekday = DAYS[(new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7]!;
   return `${DAY_SHORT[weekday]} ${shortDate(iso)}`;
 }
+
+// Zakres dla wyboru "Inny dzień": od dziś do MAX_DAYS_AHEAD dni naprzód
+export function dateBounds(now: Date): { min: string; max: string } {
+  const min = warsawDate(now);
+  return { min, max: addDays(min, MAX_DAYS_AHEAD) };
+}
+
+// "Sob 24.10" na przycisku wybranego dnia
+export const chosenDayLabel = (iso: string, now: Date) => cap(dayLabel(iso, now));
+
+// "Przygotowane dziś o 05:02"
+export const preparedLabel = (generatedAt: string, now: Date) =>
+  `Przygotowane ${dayLabel(warsawDate(new Date(generatedAt)), now)} o ${timeFormat.format(new Date(generatedAt))}`;
 
 // "Dziś, 18:00–19:30" / "Trwa do 30.10" / "Pon 19.10, 16:00 · co tydzień"
 export function slotLabel(slot: Slot | null, now: Date): string | null {
