@@ -41,7 +41,7 @@ Tabele DynamoDB: `events` (docelowa, pisze tylko worker), `submissions` i `payme
 
 ## Deploy
 
-DNS domeny jest w home.pl, bez Route53. Portal działa pod `domain_name` (`waw-out.pl`); opcjonalne dodatkowe nazwy na tym samym certyfikacie: `domain_aliases` (domyślnie brak). Rekordy w home.pl dodajesz ręcznie, dlatego deploy ma dwa etapy:
+DNS domeny jest w home.pl, bez Route53. Portal działa pod `domain_name` (`partner.waw-out.pl`); opcjonalne dodatkowe nazwy na tym samym certyfikacie: `domain_aliases` (domyślnie brak). Rekordy w home.pl dodajesz ręcznie, dlatego deploy ma dwa etapy:
 
 ```sh
 cd infra
@@ -54,7 +54,7 @@ terraform output acm_validation_records        # home.pl: CNAME <name> -> <value
 
 # 2. reszta; apply czeka (do 2 h), aż certyfikat zostanie wydany (~5-30 min po dodaniu rekordów)
 terraform apply
-terraform output dns_records                   # home.pl: waw-out.pl -> ALIAS/ANAME <value> (dXXXX.cloudfront.net)
+terraform output dns_records                   # home.pl: CNAME, Host "partner" -> <value> (dXXXX.cloudfront.net.)
 ```
 
 **Zmiana domeny w działającym deployu:** zrób od razu pełny `terraform apply`, bez etapu 1. Przy `-target` Terraform próbuje usunąć stary certyfikat, który jest jeszcze podpięty pod CloudFront, i apply kończy się błędem. Gdy apply czeka na `aws_acm_certificate_validation`, w drugim terminalu uruchom `scripts/acm-records.sh`: pokaże rekordy do wpisania w home.pl. Domena musi już działać w DNS (świeżo zarejestrowana `.pl` potrzebuje na to od kilku minut do kilku godzin).
@@ -159,7 +159,7 @@ Pola portalu partnera i ich walidacja: `TEXT_FIELDS` i `_event_input` w `src/api
 - Mock bramka: `confirm` woła sam partner, więc każdy zalogowany może dodać sobie kredyty. Przy prawdziwej bramce (np. Stripe, PayU, Przelewy24) zastąp to webhookiem od operatora, weryfikowanym podpisem.
 - Kredyt jest pobierany przy zapisie ogłoszenia, przed uploadem zdjęcia. Jeśli upload się nie uda, `image.highlighted.path` wskazuje na nieistniejący plik.
 - Czas z formularza jest interpretowany w strefie przeglądarki partnera.
-- **Domena główna (`waw-out.pl`):** CNAME na domenie głównej jest niedozwolony, a CloudFront nie ma stałego IP, więc w home.pl potrzebny jest rekord typu ALIAS/ANAME (jeśli panel go nie ma, zostaje `www.` + przekierowanie albo Route53).
+- **Domena główna bez subdomeny** (np. samo `waw-out.pl`) nie zadziała z CloudFront przez home.pl: CNAME wymaga hosta, a rekord A wymagałby stałego IP, którego CloudFront nie ma. Dlatego portal jest na subdomenie.
 - Ogłoszenie partnera pojawia się w tabeli `events` po ~2-5 min (start kontenera + tagowanie).
 - Brak alarmu na DLQ: zepsute wiadomości trzeba sprawdzać ręcznie.
 - Rekordy usunięte w źródle przed końcem (np. odwołane eventy) zostają w tabeli do `expiresAt`; zajęcia cykliczne usunięte w źródle zostają na stałe (importer tylko loguje ich liczbę).

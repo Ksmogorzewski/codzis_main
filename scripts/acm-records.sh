@@ -12,7 +12,7 @@ if [[ -z "$ARN" || "$ARN" == "None" ]]; then
   exit 1
 fi
 
-# W home.pl (strefa domeny) jako nazwę wpisz część PRZED nazwą domeny, np. "_abc123" albo "_abc123.www"
+# W home.pl (strefa waw-out.pl) w polu Host wpisz część PRZED ".waw-out.pl", np. "_abc123.partner"
 aws acm describe-certificate --region us-east-1 --certificate-arn "$ARN" \
   --query 'Certificate.DomainValidationOptions[].[DomainName, ValidationStatus, ResourceRecord.Type, ResourceRecord.Name, ResourceRecord.Value]' \
   --output table
