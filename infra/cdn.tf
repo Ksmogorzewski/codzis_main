@@ -1,7 +1,10 @@
-# DNS domeny jest u zewnętrznego operatora (agm.waw.pl -> home.pl), bez Route53.
-# W home.pl trzeba ręcznie dodać 2 rekordy CNAME - Terraform je wypisuje:
-#   terraform output acm_validation_record   (walidacja certyfikatu; zostaje na stałe - auto-odnawianie)
-#   terraform output portal_cname            (sama domena -> CloudFront)
+# Strefa dla samej domeny portalu (np. test.agm.waw.pl). Domena nadrzędna może być u innego
+# operatora DNS (agm.waw.pl jest w home.pl) - wystarczy tam delegacja NS na name_servers tej strefy.
+resource "aws_route53_zone" "main" {
+  name          = var.domain_name
+  force_destroy = true
+}
+
 resource "aws_acm_certificate" "portal" {
   provider          = aws.us_east_1
   domain_name       = var.domain_name
@@ -12,14 +15,23 @@ resource "aws_acm_certificate" "portal" {
   }
 }
 
-# Czeka (do 2 h), aż certyfikat będzie ISSUED, czyli aż rekord walidacyjny pojawi się w home.pl
-resource "aws_acm_certificate_validation" "portal" {
-  provider        = aws.us_east_1
-  certificate_arn = aws_acm_certificate.portal.arn
-
-  timeouts {
-    create = "2h"
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for o in aws_acm_certificate.portal.domain_validation_options : o.domain_name => o
   }
+
+  zone_id         = aws_route53_zone.main.zone_id
+  name            = each.value.resource_record_name
+  type            = each.value.resource_record_type
+  records         = [each.value.resource_record_value]
+  ttl             = 300
+  allow_overwrite = true
+}
+
+resource "aws_acm_certificate_validation" "portal" {
+  provider                = aws.us_east_1
+  certificate_arn         = aws_acm_certificate.portal.arn
+  validation_record_fqdns = [for r in aws_route53_record.cert_validation : r.fqdn]
 }
 
 resource "aws_cloudfront_origin_access_control" "website" {
@@ -113,5 +125,19 @@ resource "aws_cloudfront_distribution" "portal" {
     acm_certificate_arn      = aws_acm_certificate_validation.portal.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
+  }
+}
+
+resource "aws_route53_record" "portal" {
+  for_each = toset(["A", "AAAA"])
+
+  zone_id = aws_route53_zone.main.zone_id
+  name    = var.domain_name
+  type    = each.key
+
+  alias {
+    name                   = aws_cloudfront_distribution.portal.domain_name
+    zone_id                = aws_cloudfront_distribution.portal.hosted_zone_id
+    evaluate_target_health = false
   }
 }

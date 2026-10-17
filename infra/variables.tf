@@ -9,7 +9,7 @@ variable "project" {
 }
 
 variable "domain_name" {
-  description = "Domena portalu, np. test.agm.waw.pl (DNS u zewnętrznego operatora, rekordy CNAME dodawane ręcznie)"
+  description = "Domena portalu, np. test.agm.waw.pl (Terraform zakłada dla niej strefę Route53)"
   type        = string
 }
 
