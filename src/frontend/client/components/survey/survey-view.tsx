@@ -219,7 +219,8 @@ export function SurveyView({ me, steps }: Props) {
           disabled={save.isPending}
           aria-busy={save.isPending}
           onClick={submit}
-          className={cn(!ready && "text-muted-foreground hover:bg-secondary")}
+          // na wąskim telefonie tekst może się zawinąć zamiast wyjść poza przycisk
+          className={cn("h-auto min-h-[60px] py-3 text-center whitespace-normal", !ready && "text-muted-foreground hover:bg-secondary")}
         >
           {save.isPending ? "Zapisuję…" : "Zapisz i pokaż rekomendacje"}
           {!save.isPending && <Icon name="arrow_forward" size={22} />}
