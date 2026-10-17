@@ -1,6 +1,39 @@
+# Secrets — NEVER commit API keys
 .env
+.env.*
+!.env.example
+Klucz.txt
+
+# Virtualenv / tooling
 .venv/
+venv/
+env/
+.mise/
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Model cache
+.cache/
+models/
+
+# Local test data
 data_real/
 data_tests/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local test artifacts
+*.log

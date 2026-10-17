@@ -74,3 +74,13 @@ merged = merge(raw_events, summary["results"])   # full records + "id" + "tags"
 | Dimensions (taxonomy) | `tagger/prompt.py` → `DIMENSIONS` |
 | Model / endpoint | `tagger/client.py` |
 | Chunk token budget | `tagger/orchestrator.py` → `TARGET_TOKENS` |
+
+---
+
+## Recommender (RAG)
+
+The [`recommender/`](recommender) package is the recommendation side of CoDziś: it embeds
+the tagged events (produced by this tagger) with a local multilingual model and ranks
+them for a user via cosine similarity, with an optional DeepSeek re-rank + explanation.
+
+See [recommender/README.md](recommender/README.md) for usage and install.
