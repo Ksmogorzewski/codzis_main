@@ -6,13 +6,15 @@ Control flow:
     1. Receive a batch of messages from SQS (env SQS_QUEUE_URL).
        Each message body is a JSON array of raw event records (a diff).
     2. For each message:
-         prepare_records(raw) -> slim records
+         normalize(raw)       -> id, source, startsAt/endsAt, Warsaw API quirks
+         skip records already in the table (BEFORE tagging - saves tokens)
+         prepare_records(new) -> slim records
          tag_events(slim)     -> LLM tags  (tagger / DeepSeek)
-         merge(raw, tagged)   -> full record + "id" + "tags" (pure)
-         for each merged record:
-             skip if sink.exists(record["id"])
-             else sink.put(sanitize(record))
-         source.delete(receipt_handle)   # ONLY after the whole message succeeded
+         merge(new, tagged)   -> full record + "id" + "tags" (pure)
+         sink.put(sanitize(record)) for every TAGGED record
+         partner records: mark submission as published (portal status)
+         source.delete(receipt_handle)   # ONLY if every record got tags;
+                                         # otherwise redelivery re-tags just the rest
     3. Repeat until a receive returns 0 messages (or --max-batches hit),
        then exit.
 
@@ -22,6 +24,7 @@ Exit code is the ONLY "task ended" signal:
 Env:
     SQS_QUEUE_URL   (required)  source queue
     DYNAMODB_TABLE  (optional, default "warsaw_events" + warning)
+    SUBMISSIONS_TABLE (optional) partner portal submissions; no-op if unset
     AWS_REGION      (optional, default "eu-central-1")
     DEEPSEEK_API_KEY (required by tagger.client, via env or .env)
 
@@ -31,10 +34,14 @@ Usage:
 
 import argparse
 import logging
+import os
 import sys
+import tempfile
 
 from tagger import merge, tag_events
-from tagger.dynamodb_sink import DynamoDBSink, sanitize
+from tagger.client import resolve_api_key
+from tagger.dynamodb_sink import DynamoDBSink, SubmissionStatus, sanitize
+from tagger.normalize import SOURCE_PARTNER, normalize
 from tagger.prepare import prepare_records
 from tagger.sqs_source import SQSSource
 
@@ -43,6 +50,9 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 log = logging.getLogger("run_task")
+
+# Orchestrator writes per-event results to a file; the container's /app is read-only.
+TAGGED_PATH = os.path.join(tempfile.gettempdir(), "tagged.jsonl")
 
 
 def main() -> int:
@@ -56,11 +66,21 @@ def main() -> int:
     )
     args = ap.parse_args()
 
+    # Fail fast before touching the queue: without a key every message would
+    # fail 5 times and end up in the DLQ.
+    try:
+        if resolve_api_key() == "CHANGE_ME":
+            raise RuntimeError("DEEPSEEK_API_KEY is still the Terraform placeholder (set it in SSM)")
+    except RuntimeError as e:
+        log.error("%s", e)
+        return 1
+
     all_ok = True
     written = skipped = failed_msgs = 0
 
     source = SQSSource()
     sink = DynamoDBSink()
+    submissions = SubmissionStatus()
 
     for batch_no in range(1, args.max_batches + 1):
         try:
@@ -89,23 +109,50 @@ def main() -> int:
                 continue
 
             try:
-                slim = prepare_records(raw_events)
-                summary = tag_events(slim)
-                tagged = summary["results"]          # {id: dims}
-                merged = merge(raw_events, tagged)   # full record + id + tags
+                records = []
+                for raw in raw_events:
+                    try:
+                        records.append(normalize(raw))
+                    except ValueError as e:
+                        log.error("Dropping invalid record (%s): %.80s", e, raw)
 
-                for record in merged:
-                    if sink.exists(record["id"]):
+                new = []
+                seen = set()
+                for record in records:
+                    if record["id"] in seen:         # duplicate within one diff
                         skipped += 1
                         continue
-                    sink.put(sanitize(record))       # raises on failure
-                    written += 1
+                    seen.add(record["id"])
+                    if sink.exists(record["id"]):
+                        skipped += 1
+                        # redelivery after a crash between put and status update
+                        if record["source"] == SOURCE_PARTNER:
+                            submissions.published(record["id"], None)
+                    else:
+                        new.append(record)
+
+                untagged = []
+                if new:
+                    summary = tag_events(prepare_records(new), output_path=TAGGED_PATH)
+                    tagged = summary["results"]          # {id: dims}
+                    for record in merge(new, tagged):    # full record + id + tags
+                        if record["id"] not in tagged:
+                            untagged.append(record["id"])
+                            continue
+                        sink.put(sanitize(record))       # raises on failure
+                        written += 1
+                        if record["source"] == SOURCE_PARTNER:
+                            submissions.published(record["id"], record["tags"])
+
+                if untagged:
+                    # Keep the message: tagged records are already written and
+                    # will be skipped on redelivery, so only these get re-tagged.
+                    raise RuntimeError(f"{len(untagged)} record(s) not tagged: {untagged[:5]}")
 
                 source.delete(handle)                # only after success
                 log.info(
-                    "Message processed: %d record(s) (%d new, %d existing) "
-                    "— deleted from queue",
-                    len(merged), written, skipped,
+                    "Message processed: %d record(s), %d new — deleted from queue",
+                    len(records), len(new),
                 )
             except Exception as e:
                 # Do NOT delete the message: SQS visibility timeout will

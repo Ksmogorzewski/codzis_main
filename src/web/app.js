@@ -20,6 +20,9 @@ function setStatus(node, text, kind = "") {
   node.className = `status ${kind}`;
 }
 
+// Tagi z taggera AI: {theme: [...], audience: "...", format: [...], cost: "...", mode: "..."}
+const tagList = (tags) => Object.values(tags || {}).flat().filter(Boolean);
+
 function parseHash() {
   const [tab, query] = location.hash.slice(1).split("?");
   return { tab: TABS.includes(tab) ? tab : "ogloszenia", params: new URLSearchParams(query) };
@@ -109,7 +112,7 @@ const VIEWS = {
             el("div", { className: "muted small", textContent: formatDate(ev.occurrence?.[0]?.from || ev.startsAt) }),
             el("div", { className: "muted small", textContent: where }),
             el("p", { className: "lead-text", textContent: ev.lead || "" }),
-            ev.tags?.length ? el("div", { className: "tags" }, ...ev.tags.map((t) => el("span", { textContent: `#${t}` }))) : null,
+            tagList(ev.tags).length ? el("div", { className: "tags" }, ...tagList(ev.tags).map((t) => el("span", { textContent: t }))) : null,
           ),
         );
       }),

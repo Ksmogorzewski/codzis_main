@@ -65,6 +65,33 @@ resource "aws_iam_role_policy_attachment" "worker_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# Klucz DeepSeek: SSM SecureString (standard tier = darmowy). Wartość ustawiasz poza Terraformem,
+# żeby nie trafiła do state'u:
+#   aws ssm put-parameter --name /codzis/deepseek-api-key --type SecureString --overwrite --value sk-...
+resource "aws_ssm_parameter" "deepseek_api_key" {
+  name  = "/${local.name}/deepseek-api-key"
+  type  = "SecureString"
+  value = "CHANGE_ME"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_iam_role_policy" "worker_execution_secrets" {
+  name = "${local.name}-worker-secrets"
+  role = aws_iam_role.worker_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ssm:GetParameters"]
+      Resource = aws_ssm_parameter.deepseek_api_key.arn
+    }]
+  })
+}
+
 # Rola kodu workera
 resource "aws_iam_role" "worker_task" {
   name               = "${local.name}-worker-task"
@@ -85,7 +112,7 @@ resource "aws_iam_role_policy" "worker_task" {
       },
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:PutItem"]
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem"]
         Resource = aws_dynamodb_table.events.arn
       },
       {
@@ -118,10 +145,14 @@ resource "aws_ecs_task_definition" "worker" {
     essential = true
 
     environment = [
-      { name = "EVENTS_QUEUE_URL", value = aws_sqs_queue.events.url },
-      { name = "EVENTS_TABLE", value = aws_dynamodb_table.events.name },
+      { name = "SQS_QUEUE_URL", value = aws_sqs_queue.events.url },
+      { name = "DYNAMODB_TABLE", value = aws_dynamodb_table.events.name },
       { name = "SUBMISSIONS_TABLE", value = aws_dynamodb_table.submissions.name },
       { name = "AWS_REGION", value = var.region },
+    ]
+
+    secrets = [
+      { name = "DEEPSEEK_API_KEY", valueFrom = aws_ssm_parameter.deepseek_api_key.arn },
     ]
 
     logConfiguration = {

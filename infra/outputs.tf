@@ -36,3 +36,8 @@ output "events_queue_url" {
 output "worker_repository_url" {
   value = aws_ecr_repository.worker.repository_url
 }
+
+output "deepseek_api_key_parameter" {
+  description = "Ustaw wartość: aws ssm put-parameter --name <to> --type SecureString --overwrite --value sk-..."
+  value       = aws_ssm_parameter.deepseek_api_key.name
+}

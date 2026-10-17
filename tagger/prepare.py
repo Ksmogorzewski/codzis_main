@@ -11,21 +11,21 @@ Raw record schema (Warsaw API):
     occurrence, image, language, availableLanguages
 
 Slim model record:
-    id           - stable hash of url (mapping key, NOT sent to the model)
+    id           - record's own id, else stable hash of url (mapping key)
     title        - event title
     lead         - short summary (may be null)
     description  - full text with HTML stripped + whitespace normalized
     categories   - existing tags (names only)
 """
 
-from .config import event_id, strip_html
+from .config import record_id, strip_html
 
 
 def prepare_records(raw_events: list[dict]) -> list[dict]:
     """Map raw API records to slim model records. Pure, no I/O."""
     return [
         {
-            "id": event_id(e.get("url")),
+            "id": record_id(e),
             "title": e.get("title"),
             "lead": e.get("lead"),
             "description": strip_html(e.get("text") or ""),

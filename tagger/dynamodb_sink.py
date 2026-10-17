@@ -87,3 +87,34 @@ class DynamoDBSink:
         treats that as a batch failure and does NOT delete the SQS message.
         """
         self.table.put_item(Item=item)
+
+
+class SubmissionStatus:
+    """Mark partner submissions (portal's "Moje ogłoszenia") as published.
+
+    Table name: env SUBMISSIONS_TABLE. If unset, this is a no-op, so the task
+    still works for public-API-only setups.
+    """
+
+    def __init__(self, table_name: str | None = None, region: str | None = None):
+        table_name = table_name or os.environ.get("SUBMISSIONS_TABLE")
+        region = region or os.environ.get("AWS_REGION", DEFAULT_REGION)
+        self.table = (
+            boto3.resource("dynamodb", region_name=region).Table(table_name)
+            if table_name else None
+        )
+
+    def published(self, event_id: str, tags: dict | None) -> None:
+        if self.table is None:
+            return
+        values = {":published": "published"}
+        update = "SET #status = :published"
+        if tags:
+            update += ", tags = :tags"
+            values[":tags"] = sanitize(tags)
+        self.table.update_item(
+            Key={"id": event_id},
+            UpdateExpression=update,
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues=values,
+        )

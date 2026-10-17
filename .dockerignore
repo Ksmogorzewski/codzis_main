@@ -1,0 +1,7 @@
+# Do obrazu trafia tylko tagger
+*
+!requirements.txt
+!run_task.py
+!tagger/
+**/__pycache__
+**/*.pyc

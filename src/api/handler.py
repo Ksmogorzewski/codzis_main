@@ -144,7 +144,8 @@ def create_event(partner, body):
     try:
         sqs.send_message(
             QueueUrl=EVENTS_QUEUE_URL,
-            MessageBody=json.dumps({"source": SOURCE, "record": record}, ensure_ascii=False, default=_json_default),
+            # Kontrakt taggera: body = JSON array rekordów; "source" i "id" są w rekordzie
+            MessageBody=json.dumps([record], ensure_ascii=False, default=_json_default),
         )
     except Exception:
         # Kompensacja: zwrot kredytu i usunięcie zgłoszenia

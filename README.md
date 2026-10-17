@@ -7,7 +7,7 @@ https://<domena>/        ──▶ CloudFront ──▶ S3 (strona, prywatny, OA
 https://<domena>/api/*   ──▶ CloudFront ──▶ API GW (REST, API key, /{proxy+}) ──▶ Lambda ──▶ submissions + SQS
 https://<domena>/photos/* ──▶ CloudFront ──▶ S3 (zdjęcia, prywatny; upload przez presigned POST)
 
-SQS ──▶ worker ECS (Fargate Spot): normalizacja + tagi ──▶ events (docelowa) + submissions.status = published
+SQS ──▶ tagger ECS (Fargate Spot): normalizacja + tagi DeepSeek ──▶ events (docelowa) + submissions.status = published
           ▲ RunTask
 dispatcher (Lambda, EventBridge): co 5 min gdy ≥ 50 wiadomości; co 60 min gdy ≥ 1; zawsze max 1 task naraz
 ```
@@ -33,9 +33,8 @@ Tabele DynamoDB: `events` (docelowa, pisze tylko worker), `submissions` i `payme
 
 - `infra/` – Terraform
 - `src/api/handler.py` – Lambda API (walidacja pól: `TEXT_FIELDS`, `_event_input`)
-- `src/worker/` – worker ECS (`worker.py`, `Dockerfile`): SQS → normalizacja UM → tagi → `events`
-- `src/dispatcher/handler.py` – Lambda uruchamiająca task workera
-- `scripts/push-worker.sh` – build + push obrazu workera do ECR
+- `src/dispatcher/handler.py` – Lambda uruchamiająca task taggera
+- `Dockerfile`, `scripts/push-worker.sh` – obraz taggera i jego build + push do ECR
 - `src/web/` – portal (`index.html`, `app.js`), mock bramka (`mock-pay.*`), wspólne `common.js`, `styles.css`; `config.js` generuje Terraform
 
 ## Deploy
@@ -48,20 +47,24 @@ cp terraform.tfvars.example terraform.tfvars   # uzupełnij domenę i partnerów
 terraform init
 terraform apply                                # pierwszy raz ~5-10 min (ACM + CloudFront)
 terraform output -json partner_api_keys        # klucze do przekazania partnerom
+aws ssm put-parameter --name "$(terraform output -raw deepseek_api_key_parameter)" \
+  --type SecureString --overwrite --value "sk-..."   # klucz DeepSeek (poza state'em)
 cd ..
-scripts/push-worker.sh                         # obraz workera (wymaga Dockera)
+scripts/push-worker.sh                         # obraz taggera (wymaga Dockera)
 ```
 
 Do czasu wypchnięcia obrazu dispatcher będzie uruchamiał task, który nie wystartuje (brak obrazu w ECR), a wiadomości poczekają w kolejce (retencja 14 dni).
 
-## Worker (SQS → ECS → DynamoDB)
+## Tagger AI (SQS → ECS → DynamoDB)
 
-- Wiadomość: `{"source": "partner" | "um_warszawa", "record": {...}}`. Import z API Warszawy wrzuca surowy rekord, worker go normalizuje: `id = um-<sha1(url)>`, offset `+01` → `+01:00`, `startsAt`/`endsAt` w UTC, zdjęcia `http` → `https`.
-- Tagowanie (`tag_event`) jest na razie regułowe: kategoria, dzielnica, słowa kluczowe (`KEYWORD_TAGS`), pora dnia, weekend.
-- Worker kończy się po 2 pustych long-pollach (~40 s) albo po SIGTERM (przerwanie Spot). Zapis to `put_item` po `id`, więc ponowne dostarczenie wiadomości jest bezpieczne. Po 5 nieudanych próbach wiadomość trafia do `codzis-events-dlq`.
-- Progi: `worker_min_messages` (50), `worker_check_minutes` (5), `worker_max_wait_minutes` (60).
+Kod: `run_task.py` + `tagger/` ([tagger/README.md](tagger/README.md)), obraz z `Dockerfile` w katalogu głównym.
 
-Nowy partner: dopisz go do `partners` i zrób `terraform apply`. Usunięcie z listy unieważnia jego klucz.
+- **Kontrakt wiadomości:** body = JSON array rekordów w kształcie API UM Warszawy (`[{...}, ...]`). Backend importu wrzuca diffy, portal wrzuca `[rekord]` z `"source": "partner"` i własnym `id`.
+- **Na wiadomość:** `normalize` (id = własne lub `sha1(url)[:12]`, `source` domyślnie `um_warszawa`, offset `+01` → `+01:00`, `startsAt`/`endsAt` UTC, zdjęcia → `https`), pominięcie rekordów już istniejących w tabeli (przed wywołaniem modelu), tagowanie DeepSeek, zapis tylko otagowanych rekordów, `submissions.status = published` dla partnerów. Jeśli któryś rekord nie dostał tagów, wiadomość zostaje w kolejce i przy ponownym dostarczeniu tagowane są tylko brakujące.
+- **Tagi** to wymiary z `tagger/prompt.py` (`theme`, `audience`, `format`, `cost`, `mode`), np. `{"theme": ["Teatr i performans"], "audience": "Dorośli (18-64)", ...}`.
+- **Uruchamianie:** dispatcher odpala task na Fargate Spot (fallback: Fargate), task kończy się, gdy kolejka jest pusta. Kod wyjścia `1` = część wiadomości nie przeszła; po 5 próbach trafiają do `codzis-events-dlq`.
+- **Klucz DeepSeek** jest w SSM (`terraform output deepseek_api_key_parameter`); z placeholderem `CHANGE_ME` task kończy się od razu, bez ruszania kolejki.
+- Progi: `worker_min_messages` (50 wiadomości, nie rekordów), `worker_check_minutes` (5), `worker_max_wait_minutes` (60). Visibility timeout kolejki: 30 min (wywołania LLM).
 
 ## Rekord eventu (tabela `events`)
 

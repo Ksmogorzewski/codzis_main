@@ -43,6 +43,7 @@ ECS task-role IAM role automatically. DevOps configures:
 | `SQS_QUEUE_URL` | Source queue (backend drops diffs here) |
 | `DYNAMODB_TABLE` | Target table (default `warsaw_events` if unset) |
 | `AWS_REGION` | Table region (default `eu-central-1`) |
+| `SUBMISSIONS_TABLE` | Partner portal submissions to mark as `published` (optional, no-op if unset) |
 
 ECS also needs a task-role IAM policy granting SQS (`ReceiveMessage`, `DeleteMessage`)
 and DynamoDB (`GetItem`, `PutItem`).
