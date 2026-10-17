@@ -59,6 +59,26 @@ scripts/push-images.sh                         # obrazy taggera i importera (wym
 
 Do czasu wypchnięcia obrazu dispatcher będzie uruchamiał task, który nie wystartuje (brak obrazu w ECR), a wiadomości poczekają w kolejce (retencja 14 dni).
 
+## Initial load (pierwsze załadowanie danych)
+
+Po `terraform apply`, ustawieniu obu sekretów w SSM i `scripts/push-images.sh`:
+
+```sh
+scripts/initial-load.sh
+```
+
+Skrypt:
+1. sprawdza, czy sekrety nie mają wartości `CHANGE_ME`;
+2. uruchamia importer od razu, bez czekania na harmonogram. W S3 nie ma jeszcze stanu, więc na kolejkę idzie wszystko: ok. 2270 rekordów w ~116 wiadomościach;
+3. uruchamia tagger i powtarza to do opróżnienia kolejki (najwyżej 6 rund), bez czekania na dispatcher. Jeśli tagger już działa, bo uruchomił go dispatcher, skrypt czeka na niego zamiast startować drugi;
+4. pokazuje stan kolejki i DLQ oraz liczbę rekordów w `events` według źródła.
+
+Pojedyncze uruchomienia, także później: `scripts/run-task.sh importer|tagger` (czeka na koniec, kod wyjścia = kod kontenera, pokazuje logi taska). Podgląd na żywo: `aws logs tail /ecs/codzis-importer --follow` (tagger: `/ecs/codzis-worker`).
+
+**Pełne przeładowanie** (np. po zmianie schematu albo mapowania):
+1. Usuń stan importera: `aws s3 rm s3://$(terraform -chdir=infra output -raw data_bucket)/state/ --recursive`. Następny import wyśle wszystko od nowa.
+2. Tagger pomija rekordy, które już są w `events`. Jeśli mają zostać otagowane ponownie, trzeba też wyczyścić tabelę, np. `terraform -chdir=infra apply -replace=aws_dynamodb_table.events`. To kasuje dane, a ogłoszenia partnerów wrócą do tabeli tylko po ponownym wysłaniu ich na kolejkę.
+
 ## Importer (API UM Warszawy → SQS)
 
 Task ECS uruchamiany przez EventBridge (`importer_schedule`, domyślnie co 2 h; zbiory UM odświeżają się co 2 h). Zwykły Fargate, nie Spot: task trwa ~1 min.
@@ -68,6 +88,7 @@ Task ECS uruchamiany przez EventBridge (`importer_schedule`, domyślnie co 2 h; 
 | `um_kalendarz` | `get_bmm_kalendarz_wydarzen` | `kind=event`, terminy z `occurrence`; wydarzenia zakończone są pomijane |
 | `um_sport` | `get_bmm_zajecia_sportowe` | `kind=recurring` (dni tygodnia + godzina startu → `schedule`) albo `event` gdy są konkretne daty; `dedicated` → `audience` |
 | `um_boiska` | `get_be_otwarte_boiska` | `kind=venue`: jeden rekord na (szkoła, adres, typ obiektu), np. „Piłka nożna – SP 92”; godziny otwarcia z kilku wierszy scalone w `schedule` |
+| `um_trasy` | `get_sbt_trasy_turystyczne` | `kind=route`: trasa dostępna o każdej porze; punkty do zwiedzania w `attributes.points`, ślad GPS uproszczony do 200 punktów w `attributes.trace` (`[lat, lon]`), `location` = start trasy |
 
 Przebieg dla każdego źródła: pobranie całego zbioru (API nie ma paginacji) → surowa kopia `s3://<data_bucket>/raw/<source>/…json.gz` (retencja `raw_snapshot_retention_days`) → mapowanie na schemat v1 → porównanie `contentHash` ze stanem `state/<source>.json` → **na SQS idą tylko nowe i zmienione rekordy** (JSON array po ≤ 20 rekordów) → zapis stanu. Pusta odpowiedź API nie nadpisuje stanu; awaria jednego źródła nie blokuje pozostałych (kod wyjścia 1).
 
@@ -90,9 +111,9 @@ Jeden kształt dla wszystkich źródeł (importer i portal partnera). Pełny opi
 
 | Pole | Opis |
 | --- | --- |
-| `id` | `kal-…` / `spt-…` / `bsk-…` = prefiks + `sha1(klucz źródła)[:12]`; partner: UUID |
-| `source` | `um_kalendarz` \| `um_sport` \| `um_boiska` \| `partner` |
-| `kind` | `event` (konkretne terminy) \| `recurring` (co tydzień) \| `venue` (obiekt otwarty w godzinach) |
+| `id` | `kal-…` / `spt-…` / `bsk-…` / `trs-…` = prefiks + `sha1(klucz źródła)[:12]`; partner: UUID |
+| `source` | `um_kalendarz` \| `um_sport` \| `um_boiska` \| `um_trasy` \| `partner` |
+| `kind` | `event` (konkretne terminy) \| `recurring` (co tydzień) \| `venue` (obiekt otwarty w godzinach) \| `route` (trasa, o każdej porze) |
 | `title`, `lead`, `text`, `url` | `text` to HTML: sanityzować przy wyświetlaniu |
 | `category`, `audience` | kategorie i grupy docelowe ze źródła (podpowiedzi dla taggera) |
 | `district`, `online`, `venue {name, address}`, `location {lat, lon}` | `location` = `null` dla boisk i partnerów (brak współrzędnych w źródle) |

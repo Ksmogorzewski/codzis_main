@@ -95,7 +95,11 @@ def fetch(url: str, token: str):
         try:
             request = urllib.request.Request(url, method="POST", data=b"", headers={"Authorization": token})
             with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_S) as response:
-                return json.loads(response.read().decode("utf-8-sig"))  # API zwraca JSON z BOM
+                payload = json.loads(response.read().decode("utf-8-sig"))  # API zwraca JSON z BOM
+            # Część endpointów zwraca gołą listę, część {"result": [...]}
+            if isinstance(payload, dict) and isinstance(payload.get("result"), list):
+                return payload["result"]
+            return payload
         except Exception as e:
             if attempt == HTTP_RETRIES:
                 raise

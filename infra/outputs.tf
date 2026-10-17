@@ -54,3 +54,29 @@ output "um_api_token_parameter" {
 output "data_bucket" {
   value = aws_s3_bucket.data.id
 }
+
+# --- dla scripts/run-task.sh i scripts/initial-load.sh ---
+
+output "ecs_cluster" {
+  value = aws_ecs_cluster.main.name
+}
+
+output "task_subnets" {
+  value = join(",", aws_subnet.public[*].id)
+}
+
+output "task_security_group" {
+  value = aws_security_group.worker.id
+}
+
+output "importer_task_family" {
+  value = aws_ecs_task_definition.importer.family
+}
+
+output "tagger_task_family" {
+  value = aws_ecs_task_definition.worker.family
+}
+
+output "events_dlq_url" {
+  value = aws_sqs_queue.events_dlq.url
+}
