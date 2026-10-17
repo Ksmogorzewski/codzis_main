@@ -136,7 +136,8 @@ function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
           )}
         </div>
 
-        <Card>
+        {/* Karta z faktami obok treści i mapy (na telefonie: przed mapą) */}
+        <Card className="md:row-span-2">
           <dl className="grid grid-cols-2 gap-4 p-5">
             <Fact label="Termin" wide>
               {when ?? "—"}
@@ -153,7 +154,6 @@ function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
             <Fact label="Cena">{price?.label ?? "—"}</Fact>
             <Fact label="Odległość">{distance}</Fact>
           </dl>
-          {mapSrc && <RouteMap src={mapSrc} eventTitle={card.title} caption={mapCaption} />}
           {(route || link) && (
             <>
               <Separator />
@@ -178,6 +178,8 @@ function Detail({ card, builtAt }: { card: CardData; builtAt: string | null }) {
             </>
           )}
         </Card>
+
+        {mapSrc && <RouteMap src={mapSrc} eventTitle={card.title} caption={mapCaption} className="md:col-start-1" />}
       </div>
 
       <footer className="text-sm text-muted-foreground">

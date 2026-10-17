@@ -1,3 +1,4 @@
+import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 
 type Props = {
@@ -6,12 +7,13 @@ type Props = {
   eventTitle: string;
   /** Skąd liczona jest trasa, np. „Trasa komunikacją miejską z Twojej lokalizacji”. */
   caption: string;
+  className?: string;
 };
 
-/** Dojazd w szczegółach wydarzenia: osadzona mapa Google (mockup: mapa w karcie z faktami). */
-export function RouteMap({ src, eventTitle, caption }: Props) {
+/** Dojazd w szczegółach wydarzenia: osadzona mapa Google we własnej karcie (szeroka kolumna na desktopie). */
+export function RouteMap({ src, eventTitle, caption, className }: Props) {
   return (
-    <section aria-label="Dojazd" className="flex flex-col border-t">
+    <Card aria-label="Dojazd" role="region" className={className}>
       <iframe
         key={src}
         src={src}
@@ -20,12 +22,12 @@ export function RouteMap({ src, eventTitle, caption }: Props) {
         // Google sprawdza domenę strony przy kluczu ograniczonym do referrerów
         referrerPolicy="no-referrer-when-downgrade"
         allowFullScreen
-        className="block h-56 w-full border-0 bg-secondary md:h-64"
+        className="block h-80 w-full border-0 bg-secondary md:h-[420px]"
       />
       <p className="flex items-center gap-1.5 px-4 py-3 text-sm text-muted-foreground">
         <Icon name="directions_transit" size={18} />
         {caption}
       </p>
-    </section>
+    </Card>
   );
 }
