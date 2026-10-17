@@ -36,14 +36,16 @@ and adds a one-line reason to each result.
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
 from .chunker import EventChunk, chunk_events, build_event_text, event_district, plain_text, MAX_CHUNK_CHARS
 from .embedder import EmbeddingModel, VectorIndex, build_index, DEFAULT_MODEL
-from .retriever import Retriever, Candidate, QueryEncoder, DEFAULT_TASTE_WEIGHT
+from .retriever import Retriever, Candidate, QueryEncoder, DEFAULT_TASTE_WEIGHT, DEFAULT_MIN_SCORE, BOOSTS, PENALTIES
 from .llm import DeepSeekClient, load_env_value, DEEPSEEK_MODEL
 from .ranker import rank_candidates
+from .expand import expand_query
 
 __version__ = "0.1.0"
 
@@ -63,8 +65,12 @@ __all__ = [
     "event_district",
     "plain_text",
     "rank_candidates",
+    "expand_query",
     "DEFAULT_MODEL",
     "DEFAULT_TASTE_WEIGHT",
+    "DEFAULT_MIN_SCORE",
+    "BOOSTS",
+    "PENALTIES",
     "__version__",
 ]
 
@@ -103,15 +109,19 @@ class Recommender:
         self.last_notes: str | None = None
         self.last_ranking: str | None = None   # "llm" | "cosine"
         self.last_error: str | None = None     # why the LLM re-rank was skipped
+        self.last_expansion: str | None = None # the LLM-expanded query text actually embedded
+        self.last_dropped: int = 0             # candidates removed by the min_score floor
+        self._expansion_cache: dict[str, str | None] = {}
 
     # ------------------------------------------------------------------ #
     def recommend(
         self,
         user_context: dict,
         top_k: int = 10,
-        min_score: float | None = None,
+        min_score: float | None = DEFAULT_MIN_SCORE,
         explain: bool = True,
         pool: int | None = None,
+        expand: bool = True,
     ) -> list[Candidate]:
         """Rank events for a user context.
 
@@ -119,8 +129,15 @@ class Recommender:
         available; otherwise (or when the call fails) falls back to cosine ranking.
         Set explain=False to always use pure cosine ranking.
         pool: how many retrieved candidates the LLM re-ranks (top_k of them are returned).
+        expand=True (default) asks DeepSeek to expand a short/vague query into a richer
+        search text before embedding (cached per query; no-op without a key or a query).
+        min_score: cosine floor (default DEFAULT_MIN_SCORE) - weak candidates are dropped
+        rather than padding the list, so fewer than top_k results can come back. Pass
+        None to disable. See `last_dropped` for how many were cut.
         """
+        user_context = self._maybe_expand(user_context, expand)
         candidates = self.retriever.retrieve(user_context, top_k=max(top_k, pool or 0), min_score=min_score)
+        self.last_dropped = self.retriever.last_dropped
         self.last_usage = None
         self.last_notes = None
         self.last_ranking = "cosine"
@@ -132,6 +149,39 @@ class Recommender:
             if ranked is not None:
                 candidates = ranked
         return candidates[:top_k]
+
+    # ------------------------------------------------------------------ #
+    def expand(self, user_context: dict) -> dict:
+        """The user context with its query expanded by the LLM (see `_maybe_expand`).
+
+        For callers that retrieve in two passes: a fast one without the LLM, then this
+        expansion + `retriever.retrieve` + `rerank` in the background.
+        """
+        return self._maybe_expand(user_context, True)
+
+    # ------------------------------------------------------------------ #
+    def _maybe_expand(self, user_context: dict, expand: bool) -> dict:
+        """Append the LLM expansion to the query (cached per query+interests).
+
+        Returns the original context unchanged when expansion is disabled, impossible
+        (no key / no query) or fails. The raw query is kept in front so the user's own
+        words stay anchored; the expansion only adds topical signal.
+        """
+        self.last_expansion = None
+        query = (user_context.get("query") or "").strip()
+        if not expand or self.client is None or not query:
+            return user_context
+        key = json.dumps([query, user_context.get("interests") or []],
+                         ensure_ascii=False, sort_keys=True)
+        if key not in self._expansion_cache:
+            self._expansion_cache[key] = expand_query(self.client, user_context)
+        extra = self._expansion_cache[key]
+        self.last_expansion = extra
+        if not extra:
+            return user_context
+        ctx = dict(user_context)
+        ctx["query"] = f"{query}. {extra}"
+        return ctx
 
     # ------------------------------------------------------------------ #
     def rerank(self, user_context: dict, candidates: list[Candidate]) -> list[Candidate] | None:
@@ -175,7 +225,7 @@ def recommend(
     user_context: dict,
     events: list[dict],
     top_k: int = 10,
-    min_score: float | None = None,
+    min_score: float | None = DEFAULT_MIN_SCORE,
     explain: bool = True,
     api_key: str | None = None,
     model: EmbeddingModel | None = None,

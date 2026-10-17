@@ -4,7 +4,7 @@
 FROM public.ecr.aws/lambda/python:3.13
 
 # = DEFAULT_MODEL w recommender/embedder/model.py
-ARG EMBEDDING_MODEL_NAME=paraphrase-multilingual-MiniLM-L12-v2
+ARG EMBEDDING_MODEL_NAME=sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 HOME=/tmp TOKENIZERS_PARALLELISM=false
 
