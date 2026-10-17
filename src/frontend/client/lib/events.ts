@@ -131,6 +131,8 @@ export function areaLabel(r: Pick<Recommendations, "area" | "district">): string
 
 export const countLabel = (n: number) => plural(n, "propozycja", "propozycje", "propozycji");
 
+export const eventCountLabel = (n: number) => plural(n, "wydarzenie", "wydarzenia", "wydarzeń");
+
 // Kolor zastępczej "fotki" (paski jak w makiecie), stały dla danego eventu
 export function tint(id: string): string {
   let hash = 0;

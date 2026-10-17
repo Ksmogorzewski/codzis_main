@@ -1,23 +1,26 @@
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import { errorText, RouteError } from "@/components/layout/route-error";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useMe } from "@/hooks/use-me.query";
 import { useOnboarding } from "@/hooks/use-onboarding.query";
+import { useEventStats } from "@/hooks/use-event-stats.query";
 import { useColdStart, useRecommendations } from "@/hooks/use-recommendations.query";
 import { isNeedsOnboarding } from "@/lib/api";
-import { CATEGORIES, CATEGORY_LABEL, type Category, filterByCategory } from "@/lib/categories";
-import { areaLabel, chosenDayLabel, countLabel, dateBounds, dateTitle, dayLine, readAtLabel, WHEN_OPTIONS } from "@/lib/events";
+import { withStats } from "@/lib/community";
+import { filterByCategory } from "@/lib/categories";
+import { areaLabel, countLabel, dateTitle, dayLine, readAtLabel, WHEN_OPTIONS } from "@/lib/events";
 import { startLocation, useLocation } from "@/lib/location";
-import { WHEN_VALUES, type When } from "@/lib/schemas";
+import type { When } from "@/lib/schemas";
 import { DEFAULT_SEARCH, type HomeSearch, type RecommendationsParams, recommendationsParams, rememberSearch } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { summary } from "@/lib/wizard";
 import { GRID, GridSkeleton } from "./card-skeleton";
+import { CategoryFilter } from "./category-filter";
 import { EventCard } from "./event-card";
 import { SearchBox } from "./search-box";
+import { WhenFilter } from "./when-filter";
 
 const route = getRouteApi("/_app/");
 
@@ -31,8 +34,6 @@ const TITLE: Record<Exclude<When, "date">, string> = {
   week: "Co robimy w tym tygodniu?",
 };
 
-const isWhen = (v: string): v is When => (WHEN_VALUES as readonly string[]).includes(v);
-const isCategory = (v: string): v is Category => (CATEGORIES as readonly string[]).includes(v);
 
 /** "Rodzina z dziećmi · Chill" z kroków „z kim” i „klimat” (jak w ich Home.tsx). */
 function useProfileSummary(): string | null {
@@ -71,71 +72,20 @@ function Hero({ params }: { params: RecommendationsParams }) {
 
 function Filters({ search, go }: { search: HomeSearch; go: (next: Partial<HomeSearch>) => void }) {
   const onQuery = useCallback((q: string) => go({ q }), [go]);
-  const dateInput = useRef<HTMLInputElement>(null);
   const params = recommendationsParams(search);
-  const now = new Date();
-  const bounds = dateBounds(now);
-  // "Inny dzień": natywny kalendarz; filtr zmienia się dopiero po wybraniu daty
-  const openPicker = () => {
-    const input = dateInput.current;
-    if (!input) return;
-    try {
-      input.showPicker();
-    } catch {
-      input.focus();
-      input.click();
-    }
-  };
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <div className="relative max-w-full">
-          <ToggleGroup
-            type="single"
-            variant="segment"
-            aria-label="Kiedy"
-            value={params.when}
-            onValueChange={(v) => isWhen(v) && v !== "date" && go({ when: v, date: undefined })}
-            className="max-w-full overflow-x-auto [scrollbar-width:none]"
-          >
-            {WHEN_OPTIONS.map((o) => (
-              <ToggleGroupItem key={o.id} value={o.id}>
-                {o.label}
-              </ToggleGroupItem>
-            ))}
-            <ToggleGroupItem value="date" onClick={openPicker}>
-              <Icon name="calendar_month" size={18} />
-              {params.date ? chosenDayLabel(params.date, now) : "Inny dzień"}
-            </ToggleGroupItem>
-          </ToggleGroup>
-          <input
-            ref={dateInput}
-            type="date"
-            min={bounds.min}
-            max={bounds.max}
-            value={params.date ?? ""}
-            onChange={(e) => e.target.value && go({ when: "date", date: e.target.value })}
-            tabIndex={-1}
-            aria-label="Wybierz dzień"
-            className="sr-only bottom-0 left-0"
-          />
-        </div>
+        <WhenFilter
+          options={WHEN_OPTIONS.filter((o): o is { id: Exclude<When, "date">; label: string } => o.id !== "date")}
+          value={params.when}
+          date={params.date}
+          onWhen={(when) => go({ when, date: undefined })}
+          onDate={(date) => go({ when: "date", date })}
+        />
         <SearchBox value={search.q} onChange={onQuery} />
       </div>
-      <ToggleGroup
-        type="single"
-        variant="pill"
-        aria-label="Kategoria"
-        value={search.cat}
-        onValueChange={(v) => isCategory(v) && go({ cat: v })}
-        className="-m-1.5 overflow-x-auto p-1.5 [scrollbar-width:none]"
-      >
-        {CATEGORIES.map((id) => (
-          <ToggleGroupItem key={id} value={id}>
-            {CATEGORY_LABEL[id]}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+      <CategoryFilter value={search.cat} onChange={(cat) => go({ cat })} />
     </div>
   );
 }
@@ -209,7 +159,9 @@ export function HomeView() {
   );
 
   const data = recs.data;
-  const cards = data ? filterByCategory(data.items, search.cat).slice(0, MAX_CARDS) : [];
+  // Karty rekomendacji nie mają zapisów: liczniki i „czy ja” jednym zapytaniem dla całego zestawu.
+  const stats = useEventStats(data?.items.map((c) => c.id) ?? []);
+  const cards = data ? withStats(filterByCategory(data.items, search.cat).slice(0, MAX_CARDS), stats.data) : [];
   const now = new Date();
   const readAt = readAtLabel(data?.index.builtAt ?? null);
   const stale = recs.isPlaceholderData;

@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { activeTab, NAV_ITEMS } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 type Props = { dark: boolean; onToggleDark: () => void; onLogout: () => void };
@@ -10,11 +11,10 @@ const navLink =
 const navActive = "bg-primary-soft text-primary-ink hover:bg-primary-soft";
 
 export function Header({ dark, onToggleDark, onLogout }: Props) {
-  // Rekomendacje są aktywne także na szczegółach wydarzenia (jak w mockupie).
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const onProfile = pathname === "/profil";
+  const active = activeTab(pathname);
   return (
-    <header className="sticky top-0 z-20 border-b bg-background">
+    <header className="sticky top-0 z-20 border-b bg-background pt-[env(safe-area-inset-top)]">
       <div className="mx-auto flex max-w-[1160px] items-center gap-3 px-4 py-2.5 md:px-8">
         <Link
           to="/"
@@ -32,15 +32,19 @@ export function Header({ dark, onToggleDark, onLogout }: Props) {
           </span>
         </Link>
         <span className="flex-1" />
+        {/* Na telefonie te same miejsca są w dolnym pasku (tab-bar.tsx). */}
         <nav aria-label="Główna" className="hidden gap-1 md:flex">
-          <Link to="/" className={cn(navLink, !onProfile && navActive)}>
-            <Icon name="explore" />
-            Rekomendacje
-          </Link>
-          <Link to="/profil" className={cn(navLink, onProfile && navActive)}>
-            <Icon name="tune" />
-            Twój profil
-          </Link>
+          {NAV_ITEMS.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              aria-current={active === item.to ? "page" : undefined}
+              className={cn(navLink, active === item.to && navActive)}
+            >
+              <Icon name={item.icon} filled={active === item.to} />
+              {item.label}
+            </Link>
+          ))}
         </nav>
         <Button variant="secondary" size="icon" aria-label="Tryb ciemny" aria-pressed={dark} onClick={onToggleDark}>
           <Icon name={dark ? "light_mode" : "dark_mode"} size={22} />

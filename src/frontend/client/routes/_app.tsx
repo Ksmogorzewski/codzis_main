@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { Header } from "@/components/layout/header";
 import { PageRouteError } from "@/components/layout/route-error";
+import { TabBar } from "@/components/layout/tab-bar";
 import { toggleDark, useDark } from "@/lib/theme";
 
 // Pathless layout: strażnik logowania + nagłówek wokół chronionych tras.
@@ -27,9 +28,11 @@ function AppLayout() {
           await navigate({ to: "/login" });
         }}
       />
-      <main className="mx-auto flex w-full max-w-[1160px] flex-col gap-4 px-4 pt-[18px] pb-10 md:px-8 md:pt-8 md:pb-16">
+      {/* Na telefonie miejsce na dolny pasek zakładek (56 px + bezpieczny obszar). */}
+      <main className="mx-auto flex w-full max-w-[1160px] flex-col gap-4 px-4 pt-[18px] pb-[calc(96px+env(safe-area-inset-bottom))] md:px-8 md:pt-8 md:pb-16">
         <Outlet />
       </main>
+      <TabBar />
     </>
   );
 }
