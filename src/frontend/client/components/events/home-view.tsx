@@ -1,5 +1,5 @@
 import { getRouteApi, Link } from "@tanstack/react-router";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { errorText, RouteError } from "@/components/layout/route-error";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -9,10 +9,10 @@ import { useOnboarding } from "@/hooks/use-onboarding.query";
 import { useColdStart, useRecommendations } from "@/hooks/use-recommendations.query";
 import { isNeedsOnboarding } from "@/lib/api";
 import { CATEGORIES, CATEGORY_LABEL, type Category, filterByCategory } from "@/lib/categories";
-import { areaLabel, countLabel, dayLine, readAtLabel, WHEN_OPTIONS } from "@/lib/events";
+import { areaLabel, chosenDayLabel, countLabel, dateBounds, dateTitle, dayLine, readAtLabel, WHEN_OPTIONS } from "@/lib/events";
 import { startLocation, useLocation } from "@/lib/location";
 import { WHEN_VALUES, type When } from "@/lib/schemas";
-import { DEFAULT_SEARCH, type HomeSearch, rememberSearch } from "@/lib/search";
+import { DEFAULT_SEARCH, type HomeSearch, type RecommendationsParams, recommendationsParams, rememberSearch } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { summary } from "@/lib/wizard";
 import { GRID, GridSkeleton } from "./card-skeleton";
@@ -24,7 +24,7 @@ const route = getRouteApi("/_app/");
 /** Na ekranie do 12 kart (API zwraca do 16, żeby po filtrze kategorii nadal było co pokazać). */
 const MAX_CARDS = 12;
 
-const TITLE: Record<When, string> = {
+const TITLE: Record<Exclude<When, "date">, string> = {
   today: "Co robimy dziś?",
   tomorrow: "Co robimy jutro?",
   weekend: "Co robimy w weekend?",
@@ -47,13 +47,14 @@ function useProfileSummary(): string | null {
   return labels.join(" · ") || "jeszcze nieuzupełniony";
 }
 
-function Hero({ when }: { when: When }) {
+function Hero({ params }: { params: RecommendationsParams }) {
   const profile = useProfileSummary();
+  const title = params.when === "date" && params.date ? dateTitle(params.date, new Date()) : TITLE[params.when === "date" ? "today" : params.when];
   return (
     <section className="flex flex-col gap-1.5 rounded-3xl bg-primary p-6 text-primary-foreground">
       <p className="text-meta font-semibold opacity-85">{dayLine(new Date())}</p>
       <h1 className="text-[32px] leading-[1.05] font-extrabold tracking-[-0.03em] text-balance md:text-[40px]">
-        {TITLE[when]}
+        {title}
       </h1>
       <p className="mt-1 text-lg opacity-90">
         Propozycje dla profilu: {profile ?? "…"}{" "}
@@ -70,23 +71,55 @@ function Hero({ when }: { when: When }) {
 
 function Filters({ search, go }: { search: HomeSearch; go: (next: Partial<HomeSearch>) => void }) {
   const onQuery = useCallback((q: string) => go({ q }), [go]);
+  const dateInput = useRef<HTMLInputElement>(null);
+  const params = recommendationsParams(search);
+  const now = new Date();
+  const bounds = dateBounds(now);
+  // "Inny dzień": natywny kalendarz; filtr zmienia się dopiero po wybraniu daty
+  const openPicker = () => {
+    const input = dateInput.current;
+    if (!input) return;
+    try {
+      input.showPicker();
+    } catch {
+      input.focus();
+      input.click();
+    }
+  };
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <ToggleGroup
-          type="single"
-          variant="segment"
-          aria-label="Kiedy"
-          value={search.when}
-          onValueChange={(v) => isWhen(v) && go({ when: v })}
-          className="max-w-full overflow-x-auto [scrollbar-width:none]"
-        >
-          {WHEN_OPTIONS.map((o) => (
-            <ToggleGroupItem key={o.id} value={o.id}>
-              {o.label}
+        <div className="relative max-w-full">
+          <ToggleGroup
+            type="single"
+            variant="segment"
+            aria-label="Kiedy"
+            value={params.when}
+            onValueChange={(v) => isWhen(v) && v !== "date" && go({ when: v, date: undefined })}
+            className="max-w-full overflow-x-auto [scrollbar-width:none]"
+          >
+            {WHEN_OPTIONS.map((o) => (
+              <ToggleGroupItem key={o.id} value={o.id}>
+                {o.label}
+              </ToggleGroupItem>
+            ))}
+            <ToggleGroupItem value="date" onClick={openPicker}>
+              <Icon name="calendar_month" size={18} />
+              {params.date ? chosenDayLabel(params.date, now) : "Inny dzień"}
             </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+          </ToggleGroup>
+          <input
+            ref={dateInput}
+            type="date"
+            min={bounds.min}
+            max={bounds.max}
+            value={params.date ?? ""}
+            onChange={(e) => e.target.value && go({ when: "date", date: e.target.value })}
+            tabIndex={-1}
+            aria-label="Wybierz dzień"
+            className="sr-only bottom-0 left-0"
+          />
+        </div>
         <SearchBox value={search.q} onChange={onQuery} />
       </div>
       <ToggleGroup
@@ -161,7 +194,7 @@ function NeedsProfile({ message }: { message: string }) {
 export function HomeView() {
   const search = route.useSearch();
   const navigate = route.useNavigate();
-  const params = { when: search.when, q: search.q };
+  const params = recommendationsParams(search);
   const recs = useRecommendations(params);
   const coldStart = useColdStart(params);
   const { position, status } = useLocation();
@@ -183,7 +216,7 @@ export function HomeView() {
 
   return (
     <>
-      <Hero when={search.when} />
+      <Hero params={params} />
       <Filters search={search} go={go} />
 
       {recs.isError && !data ? (
@@ -203,7 +236,7 @@ export function HomeView() {
             <p>
               <b className="text-foreground">{countLabel(cards.length)}</b> {areaLabel(data)}
               {data.query && <> dla „{data.query}”</>}
-              {stale && " · odświeżamy…"}
+              {stale ? " · odświeżamy…" : data.updating && " · dopracowujemy propozycje…"}
             </p>
             {data.areaRelaxed && <p>W Twojej okolicy było mało propozycji, więc poszerzyliśmy obszar.</p>}
             {status === "denied" && (

@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { recommendationsRootKey } from "@/lib/query-keys";
 import { findCard } from "@/lib/recommendations-cache";
 import type { Recommendations } from "@/lib/schemas";
-import { lastSearch } from "@/lib/search";
+import { lastSearch, recommendationsParams } from "@/lib/search";
 import { recommendationsQueryOptions, useColdStart } from "./use-recommendations.query";
 
 /**
@@ -16,8 +16,7 @@ export function useEventCard(id: string) {
     .map(([, data]) => data);
   const cached = findCard(cachedResults, id);
 
-  const { when, q } = lastSearch();
-  const params = { when, q };
+  const params = recommendationsParams(lastSearch());
   const fallback = useQuery({ ...recommendationsQueryOptions(params), enabled: cached === null });
   const coldStart = useColdStart(params);
 

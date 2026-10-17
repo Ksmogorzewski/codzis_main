@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   areaLabel,
+  chosenDayLabel,
   countLabel,
+  dateBounds,
+  dateTitle,
   dayLine,
   mapsUrl,
   outboundLink,
@@ -49,6 +52,15 @@ describe("events", () => {
     expect(mapsUrl(item({ location: { lat: 52.2, lon: 21 } }))).toContain("destination=52.2,21");
     expect(mapsUrl(item({ venue: { name: "Hala Koło", address: "Obozowa 60" } }))).toContain("Obozowa%2060%2C%20Warszawa");
     expect(mapsUrl(item())).toBeNull();
+  });
+
+  it("inny dzień: zakres wyboru (od dziś do 60 dni) i etykieta", () => {
+    expect(dateBounds(NOW)).toEqual({ min: "2026-10-17", max: "2026-12-16" });
+    expect(chosenDayLabel("2026-10-30", NOW)).toBe("Pt 30.10");
+    expect(chosenDayLabel("2026-10-18", NOW)).toBe("Jutro");
+    expect(dateTitle("2026-10-30", NOW)).toBe("Co robimy w pt 30.10?");
+    expect(dateTitle("2026-10-17", NOW)).toBe("Co robimy dziś?");
+    expect(dateTitle("2026-10-18", NOW)).toBe("Co robimy jutro?");
   });
 
   it("opis obszaru i liczba propozycji", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SEARCH, HomeSearchSchema, normalizeQuery } from "./search";
+import { DEFAULT_SEARCH, HomeSearchSchema, normalizeQuery, recommendationsParams } from "./search";
 
 describe("search", () => {
   it("brak parametrów -> wartości domyślne", () => {
@@ -24,5 +24,13 @@ describe("search", () => {
     expect(normalizeQuery("  joga   dla  seniorów ")).toBe("joga dla seniorów");
     expect(normalizeQuery("a".repeat(200))).toHaveLength(120);
     expect(HomeSearchSchema.parse({ q: "  jazz  " }).q).toBe("jazz");
+  });
+
+  it("inny dzień: data RRRR-MM-DD w adresie; bez poprawnej daty pokazujemy dziś", () => {
+    const pick = (raw: Record<string, unknown>) => recommendationsParams(HomeSearchSchema.parse(raw));
+    expect(pick({ when: "date", date: "2026-10-30", q: "jazz" })).toEqual({ when: "date", date: "2026-10-30", q: "jazz" });
+    expect(pick({ when: "date" })).toEqual({ when: "today", q: "" });
+    expect(pick({ when: "date", date: "30.10.2026" })).toEqual({ when: "today", q: "" });
+    expect(pick({ when: "weekend", date: "2026-10-30" })).toEqual({ when: "weekend", q: "" }); // data tylko przy when=date
   });
 });

@@ -3,7 +3,7 @@
 Jeden projekt Vite, dwie aplikacje: **portal klienta** (`client/`, tryb `client`) i **panel partnera** (`partner/`, tryb `partner`). Ten plik opisuje portal klienta. **Pilnuj struktury opisanej niżej**; jeśli zmiana jej nie pasuje, zatrzymaj się i zapytaj, zamiast tworzyć nowy wzorzec. Panelu partnera nie zmieniaj bez zgody Krzysztofa.
 
 ## Produkt (portal klienta)
-Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia. Wygląd: mockup WarsawNow, wariant 1a Karty.
+Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni/inny dzień, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia. Wygląd: mockup WarsawNow, wariant 1a Karty.
 **Poza zakresem bez zgody zespołu:** logowanie Google, „Sponsorowane”, warstwa społecznościowa, pogoda, mapa.
 
 ## Komendy (z `src/frontend/`)
@@ -28,7 +28,7 @@ routes/                  trasy plikowe; routeTree.gen.ts jest GENEROWANY — nie
   __root.tsx             obudowa, not found → /
   login.tsx              logowanie / rejestracja / kod / reset hasła
   _app.tsx               strażnik sesji (beforeLoad)
-  _app/index.tsx         propozycje (search params: when, q, cat)
+  _app/index.tsx         propozycje (search params: when, date, q, cat)
   _app/profil.tsx        ankieta
   _app/wydarzenie.$id.tsx szczegóły
 components/<obszar>/     auth, events, survey, layout — pliki kebab-case
@@ -46,7 +46,7 @@ Testy obok kodu: `lib/*.test.ts`. Import: alias `@/` = `client/`.
 - **Nowy ekran = plik w `routes/`** (cienki), widok w `components/<obszar>/`.
 - **Dane tylko przez TanStack Query:** `queryOptions` + hook w `hooks/`, klucze w `lib/query-keys.ts`, odpowiedzi przez Zod w `lib/schemas.ts`, zapytania przez `apiGet`/`apiPut` z `lib/api.ts`. Bez `fetch` w komponentach i bez `useEffect` do pobierania danych.
 - **Kontrakt z backendem** (Python): ścieżki i kształty jak w `src/client_api/handler.py`, `onboarding.py`, `src/recommender_api/present.py`. Schematy Zod tolerancyjne (pola opcjonalne opcjonalne). Błędy API: `{error: "komunikat PL", fields?, code?}` — pokazujemy komunikat; `409` / `code: "needs_onboarding"` → `/profil`; 401 → jedno odświeżenie tokenu, potem `/login`.
-- **Rekomendacje:** `retry: false` + pomocnik zimnego startu z `lib/api.ts` (ponowienia po 5 i 10 s, komunikat „Dobieramy propozycje…”). Po zapisie ankiety: `setQueryData(["me"])` i `removeQueries(["recommendations"])`.
+- **Rekomendacje:** `retry: false` + pomocnik zimnego startu z `lib/api.ts` (ponowienia po 5 i 10 s, komunikat „Dobieramy propozycje…”). `202 {"status": "preparing"}` (zestaw się liczy) obsługuje `pollWhilePreparing`, a `"updating": true` — `refetchInterval` co 3 s. Parametry zapytania z filtrów: `recommendationsParams` (`lib/search.ts`); `limit` = 16 jak na serwerze (inny limit = inny zapisany zestaw). Po zapisie ankiety: `setQueryData(["me"])` i `removeQueries(["recommendations"])`.
 - **Stan w adresie:** filtry ekranu głównego to search params walidowane Zodem (`lib/search.ts`). Nawigacja przez `<Link>` / `navigate`.
 - **Lokalizacja użytkownika** służy tylko do liczenia odległości na kliencie — **nie wysyłamy jej do API**.
 - **Bezpieczeństwo:** bez `dangerouslySetInnerHTML`; linki zewnętrzne tylko `http(s)` z `rel="noopener noreferrer"`; tokenów nie logujemy.

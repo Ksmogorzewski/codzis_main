@@ -5,6 +5,7 @@ import {
   createApi,
   isNeedsOnboarding,
   isTransientError,
+  pollWhilePreparing,
   shouldRetry,
   toApiError,
   unwrap,
@@ -210,5 +211,39 @@ describe("zimny start", () => {
     const fn = vi.fn(async () => fail(409));
     await withColdStartRetry(fn, { sleep: async () => {} });
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("zestaw w przygotowaniu (202)", () => {
+  const preparing = (retryAfter: number) => ok({ status: "preparing" as const, retryAfter });
+
+  it("pyta ponownie po retryAfter, aż przyjdą karty", async () => {
+    const results = [preparing(2), preparing(3), ok({ items: [1] })];
+    const sleep = vi.fn(async () => {});
+    const r = await pollWhilePreparing(async () => results.shift()!, { sleep });
+    expect(r.data).toEqual({ items: [1] });
+    expect(sleep.mock.calls.map((c) => (c as unknown[])[0])).toEqual([2000, 3000]);
+  });
+
+  it("błąd przerywa czekanie", async () => {
+    const results = [preparing(2), err({ status: 409, code: "needs_onboarding", message: "m", fields: [] })];
+    const r = await pollWhilePreparing(async () => results.shift()!, { sleep: async () => {} });
+    expect(r.error?.code).toBe("needs_onboarding");
+  });
+
+  it("za długo w przygotowaniu: błąd zamiast czekania bez końca", async () => {
+    let clock = 0;
+    const fn = vi.fn(async () => preparing(2));
+    const r = await pollWhilePreparing(fn, { sleep: async (ms) => void (clock += ms), now: () => clock, limitMs: 6000 });
+    expect(fn).toHaveBeenCalledTimes(4);
+    expect(r.error?.code).toBe("preparing_timeout");
+  });
+
+  it("anulowanie: bez kolejnych zapytań", async () => {
+    const controller = new AbortController();
+    const fn = vi.fn(async () => preparing(2));
+    const r = await pollWhilePreparing(fn, { signal: controller.signal, sleep: async () => controller.abort() });
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(r.error?.code).toBe("aborted");
   });
 });

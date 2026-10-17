@@ -15,6 +15,8 @@ export const WHEN_OPTIONS: { id: When; label: string }[] = [
   { id: "week", label: "7 dni" },
 ];
 
+export const MAX_DAYS_AHEAD = 60; // = MAX_DAYS_AHEAD w src/recommender_api/user_context.py
+
 const dateFormat = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
 const timeFormat = new Intl.DateTimeFormat("pl-PL", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
 
@@ -37,6 +39,21 @@ export function dayLabel(iso: string, now: Date): string {
   if (iso === addDays(today, 1)) return "jutro";
   const weekday = DAYS[(new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7]!;
   return `${DAY_SHORT[weekday]} ${shortDate(iso)}`;
+}
+
+// "Inny dzień": od dziś do MAX_DAYS_AHEAD dni naprzód (min/max dla <input type="date">)
+export function dateBounds(now: Date): { min: string; max: string } {
+  const min = warsawDate(now);
+  return { min, max: addDays(min, MAX_DAYS_AHEAD) };
+}
+
+// "Pt 30.10" / "Jutro" na przycisku wybranego dnia
+export const chosenDayLabel = (iso: string, now: Date) => cap(dayLabel(iso, now));
+
+// Nagłówek ekranu dla wybranego dnia: "Co robimy w pt 30.10?" (dziś / jutro jak w filtrach)
+export function dateTitle(iso: string, now: Date): string {
+  const label = dayLabel(iso, now);
+  return label === "dziś" || label === "jutro" ? `Co robimy ${label}?` : `Co robimy w ${label}?`;
 }
 
 // "Dziś, 18:00–19:30" / "Trwa do 30.10" / "Pon 19.10, 16:00 · co tydzień"

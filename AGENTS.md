@@ -22,10 +22,12 @@ Szczegóły uruchamiania i wdrożenia: `README.md`, `recommender/README.md`, `ta
 portal.waw-out.pl ─ CloudFront ─ S3 (src/frontend/dist/client + config.js z Terraforma)
      └─ HTTP API (API Gateway, JWT z Cognito) ─┬─ Lambda client-api ─ DynamoDB codzis-users
                                                └─ Lambda recommender ─ indeks w S3 (+ codzis-events) + DeepSeek
+                                                                      └─ zapisane zestawy: codzis-recommendations
 importer (ECS) ─ SQS ─ tagger (ECS) ─ DynamoDB codzis-events
 ```
 - API Gateway sprawdza token Cognito **zanim** uruchomi Lambdę; kod dostaje gotowe `claims` (`claims["sub"]` = id użytkownika).
 - Rekomender ma zimny start (kilkanaście s): rozgrzewanie co 5 min, indeks przebudowywany co 30 min; front ponawia zapytanie przy 0/502/503/504.
+- Rekomendacje liczą się w tle i są zapisywane per użytkownik (`codzis-recommendations`): dziś / jutro / weekend z góry (w nocy, po zapisie profilu, przy logowaniu), inny dzień i fraza przy pierwszym zapytaniu. GET odpowiada od razu z zapisu; `202 {"status": "preparing"}` = zestaw się liczy (front pyta ponownie), `"updating": true` = w tle liczy się nowsza wersja (front odświeża co 3 s).
 
 ## Jak shipujemy feature (kolejność)
 1. **Opis** w issue/PR: co widzi użytkownik, jaka zmiana API (ścieżka, parametry, kształt odpowiedzi, błędy).
@@ -49,7 +51,7 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 **DynamoDB w kodzie**
 - Odczyt/zapis po kluczu: `get_item`, `put_item`, `update_item` z `UpdateExpression` i `ExpressionAttributeValues`; `if_not_exists(createdAt, :now)` dla pól ustawianych raz; `ReturnValues="ALL_NEW"`, gdy zwracamy rekord.
 - Liczby wracają jako `Decimal` (serializuje `_json_default`); `None` i puste wartości nie są zapisywane (tagger ma `sanitize()`).
-- **Bez `scan` w ścieżce żądania** (wolne i drogie przy wzroście) — wyjątek: budowa indeksu rekomendera w tle.
+- **Bez `scan` w ścieżce żądania** (wolne i drogie przy wzroście) — wyjątki w tle: budowa indeksu rekomendera i nocne przeliczenie zestawów (`codzis-users`).
 - Każda tabela ma jednego właściciela, który do niej zapisuje (sekcja „Dane”).
 
 **Recepta: nowa trasa w API klienta**
@@ -59,7 +61,7 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 4. **Zależności:** Lambda zip ma tylko bibliotekę standardową + `boto3`. Nowa biblioteka zewnętrzna = pytanie do Krzysztofa (trzeba ją spakować albo dać warstwę).
 5. Front: schemat + hook (patrz `src/frontend/AGENTS.md`).
 
-**Rekomender** (`src/recommender_api/`, logika w `recommender/`): Lambda z obrazu kontenera (model + torch). Zmiana kodu = `scripts/push-images.sh recommender` + `terraform apply`; przebudowa indeksu teraz: `scripts/recommender-refresh.sh`. Pola karty określa `src/recommender_api/present.py`, pola w indeksie `FIELDS` w `index_store.py` — nowe pole na karcie wymaga obu i przebudowy indeksu. Ranking LLM ma timeout; przy błędzie uzasadnienie składają reguły — nie usuwaj tej ścieżki awaryjnej.
+**Rekomender** (`src/recommender_api/`, logika w `recommender/`): Lambda z obrazu kontenera (model + torch). Zmiana kodu = `scripts/push-images.sh recommender` + `terraform apply`; przebudowa indeksu teraz: `scripts/recommender-refresh.sh`. Zapisane zestawy: `results_store.py` (claim liczenia, TTL); zmiana logiki rankingu lub kart = podbij `RESULTS_VERSION`, żeby przeliczyć zapisane. Pola karty określa `src/recommender_api/present.py`, pola w indeksie `FIELDS` w `index_store.py` — nowe pole na karcie wymaga obu i przebudowy indeksu. Ranking LLM ma timeout; przy błędzie uzasadnienie składają reguły — nie usuwaj tej ścieżki awaryjnej.
 
 **Testy backendu:** czyste funkcje (np. `validate_answers`, `compute_preferences`) testuj `pytest` w `tests/` (np. `tests/client_api/test_onboarding.py`); handler można wywołać lokalnie z ręcznie złożonym `event` (`routeKey`, `requestContext.authorizer.jwt.claims`, `body`) — bez prawdziwego AWS podmień tabelę na atrapę.
 
@@ -67,7 +69,7 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 
 ## Dane
 - **Kontrakt:** rekord wydarzenia „schemat v1” (`src/importer/schema.py`), taksonomia tagów (`tagger/prompt.py`), kroki ankiety (`src/client_api/onboarding.py` — dodanie pytania nie wymaga zmian we froncie), karta rekomendacji (`src/recommender_api/present.py`). Front odwzorowuje je w `src/frontend/client/lib/schemas.ts`. **Zmiana kontraktu = informacja do zespołu i aktualizacja po obu stronach.**
-- **Tabele (DynamoDB) i jedyny zapisujący:** `codzis-events` — tagger (TTL `expiresAt` sam usuwa zakończone); `codzis-users` (klucz `userId` = `sub`) — client-api; `submissions`, `partners`, `payments` — API partnera.
+- **Tabele (DynamoDB) i jedyny zapisujący:** `codzis-events` — tagger (TTL `expiresAt` sam usuwa zakończone); `codzis-users` (klucz `userId` = `sub`) — client-api; `codzis-recommendations` (`userId` + `setKey`, TTL `expiresAt`) — rekomender; `submissions`, `partners`, `payments` — API partnera.
 - **Niczego nie zmyślamy.** Wszystko, co widzi użytkownik, pochodzi z API miasta albo od partnerów i ma źródło.
 - **API UM** (`POST https://dane.um.warszawa.pl/api/action/<akcja>`) nie ma historii ani stronicowania i **blokuje adresy IP AWS** — import uruchamiamy z laptopa (`scripts/import-local.sh`).
 

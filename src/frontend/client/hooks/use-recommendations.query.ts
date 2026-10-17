@@ -1,19 +1,25 @@
 import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
-import { apiGet, unwrap, withColdStartRetry, withSlowHint } from "@/lib/api";
+import { apiGet, pollWhilePreparing, unwrap, withColdStartRetry, withSlowHint } from "@/lib/api";
 import { recommendationsKey } from "@/lib/query-keys";
-import { RecommendationsSchema, type When } from "@/lib/schemas";
+import { RecommendationsResponseSchema } from "@/lib/schemas";
+import type { RecommendationsParams } from "@/lib/search";
 
-export type RecommendationsParams = { when: When; q: string };
+export type { RecommendationsParams };
 
 // API zwraca do 16 kart (pula dla LLM); na ekranie pokazujemy do 12 po filtrze kategorii (lib/categories.ts).
+// = DEFAULT_LIMIT w src/recommender_api/handler.py: z tym limitem serwer liczy zestawy z góry.
 export const RECOMMENDATIONS_LIMIT = 16;
+
+// Zestaw z "updating": true (w tle liczy się nowsza wersja) - dopytujemy co tyle ms.
+export const UPDATING_REFETCH_MS = 3000;
 
 // Po tylu ms bez odpowiedzi pokazujemy komunikat zimnego startu.
 export const SLOW_HINT_MS = 6000;
 
-export function recommendationsPath({ when, q }: RecommendationsParams): string {
+export function recommendationsPath({ when, q, date }: RecommendationsParams): string {
   const params = new URLSearchParams({ when });
+  if (date) params.set("date", date);
   if (q) params.set("q", q);
   params.set("limit", String(RECOMMENDATIONS_LIMIT));
   return `/api/recommendations?${params}`;
@@ -36,12 +42,17 @@ export const recommendationsQueryOptions = (p: RecommendationsParams) =>
     queryKey: recommendationsKey(p),
     queryFn: async ({ signal }) => {
       const key = hashKey(p);
+      // 202 "preparing" (zestaw się liczy) -> pytamy ponownie; każde pytanie przeżywa też zimny start Lambdy.
       const result = await withSlowHint(
         () =>
-          withColdStartRetry(() => apiGet(recommendationsPath(p), RecommendationsSchema, signal), {
-            signal,
-            onRetry: () => setColdStart(key, true),
-          }),
+          pollWhilePreparing(
+            () =>
+              withColdStartRetry(() => apiGet(recommendationsPath(p), RecommendationsResponseSchema, signal), {
+                signal,
+                onRetry: () => setColdStart(key, true),
+              }),
+            { signal },
+          ),
         SLOW_HINT_MS,
         () => setColdStart(key, true),
         () => setColdStart(key, false),
@@ -50,6 +61,8 @@ export const recommendationsQueryOptions = (p: RecommendationsParams) =>
     },
     // Ponawia już withColdStartRetry (5 s, 10 s); globalny retry dodałby czwarte wywołanie.
     retry: false,
+    // Wersja wektorowa już jest, AI (albo odświeżenie) liczy się w tle: dopytujemy, aż updating = false.
+    refetchInterval: (query) => (query.state.data?.updating ? UPDATING_REFETCH_MS : false),
   });
 
 /** Przy zmianie filtrów zostają poprzednie karty (przygaszone), zamiast mignięcia szkieletu. */

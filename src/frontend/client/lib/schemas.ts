@@ -72,9 +72,10 @@ export const MeSchema = z.object({
 
 export type Me = z.infer<typeof MeSchema>;
 
-// --- rekomendacje: GET /api/recommendations?when=&q=&limit= ---
+// --- rekomendacje: GET /api/recommendations?when=&date=&q=&limit= ---
 
-export const WHEN_VALUES = ["today", "tomorrow", "weekend", "week"] as const;
+// "date" = wybrany dzień (parametr date=RRRR-MM-DD, do 60 dni naprzód)
+export const WHEN_VALUES = ["today", "tomorrow", "weekend", "week", "date"] as const;
 export const WhenSchema = z.enum(WHEN_VALUES);
 export type When = z.infer<typeof WhenSchema>;
 
@@ -165,9 +166,22 @@ export const RecommendationsSchema = z.object({
   index: z
     .object({ builtAt: nullableString, events: z.number().nullable().default(null) })
     .default({ builtAt: null, events: null }),
+  // Zestaw z zapisu (tabela recommendations); updating = w tle liczy się nowsza wersja
+  // (AI układa kolejność albo odświeżenie po 12 h) - warto zapytać ponownie za chwilę.
+  cached: z.boolean().default(false),
+  updating: z.boolean().default(false),
 });
 
 export type Recommendations = z.infer<typeof RecommendationsSchema>;
+
+// 202: zestawu jeszcze nie ma (albo zmienił się profil) i właśnie się liczy - zapytać za retryAfter s.
+export const PreparingSchema = z.object({
+  status: z.literal("preparing"),
+  retryAfter: z.number().positive().default(2),
+});
+export type Preparing = z.infer<typeof PreparingSchema>;
+
+export const RecommendationsResponseSchema = z.union([PreparingSchema, RecommendationsSchema]);
 
 // --- błąd API: {error: "komunikat PL", fields?, code?} ---
 

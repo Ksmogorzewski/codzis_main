@@ -178,6 +178,40 @@ export async function withColdStartRetry<T>(fn: () => Promise<ApiResult<T>>, opt
   return result;
 }
 
+// --- zestaw rekomendacji w przygotowaniu (202) ---
+
+// Zestaw liczony od zera (np. zaraz po zmianie profilu): wektory to sekundy, zimny start do ~30 s.
+export const PREPARING_LIMIT_MS = 150_000;
+
+type PreparingOptions = {
+  signal?: AbortSignal;
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  now?: () => number;
+  limitMs?: number;
+};
+
+const isPreparing = (data: unknown): data is { status: "preparing"; retryAfter: number } =>
+  typeof data === "object" && data !== null && "status" in data && data.status === "preparing";
+
+/** Wywołuje fn, dopóki serwer odpowiada 202 {status: "preparing"}: czeka retryAfter s i pyta ponownie. */
+export async function pollWhilePreparing<T>(
+  fn: () => Promise<ApiResult<T | { status: "preparing"; retryAfter: number }>>,
+  options: PreparingOptions = {},
+): Promise<ApiResult<T>> {
+  const { signal, sleep = wait, now = Date.now, limitMs = PREPARING_LIMIT_MS } = options;
+  const started = now();
+  for (;;) {
+    const result = await fn();
+    if (result.error !== null) return result;
+    if (!isPreparing(result.data)) return ok(result.data);
+    if (now() - started >= limitMs) {
+      return err({ status: 503, code: "preparing_timeout", message: "Przygotowanie propozycji trwa dłużej niż zwykle. Spróbuj ponownie.", fields: [] });
+    }
+    await sleep(result.data.retryAfter * 1000, signal);
+    if (signal?.aborted) return err(abortedError());
+  }
+}
+
 /**
  * Uruchamia fn; jeśli trwa dłużej niż ms, wywołuje onSlow (np. komunikat „Dobieramy propozycje…”,
  * gdy API Gateway trzyma pierwsze zapytanie ~30 s). onDone zawsze po zakończeniu, timer czyszczony.

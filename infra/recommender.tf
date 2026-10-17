@@ -1,6 +1,9 @@
 # Rekomendacje (RAG): Lambda z obrazu kontenera (src/recommender_api + pakiet recommender/).
 # Indeks wektorów eventów leży w buckecie danych (recommender/index.npz). EventBridge odświeża go
 # przyrostowo i trzyma model w pamięci. GET /api/recommendations idzie przez HTTP API klienta (JWT Cognito).
+# Gotowe zestawy kart trafiają do tabeli recommendations: na dziś, jutro i weekend liczą się w nocy,
+# po zmianie profilu i przy logowaniu (client-api wywołuje Lambdę asynchronicznie), resztę przy pierwszym
+# zapytaniu - zawsze w tle (GET zleca liczenie samej sobie), więc limit 30 s HTTP API nie ogranicza AI.
 #
 # Lambda wymaga istniejącego obrazu, więc pierwsze wdrożenie jest dwuetapowe:
 #   terraform apply -target=aws_ecr_repository.recommender
@@ -47,6 +50,30 @@ data "aws_ecr_image" "recommender" {
   image_tag       = var.recommender_image_tag
 }
 
+# Zapisane zestawy rekomendacji per użytkownik (src/recommender_api/results_store.py)
+resource "aws_dynamodb_table" "recommendations" {
+  name         = "${local.name}-recommendations"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "userId"
+  range_key    = "setKey" # okno#od#do#limit#fraza
+
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
+  attribute {
+    name = "setKey"
+    type = "S"
+  }
+
+  # Zestawy znikają same dzień po końcu swojego okna
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
+  }
+}
+
 resource "aws_cloudwatch_log_group" "recommender" {
   name              = "/aws/lambda/${local.name}-recommender"
   retention_in_days = var.log_retention_days
@@ -83,9 +110,16 @@ resource "aws_iam_role_policy" "recommender" {
         Resource = aws_dynamodb_table.events.arn
       },
       {
+        # Scan: nocne przeliczenie zestawów dla aktywnych użytkowników
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem"]
+        Action   = ["dynamodb:GetItem", "dynamodb:Scan"]
         Resource = aws_dynamodb_table.users.arn
+      },
+      {
+        # UpdateItem: claim liczenia (i jego zdjęcie) na rekordzie zestawu, PutItem: gotowy zestaw
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
+        Resource = aws_dynamodb_table.recommendations.arn
       },
       {
         Effect   = "Allow"
@@ -102,6 +136,13 @@ resource "aws_iam_role_policy" "recommender" {
         Effect   = "Allow"
         Action   = ["ssm:GetParameter"]
         Resource = aws_ssm_parameter.deepseek_api_key.arn
+      },
+      {
+        # GET zleca liczenie zestawu w tle (asynchroniczne wywołanie samej siebie);
+        # ARN złożony ręcznie, bo funkcja zależy od tej polityki
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = "arn:aws:lambda:${var.region}:${local.suffix}:function:${local.name}-recommender"
       },
     ]
   })
@@ -121,6 +162,9 @@ resource "aws_lambda_function" "recommender" {
     variables = {
       EVENTS_TABLE           = aws_dynamodb_table.events.name
       USERS_TABLE            = aws_dynamodb_table.users.name
+      RESULTS_TABLE          = aws_dynamodb_table.recommendations.name
+      RESULTS_MAX_AGE_HOURS  = tostring(var.recommender_results_max_age_hours)
+      PRECOMPUTE_ACTIVE_DAYS = tostring(var.recommender_precompute_active_days)
       INDEX_BUCKET           = aws_s3_bucket.data.id
       INDEX_KEY              = "recommender/index.npz"
       DEEPSEEK_API_KEY_PARAM = aws_ssm_parameter.deepseek_api_key.name
@@ -132,10 +176,12 @@ resource "aws_lambda_function" "recommender" {
   depends_on = [aws_cloudwatch_log_group.recommender, aws_iam_role_policy.recommender, aws_ecr_repository_policy.recommender]
 }
 
-# Wywołania z EventBridge: bez ponawiania (następne i tak przyjdzie za chwilę)
+# Wywołania asynchroniczne (EventBridge, liczenie zestawów w tle): bez ponawiania i bez kolejkowania na
+# długo - następne i tak przyjdzie za chwilę, a claim liczenia wygasa po 3 min
 resource "aws_lambda_function_event_invoke_config" "recommender" {
-  function_name          = aws_lambda_function.recommender.function_name
-  maximum_retry_attempts = 0
+  function_name                = aws_lambda_function.recommender.function_name
+  maximum_retry_attempts       = 0
+  maximum_event_age_in_seconds = 600
 }
 
 resource "aws_apigatewayv2_integration" "recommender" {
@@ -162,10 +208,13 @@ resource "aws_lambda_permission" "recommender_api" {
 }
 
 locals {
-  # reguła -> (co ile minut, akcja)
+  # reguła -> (harmonogram, akcja)
   recommender_schedules = merge(
-    { refresh = { minutes = var.recommender_refresh_minutes, action = "refresh" } },
-    var.recommender_keep_warm ? { warmup = { minutes = 5, action = "warmup" } } : {},
+    {
+      refresh    = { expression = "rate(${var.recommender_refresh_minutes} minutes)", action = "refresh" }
+      precompute = { expression = var.recommender_precompute_schedule, action = "precompute" }
+    },
+    var.recommender_keep_warm ? { warmup = { expression = "rate(5 minutes)", action = "warmup" } } : {},
   )
 }
 
@@ -173,7 +222,7 @@ resource "aws_cloudwatch_event_rule" "recommender" {
   for_each = local.recommender_schedules
 
   name                = "${local.name}-recommender-${each.key}"
-  schedule_expression = "rate(${each.value.minutes} ${each.value.minutes == 1 ? "minute" : "minutes"})"
+  schedule_expression = each.value.expression
 }
 
 resource "aws_cloudwatch_event_target" "recommender" {
