@@ -55,7 +55,7 @@ export const rankLabel = (index: number) => String(index + 1);
 /** Na liście zapisanych tylko imię; bez imienia „Ktoś”, własny wpis z dopiskiem „Ty”. */
 export function attendeeLabel(p: { name: string | null; isMe: boolean }): string {
   const name = p.name?.trim() || null;
-  if (p.isMe) return name ? `${name} (Ty)` : "Ty";
+  if (p.isMe) return name && name !== "Ktoś" ? `${name} (Ty)` : "Ty";
   return name ?? "Ktoś";
 }
 

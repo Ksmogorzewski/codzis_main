@@ -160,7 +160,8 @@ export function ExploreView() {
         <>
           <div className="flex flex-col gap-1 text-meta text-muted-foreground" aria-live="polite">
             <p>
-              <b className="text-foreground">{eventCountLabel(cards.length)}</b>
+              <b className="text-foreground">{eventCountLabel(data.total ?? cards.length)}</b>
+              {data.total !== undefined && data.total > cards.length && ` (pokazujemy ${cards.length} najbliższych)`}
               {cards.length > 1 && (position ? " · najbliżej Ciebie najpierw" : " · od najbliższego startu")}
               {stale && " · odświeżamy…"}
             </p>

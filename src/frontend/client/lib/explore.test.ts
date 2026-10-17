@@ -56,14 +56,19 @@ describe("Eksploruj: parametry zapytania", () => {
     expect(p({ when: "weekend", date: "2026-10-30" })).toMatchObject({ when: "weekend", date: undefined });
   });
 
+  it("fraza obcięta do 100 znaków (limit serwera)", () => {
+    const p = eventsParams({ ...DEFAULT_EXPLORE, q: "a".repeat(120) }, NOW);
+    expect(new URLSearchParams(eventsPath(p).split("?")[1]).get("q")).toHaveLength(100);
+  });
+
   it("ścieżka: tylko ustawione filtry", () => {
-    expect(eventsPath(eventsParams(DEFAULT_EXPLORE, NOW))).toBe("/api/events?when=today");
+    expect(eventsPath(eventsParams(DEFAULT_EXPLORE, NOW))).toBe("/api/events?when=today&limit=200");
     const full = eventsParams(
       { when: "date", date: "2026-10-30", cat: "kultura", district: "Wola", free: true, indoor: true, q: "jazz" },
       NOW,
     );
     expect(eventsPath(full)).toBe(
-      "/api/events?when=date&date=2026-10-30&cat=kultura&district=Wola&free=true&indoor=true&q=jazz",
+      "/api/events?when=date&date=2026-10-30&cat=kultura&district=Wola&free=true&indoor=true&q=jazz&limit=200",
     );
   });
 });

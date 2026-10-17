@@ -62,6 +62,11 @@ export function eventsParams(s: ExploreSearch, now: Date): EventsParams {
   };
 }
 
+// Serwer domyślnie zwraca 60 kart od najbliższego startu; bierzemy maksimum, żeby sortowanie po
+// odległości (na kliencie) objęło wszystko. Fraza: serwer przyjmuje do 100 znaków.
+export const EVENTS_LIMIT = 200;
+const MAX_SERVER_QUERY = 100;
+
 /** "/api/events?when=…" tylko z ustawionymi filtrami (kolejność stała = stabilny adres). */
 export function eventsPath(p: EventsParams): string {
   const params = new URLSearchParams({ when: p.when });
@@ -70,7 +75,8 @@ export function eventsPath(p: EventsParams): string {
   if (p.district) params.set("district", p.district);
   if (p.free) params.set("free", "true");
   if (p.indoor) params.set("indoor", "true");
-  if (p.q) params.set("q", p.q);
+  if (p.q) params.set("q", p.q.slice(0, MAX_SERVER_QUERY));
+  params.set("limit", String(EVENTS_LIMIT));
   return `/api/events?${params}`;
 }
 

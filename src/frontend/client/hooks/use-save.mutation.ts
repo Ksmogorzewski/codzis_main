@@ -1,7 +1,7 @@
 import { type QueryClient, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { errorText } from "@/components/layout/route-error";
-import { apiDelete, apiPut, unwrap } from "@/lib/api";
+import { ApiRequestError, apiDelete, apiPut, unwrap } from "@/lib/api";
 import { currentName } from "@/lib/auth";
 import {
   type KnownSaveState,
@@ -42,7 +42,13 @@ export function useSave() {
   return useMutation({
     mutationFn: async ({ id, save }: SaveVars) => {
       const path = `/api/events/${encodeURIComponent(id)}/save`;
-      return unwrap(await (save ? apiPut(path, undefined, SaveResultSchema) : apiDelete(path, SaveResultSchema)));
+      const call = () => (save ? apiPut(path, undefined, SaveResultSchema) : apiDelete(path, SaveResultSchema));
+      let r = await call();
+      // 409 = rzadki konflikt transakcji: jedno ponowienie (zapis jest idempotentny). Gdyby nadal był,
+      // nie oddajemy 409 dalej - globalny onError (main.tsx) uznałby go za „uzupełnij profil”.
+      if (r.error?.status === 409) r = await call();
+      if (r.error?.status === 409) throw new ApiRequestError({ ...r.error, status: 503, code: "save_conflict" });
+      return unwrap(r);
     },
     onMutate: async ({ id, save }) => {
       const keys = keysFor(id);

@@ -200,7 +200,12 @@ const cardList = z.array(z.unknown()).transform((xs) =>
 );
 
 // GET /api/events?when=&date=&cat=&district=&free=&indoor=&q=  oraz  GET /api/popular
-export const EventListSchema = z.object({ window: WindowSchema, items: cardList });
+// total (tylko /api/events) = wszystkie pasujące przed obcięciem do limit
+export const EventListSchema = z.object({
+  window: WindowSchema,
+  total: z.number().int().nonnegative().optional().catch(undefined),
+  items: cardList,
+});
 export type EventList = z.infer<typeof EventListSchema>;
 
 const OccurrenceSchema = z.object({ start: z.string(), end: nullableString, allDay: z.boolean().default(false) });
