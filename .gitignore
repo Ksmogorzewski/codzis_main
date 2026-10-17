@@ -4,3 +4,8 @@
 *.tfvars
 infra/build/
 __pycache__/
+.env
+.venv/
+*.pyc
+data_real/
+data_tests/

@@ -29,6 +29,8 @@ Tabele DynamoDB: `events` (docelowa, pisze tylko worker), `submissions` i `payme
 
 ## Struktura
 
+- `run_task.py`, `tagger/` – tagowanie eventów przez AI (DeepSeek), jednorazowy task ECS: SQS → tagi → `events`. Szczegóły: [tagger/README.md](tagger/README.md)
+
 - `infra/` – Terraform
 - `src/api/handler.py` – Lambda API (walidacja pól: `TEXT_FIELDS`, `_event_input`)
 - `src/worker/` – worker ECS (`worker.py`, `Dockerfile`): SQS → normalizacja UM → tagi → `events`
