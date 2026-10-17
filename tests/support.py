@@ -30,7 +30,7 @@ DISTRICTS = ["Mokotów", "Śródmieście", "Wola"]
 
 
 def _lambda_module_names() -> set[str]:
-    names = set()
+    names: set[str] = set()
     for directory in (CLIENT_API_DIR, API_DIR):
         names.update(p.stem for p in directory.glob("*.py"))
     return names

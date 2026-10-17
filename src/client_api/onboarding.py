@@ -13,6 +13,7 @@ Dodanie pytania = nowy wpis w build_steps(); frontend nie wymaga zmian.
 
 import hashlib
 import json
+from typing import Any
 
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
 WEEKEND = ["saturday", "sunday"]
@@ -123,9 +124,11 @@ def build_steps(districts: list[str]) -> list[dict]:
             "fields": [
                 {"id": "district", "type": "select", "label": "Twoja dzielnica", "required": True,
                  "options": [_opt(d, d, district=d) for d in districts]},
-                {"id": "travel", "type": "single", "label": "Jak daleko chcesz jeździć?", "required": True, "options": [
+                {"id": "travel", "type": "single", "label": "Jak daleko chcesz jeździć?", "required": True,
+                 "options": [
                     _opt("local", "Tylko moja okolica", "directions_walk", "Okolica", travelRange="local"),
-                    _opt("nearby", "Moja i sąsiednie dzielnice", "directions_bus", "Sąsiednie dzielnice", travelRange="nearby"),
+                    _opt("nearby", "Moja i sąsiednie dzielnice", "directions_bus", "Sąsiednie dzielnice",
+                         travelRange="nearby"),
                     _opt("city", "Cała Warszawa", "tram", "Cała Warszawa", travelRange="city"),
                 ]},
             ],
@@ -156,7 +159,8 @@ def build_steps(districts: list[str]) -> list[dict]:
             "id": "style", "icon": "nature_people",
             "title": "Jak lubisz spędzać czas?", "hint": "Opcjonalne",
             "fields": [
-                {"id": "setting", "type": "single", "label": "W środku czy na zewnątrz?", "required": False, "options": [
+                {"id": "setting", "type": "single", "label": "W środku czy na zewnątrz?", "required": False,
+                 "options": [
                     _opt("indoor", "Pod dachem", "roofing", "Pod dachem", setting=["W pomieszczeniu"]),
                     _opt("outdoor", "Na świeżym powietrzu", "park", "Plener", setting=["Na zewnątrz"]),
                     _opt("any", "Bez różnicy", "swap_horiz", "Pod dachem lub plener"),
@@ -164,7 +168,8 @@ def build_steps(districts: list[str]) -> list[dict]:
                 {"id": "activity", "type": "multi", "label": "Jak aktywnie?", "required": False, "options": [
                     _opt("watch", "Oglądam i słucham", "visibility", "Oglądam", activityLevel=["Widz / słuchacz"]),
                     _opt("participate", "Biorę udział", "front_hand", "Biorę udział", activityLevel=["Udział aktywny"]),
-                    _opt("exercise", "Chcę się zmęczyć", "fitness_center", "Wysiłek", activityLevel=["Wysiłek fizyczny"]),
+                    _opt("exercise", "Chcę się zmęczyć", "fitness_center", "Wysiłek",
+                         activityLevel=["Wysiłek fizyczny"]),
                 ]},
             ],
         },
@@ -174,7 +179,8 @@ def build_steps(districts: list[str]) -> list[dict]:
             "fields": [
                 {"id": "mode", "type": "single", "label": "Na żywo czy online?", "required": False, "options": [
                     _opt("live", "Tylko na żywo", "location_on", "Na żywo", mode=["Stacjonarne"]),
-                    _opt("online_ok", "Online też chętnie", "devices", "Także online", mode=["Stacjonarne", "Hybrydowe", "Online"]),
+                    _opt("online_ok", "Online też chętnie", "devices", "Także online",
+                         mode=["Stacjonarne", "Hybrydowe", "Online"]),
                 ]},
                 {"id": "registration", "type": "single", "label": "Zapisy i bilety", "required": False, "options": [
                     _opt("walk_in", "Wolę wpaść bez zapisów", "door_open", "Bez zapisów", registration=["Wstęp wolny"]),
@@ -193,7 +199,8 @@ def build_steps(districts: list[str]) -> list[dict]:
                     _opt("50_64", "50–64", short="50–64 lat", ageRange="50-64", audience=["Dorośli (18-64)"]),
                     _opt("65plus", "65+", short="65+ lat", ageRange="65+", audience=["Seniorzy (65+)"]),
                 ]},
-                {"id": "accessibility", "type": "multi", "label": "Potrzeby dostępności", "required": False, "options": [
+                {"id": "accessibility", "type": "multi", "label": "Potrzeby dostępności", "required": False,
+                 "options": [
                     _opt("mobility", "Dostęp dla osób z niepełnosprawnością ruchową", "accessible", "Dostęp bez barier",
                          accessibility=["Dostępne dla osób z niepełnosprawnością ruchową"]),
                     _opt("pjm", "Tłumaczenie na PJM", "sign_language", "PJM", accessibility=["Tłumaczenie na PJM"]),
@@ -263,7 +270,9 @@ def validate_answers(answers, steps: list[dict]) -> tuple[dict, list[str]]:
 
 def compute_preferences(answers: dict, steps: list[dict]) -> dict:
     """Suma mapowań wybranych opcji -> preferencje w słowniku eventów."""
-    prefs = {k: [] for k in LIST_PREFS} | {k: None for k in SCALAR_PREFS} | {k: False for k in BOOL_PREFS}
+    prefs: dict[str, Any] = (
+        {k: [] for k in LIST_PREFS} | {k: None for k in SCALAR_PREFS} | {k: False for k in BOOL_PREFS}
+    )
     for step in steps:
         for field in step["fields"]:
             chosen = set(answers.get(field["id"], []))
@@ -285,7 +294,8 @@ def compute_preferences(answers: dict, steps: list[dict]) -> dict:
 
 def rag_profile(prefs: dict) -> str:
     """Tekstowy profil pod RAG, np.
-    interests=[Kultura, Czas wolny] | district=Śródmieście | cost=Bezpłatne | mode=Stacjonarne | audience=Dorośli (18-64)
+    interests=[Kultura, Czas wolny] | district=Śródmieście | cost=Bezpłatne | mode=Stacjonarne
+    | audience=Dorośli (18-64)
     Puste pola są pomijane; lista z jedną wartością wypisywana bez nawiasów."""
     parts = []
     for key, name in RAG_FIELDS:

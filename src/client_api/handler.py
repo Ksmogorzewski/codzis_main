@@ -12,7 +12,7 @@ Po zapisaniu profilu i przy logowaniu rekomender w tle liczy zestawy na dziś, j
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import boto3
 
@@ -105,8 +105,11 @@ def _precompute(user_id: str) -> None:
     if not RECOMMENDER_FUNCTION:
         return
     try:
-        lambda_client.invoke(FunctionName=RECOMMENDER_FUNCTION, InvocationType="Event",
-                             Payload=json.dumps({"action": "precompute", "userId": user_id}))
+        lambda_client.invoke(
+            FunctionName=RECOMMENDER_FUNCTION,
+            InvocationType="Event",
+            Payload=json.dumps({"action": "precompute", "userId": user_id}),
+        )
     except Exception:
         # Profil i tak jest zapisany; zestawy policzą się przy wejściu na stronę
         log.exception("Nie udało się zlecić przeliczenia rekomendacji")
@@ -129,7 +132,9 @@ def _view(item: dict) -> dict:
             "completedAt": onboarding.get("completedAt"),
             "preferences": item.get("preferences"),
             "ragProfile": item.get("ragProfile"),
-        } if completed else None,
+        }
+        if completed
+        else None,
     }
 
 
@@ -148,14 +153,14 @@ def _body(event: dict) -> dict:
     try:
         body = json.loads(event.get("body") or "{}")
     except json.JSONDecodeError:
-        raise ApiError(400, "Niepoprawny JSON")
+        raise ApiError(400, "Niepoprawny JSON") from None
     if not isinstance(body, dict):
         raise ApiError(400, "Oczekiwano obiektu JSON")
     return body
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _json_default(value):

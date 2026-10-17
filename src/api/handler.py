@@ -3,8 +3,9 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -50,13 +51,21 @@ DECLARED_FIELDS = {
     "cost": (True, False, ["Bezpłatne", "Płatne"]),
     "registration": (True, False, ["Wstęp wolny", "Wymagane zapisy / rejestracja", "Wymagany bilet"]),
     "setting": (True, False, ["W pomieszczeniu", "Na zewnątrz", "W pomieszczeniu i na zewnątrz"]),
-    "audience": (False, True, ["Dzieci (0-12)", "Młodzież (13-17)", "Dorośli (18-64)", "Seniorzy (65+)", "Rodziny / wszystkie grupy"]),
-    "accessibility": (False, True, [
-        "Dostępne dla osób z niepełnosprawnością ruchową",
-        "Tłumaczenie na PJM",
-        "Audiodeskrypcja",
-        "Przyjazne sensorycznie",
-    ]),
+    "audience": (
+        False,
+        True,
+        ["Dzieci (0-12)", "Młodzież (13-17)", "Dorośli (18-64)", "Seniorzy (65+)", "Rodziny / wszystkie grupy"],
+    ),
+    "accessibility": (
+        False,
+        True,
+        [
+            "Dostępne dla osób z niepełnosprawnością ruchową",
+            "Tłumaczenie na PJM",
+            "Audiodeskrypcja",
+            "Przyjazne sensorycznie",
+        ],
+    ),
 }
 MAX_PRICE = 100_000
 
@@ -120,6 +129,7 @@ def handler(event, context):
 
 # --- profil ---
 
+
 def get_profile(partner):
     # Pierwsze logowanie zakłada rekord partnera z kredytami startowymi.
     item = partners_table.update_item(
@@ -133,6 +143,7 @@ def get_profile(partner):
 
 
 # --- ogłoszenia ---
+
 
 def list_events(partner):
     # Zgłoszenia partnera ze statusem: queued (czeka na worker) / published (otagowane, w tabeli events)
@@ -174,7 +185,7 @@ def create_event(partner, body):
                 {"Delete": {"TableName": SUBMISSIONS_TABLE, "Key": {"id": event_id}}},
             ]
         )
-        raise ApiError(503, "Nie udało się przyjąć ogłoszenia, spróbuj ponownie")
+        raise ApiError(503, "Nie udało się przyjąć ogłoszenia, spróbuj ponownie") from None
 
     upload = s3.generate_presigned_post(
         Bucket=PHOTOS_BUCKET,
@@ -191,7 +202,7 @@ def create_event(partner, body):
 
 def _event_input(body):
     errors = []
-    data = {}
+    data: dict[str, Any] = {}
 
     for name, (required, max_len) in TEXT_FIELDS.items():
         value = body.get(name)
@@ -225,7 +236,10 @@ def _event_input(body):
             errors.append(name)
 
     data["price"] = None
-    price_min, price_max = _price(body.get("priceMin"), errors, "priceMin"), _price(body.get("priceMax"), errors, "priceMax")
+    price_min, price_max = (
+        _price(body.get("priceMin"), errors, "priceMin"),
+        _price(body.get("priceMax"), errors, "priceMax"),
+    )
     cost = data["declared"].get("cost")
     if (price_min is not None or price_max is not None) and cost:  # bez kosztu błąd zgłasza już pole cost
         if cost != "Płatne":
@@ -250,7 +264,7 @@ def _event_input(body):
     if body.get("endsAt") and (not data["endsAt"] or (data["startsAt"] and data["endsAt"] < data["startsAt"])):
         errors.append("endsAt")
     last = data["endsAt"] or data["startsAt"]
-    if last and last < datetime.now(timezone.utc):
+    if last and last < datetime.now(UTC):
         errors.append("endsAt" if data["endsAt"] else "startsAt")
 
     if errors:
@@ -320,7 +334,7 @@ def _parse_datetime(value):
 
 
 def _utc(dt):
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _to_html(text):
@@ -332,6 +346,7 @@ def _to_html(text):
 
 
 # --- płatności (mock bramka) ---
+
 
 def list_payments(partner):
     return {"items": _query_by_partner(payments_table, partner)}
@@ -390,7 +405,7 @@ def cancel_payment(partner, payment_id):
 
 
 def _credit_update(partner, delta, require_funds=True):
-    update = {
+    update: dict[str, Any] = {
         "TableName": PARTNERS_TABLE,
         "Key": {"partnerId": partner["partnerId"]},
         "UpdateExpression": "ADD credits :delta",
@@ -417,14 +432,15 @@ def _payment_transition(payment_id, status, at):
 
 # --- helpers ---
 
+
 def _transact(items, condition_error):
     try:
         ddb.transact_write_items(TransactItems=items)
     except ddb.exceptions.TransactionCanceledException as e:
         reasons = [r.get("Code") for r in e.response.get("CancellationReasons", [])]
         if "ConditionalCheckFailed" in reasons:
-            raise condition_error
-        raise ApiError(409, "Konflikt zapisu, spróbuj ponownie")
+            raise condition_error from e
+        raise ApiError(409, "Konflikt zapisu, spróbuj ponownie") from e
 
 
 def _query_by_partner(table, partner):
@@ -445,14 +461,14 @@ def _body(event):
     try:
         body = json.loads(event.get("body") or "{}", parse_float=Decimal)
     except json.JSONDecodeError:
-        raise ApiError(400, "Niepoprawny JSON")
+        raise ApiError(400, "Niepoprawny JSON") from None
     if not isinstance(body, dict):
         raise ApiError(400, "Oczekiwano obiektu JSON")
     return body
 
 
 def _now():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _is_blank(value):
