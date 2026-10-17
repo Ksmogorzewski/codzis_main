@@ -4,7 +4,7 @@ Jeden projekt Vite, dwie aplikacje: **portal klienta** (`client/`, tryb `client`
 
 ## Produkt (portal klienta)
 Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni/inny dzień, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia (`GET /api/events/{id}`: pełny opis, lista zapisanych, mapa Google z trasą komunikacją miejską). **Eksploruj** (`GET /api/events`: wszystko w oknie czasu, bez profilu), **Popularne w najbliższym tygodniu** (`GET /api/popular`, dziś + 6 dni), **Zapisz / Zapisano** na kartach i w szczegółach. Nawigacja: Dla Ciebie / Eksploruj / Popularne / Profil (nagłówek na desktopie, dolny pasek na telefonie). Wygląd: mockup WarsawNow, wariant 1a Karty.
-**Imię:** wymagane przy rejestracji (atrybut Cognito `name`), potem niezmienne; konta bez imienia dostają jednorazową prośbę przed pierwszym zapisem (`setMissingName` w `lib/auth.ts`). Na listach zapisanych tylko imię (brak → „Ktoś”), nigdy e-mail.
+**Imię:** wymagane przy rejestracji (atrybut Cognito `name`; walidacja `NameSchema` w `lib/auth-form.ts`: litery, spacje, myślnik, maks. 40), potem niezmienne; konta bez imienia dostają jednorazową prośbę przed pierwszym zapisem (`setMissingName` w `lib/auth.ts`). Na listach zapisanych tylko imię (brak → „Ktoś”; backend bierze imię z tokenu, a bez niego `displayName` z `codzis-users`), nigdy e-mail. Po zapisie mój wpis „<Imię> (Ty)” pojawia się od razu (imię z ID tokenu), toast „Zapisano jako <Imię>”.
 **Poza zakresem bez zgody zespołu:** logowanie Google, „Sponsorowane”, czat (Kacper), pogoda.
 
 ## Komendy (z `src/frontend/`)
