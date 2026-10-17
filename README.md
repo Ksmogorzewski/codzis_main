@@ -1,9 +1,18 @@
 # codzis_main
 
-PoC: portal partnera pod własną domeną. Partner loguje się swoim kluczem API, kupuje kredyty (mock bramka płatności) i publikuje ogłoszenia eventów (1 zdjęcie → S3). Każde ogłoszenie kosztuje kredyt. Eventy trafiają na kolejkę SQS, a worker na ECS je taguje i zapisuje do docelowej tabeli DynamoDB.
+PoC **WarsawNow**: co robić w Warszawie dziś.
+- **Portal klienta** (`portal.waw-out.pl`): logowanie e-mailem lub Google (Cognito), profil zbierany kafelkami (onboarding) i zapisywany w DynamoDB pod rekomendacje (RAG).
+- **Panel organizatora** (`partner.waw-out.pl`): partner loguje się kluczem API, kupuje kredyty (mock bramka płatności) i publikuje ogłoszenia (1 zdjęcie → S3, 1 ogłoszenie = 1 kredyt).
+- **Dane:** ogłoszenia partnerów i eventy z otwartych danych UM trafiają na kolejkę SQS, a tagger AI na ECS taguje je i zapisuje do docelowej tabeli DynamoDB.
+
+Frontend obu stron to React + TypeScript (`src/frontend`, Vite), wygląd według makiet z „UI mockups request”.
 
 ```
-https://<domena>/        ──▶ CloudFront ──▶ S3 (strona, prywatny, OAC)
+https://portal.<domena>/ ──▶ CloudFront ──▶ S3 (portal klienta, React)
+     logowanie: Cognito (e-mail + hasło: API Cognito; Google: Hosted UI + PKCE)
+     API: HTTP API (JWT authorizer Cognito) ──▶ Lambda client-api ──▶ users (profil + preferencje)
+
+https://<domena>/        ──▶ CloudFront ──▶ S3 (panel organizatora, React, prywatny, OAC)
 https://<domena>/api/*   ──▶ CloudFront ──▶ API GW (REST, API key, /{proxy+}) ──▶ Lambda ──▶ submissions + SQS
 https://<domena>/photos/* ──▶ CloudFront ──▶ S3 (zdjęcia, prywatny; upload przez presigned POST)
 
@@ -13,7 +22,7 @@ SQS ──▶ tagger ECS (Fargate Spot): tagi DeepSeek ──▶ events (docelow
 dispatcher (Lambda, EventBridge co 1 min): gdy w kolejce jest ≥ 1 wiadomość i tagger nie działa → RunTask
 ```
 
-Portal (`index.html`): landing z cennikiem i logowaniem, po zalogowaniu zakładki Moje ogłoszenia / Dodaj nowe / Profil / Płatności. Mock bramka: `mock-pay.html`.
+Panel organizatora: logowanie kluczem API, potem Moje wydarzenia (statusy, tagi AI), Dodaj wydarzenie (formularz z podglądem karty) i Płatności i kredyty. Mock bramka: `mock-pay.html`.
 
 | Endpoint | Opis |
 | --- | --- |
@@ -37,9 +46,16 @@ Tabele DynamoDB: `events` (docelowa, pisze tylko worker), `submissions` i `payme
 - `src/dispatcher/handler.py` – Lambda uruchamiająca task taggera
 - `src/importer/` – importer ECS: API UM Warszawy → wspólny schemat (`schema.py`, `sources.py`) → SQS
 - `Dockerfile` (tagger), `src/importer/Dockerfile`, `scripts/push-images.sh` – obrazy ECS i ich build + push do ECR
-- `src/web/` – portal (`index.html`, `app.js`), mock bramka (`mock-pay.*`), wspólne `common.js`, `styles.css`; `config.js` generuje Terraform
+- `src/client_api/` – Lambda API portalu klienta: `handler.py` (profil), `onboarding.py` (pytania + mapowanie odpowiedzi na preferencje)
+- `src/frontend/` – React + TS (Vite): `client/` portal klienta, `partner/` panel organizatora (+ `mock-pay.html`), `shared/`; `config.js` generuje Terraform
 
 ## Deploy
+
+Frontend trzeba zbudować przed `terraform apply`, bo Terraform wgrywa na S3 pliki z `src/frontend/dist`. Bez builda plan zatrzyma się z błędem (`terraform_data.frontend_build`), zamiast skasować strony:
+
+```sh
+scripts/build-frontend.sh        # npm ci + testy + build obu aplikacji
+```
 
 DNS domeny jest w home.pl, bez Route53. Portal działa pod `domain_name` (`partner.waw-out.pl`); opcjonalne dodatkowe nazwy na tym samym certyfikacie: `domain_aliases` (domyślnie brak). Rekordy w home.pl dodajesz ręcznie, dlatego deploy ma dwa etapy:
 
@@ -70,6 +86,50 @@ scripts/push-images.sh                         # obrazy taggera i importera (wym
 ```
 
 Do czasu wypchnięcia obrazu dispatcher będzie uruchamiał task, który nie wystartuje (brak obrazu w ECR), a wiadomości poczekają w kolejce (retencja 14 dni).
+
+## Portal klienta (WarsawNow)
+
+**Domena:** `client_domain_name` (domyślnie `portal.waw-out.pl`). W home.pl potrzebne są 2 rekordy CNAME:
+- walidacja certyfikatu z `terraform output client_acm_validation_records` (albo `scripts/acm-records.sh portal.waw-out.pl` w trakcie apply);
+- `portal` → CloudFront z `terraform output client_dns_records`.
+
+W polu Host wpisujesz część przed `.waw-out.pl`.
+
+**Logowanie (Cognito):**
+- **E-mail + hasło:** własny formularz strony; rejestracja z 6-cyfrowym kodem z e-maila i reset hasła. Domyślna wysyłka Cognito ma limit ~50 e-maili dziennie.
+- **Google:** w [Google Cloud Console](https://console.cloud.google.com/apis/credentials) utwórz *OAuth client ID → Web application*:
+  - Authorized JavaScript origins: `terraform output cognito_hosted_ui`;
+  - Authorized redirect URIs: `terraform output google_oauth_redirect_uri`.
+
+  Client ID i secret wpisz do `infra/terraform.tfvars` (`google_client_id`, `google_client_secret`) i zrób `terraform apply`; przycisk „Kontynuuj przez Google” pojawi się sam. Ekran zgody w trybie *Testing* wpuszcza tylko dodanych testerów.
+- Sesja jest trzymana w `localStorage` (refresh token na 30 dni). Konto e-mail i konto Google z tym samym adresem to w Cognito dwa osobne konta.
+
+**API** (HTTP API, ID token Cognito w `Authorization: Bearer …`, weryfikuje go API Gateway):
+
+| Endpoint | Opis |
+| --- | --- |
+| `GET /api/me` | profil (pierwsze wywołanie zakłada rekord), `needsOnboarding`, `onboardingOutdated` |
+| `GET /api/onboarding` | kafelki z pytaniami (ikony, limity wyborów, wymagane pola) |
+| `PUT /api/profile` | `{"answers": {"who": ["kids"], ...}}` → walidacja, preferencje, zapis |
+
+**Onboarding:** pytania i mapowanie odpowiedzi są w jednym miejscu, `src/client_api/onboarding.py`; frontend tylko je wyświetla. Jest 10 kafelków:
+- wymagane: z kim, klimat (maks. 2), co odkryć (maks. 2), gdzie (dzielnica i zasięg);
+- opcjonalne: sprawy miejskie, kiedy, budżet, styl (pod dachem / plener, aktywność), formuła (na żywo / online, zapisy), o Tobie (wiek, dostępność).
+
+**Rekord użytkownika (tabela `codzis-users`, klucz `userId` = `sub` z Cognito, PITR włączone):**
+
+| Pole | Opis |
+| --- | --- |
+| `email`, `displayName`, `picture`, `identityProvider` | z tokenu (`Google` / `Cognito`) |
+| `onboarding` | `{version, completedAt, answers}`: surowe odpowiedzi; zmiana pytań zmienia `version` |
+| `preferences` | odpowiedzi przemapowane na słownik eventów: `themes`, `formats`, `audience`, `occasion`, `activityLevel`, `cost`, `mode`, `setting`, `registration`, `accessibility` (opcje taksonomii taggera), `interests` (kategorie kalendarza UM), `days`/`timeOfDay`/`weekend` (jak `facets` eventów), `district`, `travelRange`, `maxPrice`, `ageRange` |
+| `ragProfile` | tekst pod RAG, np. `interests=[Czas wolny, Kultura] \| district=Śródmieście \| cost=Bezpłatne \| mode=Stacjonarne \| audience=Dorośli (18-64) \| …` |
+
+**Lokalny development** na wdrożonej infrze:
+- `scripts/frontend-dev.sh client` (http://localhost:8000; adres jest w callbackach Cognito i w CORS API);
+- `scripts/frontend-dev.sh partner` (http://localhost:8001; `/api` idzie przez proxy do domeny panelu).
+
+Testy frontendu: `npm --prefix src/frontend test`.
 
 ## Initial load (pierwsze załadowanie danych)
 
@@ -162,7 +222,8 @@ Pola portalu partnera i ich walidacja: `TEXT_FIELDS`, `DECLARED_FIELDS` i `_even
 - Mock bramka: `confirm` woła sam partner, więc każdy zalogowany może dodać sobie kredyty. Przy prawdziwej bramce (np. Stripe, PayU, Przelewy24) zastąp to webhookiem od operatora, weryfikowanym podpisem.
 - Kredyt jest pobierany przy zapisie ogłoszenia, przed uploadem zdjęcia. Jeśli upload się nie uda, `image.highlighted.path` wskazuje na nieistniejący plik.
 - Czas z formularza jest interpretowany w strefie przeglądarki partnera.
-- **Domena główna bez subdomeny** (np. samo `waw-out.pl`) nie zadziała z CloudFront przez home.pl: CNAME wymaga hosta, a rekord A wymagałby stałego IP, którego CloudFront nie ma. Dlatego portal jest na subdomenie.
+- **Domena główna bez subdomeny** (np. samo `waw-out.pl`) nie zadziała z CloudFront przez home.pl: CNAME wymaga hosta, a rekord A wymagałby stałego IP, którego CloudFront nie ma. Dlatego obie strony są na subdomenach (`partner.`, `portal.`).
+- Portal klienta nie ma jeszcze rekomendacji: po zapisaniu profilu pokazuje jego podsumowanie i `ragProfile`.
 - Ogłoszenie partnera pojawia się w tabeli `events` po ~2-5 min (start kontenera + tagowanie).
 - Brak alarmu na DLQ: zepsute wiadomości trzeba sprawdzać ręcznie.
 - Rekordy usunięte w źródle przed końcem (np. odwołane eventy) zostają w tabeli do `expiresAt`; zajęcia cykliczne usunięte w źródle zostają na stałe (importer tylko loguje ich liczbę).

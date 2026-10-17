@@ -35,15 +35,31 @@ locals {
   portal_domains  = concat([var.domain_name], var.domain_aliases)
   website_origin  = "https://${var.domain_name}" # adres kanoniczny (zdjęcia, linki)
   website_origins = [for d in local.portal_domains : "https://${d}"]
-  web_dir         = "${path.module}/../src/web"
 
-  web_files = {
-    "index.html"    = "text/html; charset=utf-8"
-    "app.js"        = "application/javascript; charset=utf-8"
-    "common.js"     = "application/javascript; charset=utf-8"
-    "styles.css"    = "text/css; charset=utf-8"
-    "mock-pay.html" = "text/html; charset=utf-8"
-    "mock-pay.js"   = "application/javascript; charset=utf-8"
+  # Build Reacta: npm --prefix src/frontend run build (patrz terraform_data.frontend_build)
+  web_dir = "${path.module}/../src/frontend/dist/partner"
+  # config.js z lokalnego developmentu (scripts/frontend-dev.sh) mógł trafić do builda - na S3 idzie wersja z Terraforma
+  web_files = setsubtract(fileset(local.web_dir, "**"), ["config.js"])
+
+  partner_app_config = {
+    apiUrl       = "/${aws_api_gateway_stage.api.stage_name}"
+    maxPhotoMb   = var.max_photo_mb
+    eventCost    = var.event_cost_credits
+    currency     = var.currency
+    packages     = var.credit_packages
+    categories   = var.event_categories
+    districts    = local.warsaw_districts
+    clientPortal = "https://${var.client_domain_name}"
+  }
+}
+
+# Bez zbudowanego frontendu fileset() byłby pusty i apply skasowałby strony z S3 - zatrzymujemy plan
+resource "terraform_data" "frontend_build" {
+  lifecycle {
+    precondition {
+      condition     = fileexists("${local.web_dir}/index.html") && fileexists("${local.client_web_dir}/index.html")
+      error_message = "Brak zbudowanego frontendu (src/frontend/dist). Uruchom: npm --prefix src/frontend ci && npm --prefix src/frontend run build"
+    }
   }
 }
 
@@ -54,8 +70,8 @@ resource "aws_s3_object" "web" {
   key           = each.key
   source        = "${local.web_dir}/${each.key}"
   etag          = filemd5("${local.web_dir}/${each.key}")
-  content_type  = each.value
-  cache_control = "no-cache"
+  content_type  = lookup(local.content_types, regex("[^.]+$", each.key), "application/octet-stream")
+  cache_control = startswith(each.key, "assets/") ? "public, max-age=86400" : "no-cache"
 }
 
 resource "aws_s3_object" "config" {
@@ -63,13 +79,5 @@ resource "aws_s3_object" "config" {
   key           = "config.js"
   content_type  = "application/javascript; charset=utf-8"
   cache_control = "no-cache"
-  content = "window.APP_CONFIG = ${jsonencode({
-    apiUrl     = "/${aws_api_gateway_stage.api.stage_name}"
-    maxPhotoMb = var.max_photo_mb
-    eventCost  = var.event_cost_credits
-    currency   = var.currency
-    packages   = var.credit_packages
-    categories = var.event_categories
-    districts  = local.warsaw_districts
-  })};\n"
+  content       = "window.APP_CONFIG = ${jsonencode(local.partner_app_config)};\n"
 }

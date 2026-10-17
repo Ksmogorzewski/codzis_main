@@ -138,3 +138,68 @@ locals {
     "Wawer", "Wesoła", "Wilanów", "Włochy", "Wola", "Żoliborz",
   ]
 }
+
+# --- portal klienta (WarsawNow) ---
+
+variable "client_domain_name" {
+  description = "Domena portalu klienta. Subdomena, bo home.pl nie ma rekordu ALIAS dla domeny głównej (wystarczy CNAME)"
+  type        = string
+  default     = "portal.waw-out.pl"
+}
+
+variable "client_domain_aliases" {
+  description = "Dodatkowe nazwy portalu klienta na tym samym certyfikacie i CloudFront"
+  type        = list(string)
+  default     = []
+}
+
+variable "client_dev_origins" {
+  description = "Adresy lokalnego developmentu (callback logowania + CORS API), np. scripts/client-dev.sh"
+  type        = list(string)
+  default     = ["http://localhost:8000"]
+}
+
+variable "partner_dev_origins" {
+  description = "Adresy lokalnego developmentu panelu organizatora (CORS uploadu zdjęć), np. npm run dev:partner"
+  type        = list(string)
+  default     = ["http://localhost:8001"]
+}
+
+variable "cognito_domain_prefix" {
+  description = "Prefiks Hosted UI Cognito: https://<prefix>.auth.<region>.amazoncognito.com (unikalny w regionie)"
+  type        = string
+  default     = "warsawnow"
+}
+
+variable "google_client_id" {
+  description = "OAuth client ID z Google Cloud Console; puste = logowanie tylko e-mailem"
+  type        = string
+  default     = ""
+}
+
+variable "google_client_secret" {
+  description = "OAuth client secret z Google Cloud Console (trafia do state'u Terraforma)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+locals {
+  client_domains        = concat([var.client_domain_name], var.client_domain_aliases)
+  client_origins        = [for d in local.client_domains : "https://${d}"]
+  client_app_urls       = concat([for o in local.client_origins : "${o}/"], [for o in var.client_dev_origins : "${o}/"])
+  google_enabled        = var.google_client_id != ""
+  cognito_hosted_domain = "${var.cognito_domain_prefix}.auth.${var.region}.amazoncognito.com"
+
+  # rozszerzenie pliku -> Content-Type (strony na S3)
+  content_types = {
+    html = "text/html; charset=utf-8"
+    js   = "application/javascript; charset=utf-8"
+    css  = "text/css; charset=utf-8"
+    jpg  = "image/jpeg"
+    png  = "image/png"
+    svg  = "image/svg+xml"
+    ico  = "image/x-icon"
+    webp = "image/webp"
+  }
+}

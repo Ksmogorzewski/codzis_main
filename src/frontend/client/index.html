@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WarsawNow – co robić w Warszawie dziś</title>
+  <meta name="description" content="Propozycje na wolny czas w Warszawie dopasowane do Ciebie i Twojej okolicy.">
+  <link rel="icon" href="/assets/logo.jpg" type="image/jpeg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,500,0..1,0&display=block" rel="stylesheet">
+  <script>
+    // Motyw przed pierwszym renderem (bez mignięcia jasnego tła)
+    try {
+      var t = localStorage.getItem("warsawnow-theme");
+      document.documentElement.dataset.theme = t || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    } catch (e) { document.documentElement.dataset.theme = "light"; }
+  </script>
+  <!-- Konfiguracja runtime (Terraform / scripts/frontend-dev.sh), nie jest bundlowana -->
+  <script src="/config.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="./main.tsx"></script>
+</body>
+</html>
