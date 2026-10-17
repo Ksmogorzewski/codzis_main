@@ -1,0 +1,79 @@
+# codzis_main — WarsawNow (Warsaw Open Data Hackathon, wyzwanie 3)
+
+Instrukcje dla agentów AI (Claude, Codex, Cursor, Copilot…) i ludzi. WarsawNow podpowiada, co robić w Warszawie: wydarzenia i zajęcia z otwartych danych miasta (dane.um.warszawa.pl) i od partnerów, dopasowane do profilu użytkownika. Produkcja: `portal.waw-out.pl` (klient), `partner.waw-out.pl` (organizatorzy).
+
+**Pilnuj struktury i wzorców opisanych tu i w `src/frontend/AGENTS.md`.** Jeśli zmiana do nich nie pasuje, zatrzymaj się i zapytaj, zamiast tworzyć nowy wzorzec.
+
+## Mapa repo
+| Część | Gdzie | Technologia | Właściciel |
+|---|---|---|---|
+| Importer: API UM → schemat v1 → SQS | `src/importer/` | Python, ECS | Krzysztof |
+| Tagger: DeepSeek → DynamoDB `codzis-events` | `run_task.py`, `tagger/` | Python, ECS | Krzysztof / Jeremi |
+| API klienta: `/api/me`, `/api/onboarding`, `/api/profile` | `src/client_api/` | Python, Lambda (zip) | Krzysztof |
+| Rekomender RAG: `/api/recommendations` | `src/recommender_api/`, `recommender/` | Python, Lambda (kontener) | Jeremi |
+| API panelu partnera | `src/api/`, `src/dispatcher/` | Python, Lambda | Krzysztof |
+| **Front** (portal klienta + panel partnera) | `src/frontend/` | React + TS (Vite) | Dawid (klient) — **`src/frontend/AGENTS.md`** |
+| Infrastruktura | `infra/` | Terraform | Krzysztof |
+
+Szczegóły uruchamiania i wdrożenia: `README.md`, `recommender/README.md`, `tagger/README.md`.
+
+## Jak to działa
+```
+portal.waw-out.pl ─ CloudFront ─ S3 (src/frontend/dist/client + config.js z Terraforma)
+     └─ HTTP API (API Gateway, JWT z Cognito) ─┬─ Lambda client-api ─ DynamoDB codzis-users
+                                               └─ Lambda recommender ─ indeks w S3 (+ codzis-events) + DeepSeek
+importer (ECS) ─ SQS ─ tagger (ECS) ─ DynamoDB codzis-events
+```
+- API Gateway sprawdza token Cognito **zanim** uruchomi Lambdę; kod dostaje gotowe `claims` (`claims["sub"]` = id użytkownika).
+- Rekomender ma zimny start (kilkanaście s): rozgrzewanie co 5 min, indeks przebudowywany co 30 min; front ponawia zapytanie przy 0/502/503/504.
+
+## Jak shipujemy feature (kolejność)
+1. **Opis** w issue/PR: co widzi użytkownik, jaka zmiana API (ścieżka, parametry, kształt odpowiedzi, błędy).
+2. **Backend** (osobny PR albo pierwsze commity): zmiana **addytywna** — nowa trasa albo nowe pole; istniejących pól nie zmieniamy ani nie usuwamy (zepsułoby wdrożony front). Kontrakt opisany w docstringu handlera.
+3. **Front:** schemat Zod w `src/frontend/client/lib/schemas.ts`, hook w `hooks/`, UI — wg `src/frontend/AGENTS.md`.
+4. **Gotowe** po obu stronach (sekcje „Gotowe” niżej i w `src/frontend/AGENTS.md`).
+5. **Wdrożenie:** najpierw backend (`terraform apply`, dla rekomendera też obraz), potem front (`scripts/build-frontend.sh` + `terraform apply`).
+6. **Git:** gałąź `feat/<krótko>` albo `fix/<krótko>`, PR do `main`, bez pushowania na `main` bezpośrednio; commity po polsku (`feat(api): …`, `feat(portal): …`, `fix(…): …`).
+
+## Backend w Pythonie (Lambdy) — wzorzec
+Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
+
+**Budowa handlera**
+- Jedna Lambda = jeden obszar API. Wejście `handler(event, context)`; trasy rozdziela `match event.get("routeKey")` (`"GET /api/me"`, `"PUT /api/profile"`…), każda trasa to osobna funkcja (`get_me(claims)`, `put_profile(claims, body)`), na końcu `raise ApiError(404, "Nie znaleziono")`.
+- Użytkownik: `claims = event["requestContext"]["authorizer"]["jwt"]["claims"]`, id = `claims["sub"]`. Tokenu nie weryfikujemy sami — robi to API Gateway.
+- Body: `_body(event)` (JSON-obiekt albo 400). Odpowiedź: `_response(status, body)` (JSON, `ensure_ascii=False`, `Decimal` → int/float przez `_json_default`). Nagłówki CORS dodaje API Gateway — nie dopisuj ich w kodzie.
+- **Błędy:** `raise ApiError(status, "komunikat po polsku", **extra)` → `{"error": "…", "fields"?: [...], "code"?: "…"}`. Kody: 400 (walidacja; `fields` = lista id błędnych pól), 404, 409 (np. `code: "needs_onboarding"`), 503 (zależność niedostępna). 401 zwraca API Gateway.
+- **Logika osobno od HTTP:** czyste funkcje w osobnym module (jak `onboarding.py`: `validate_answers` zwraca `(czyste_dane, błędy)`, `compute_preferences`, `rag_profile`). Handler tylko łączy: wejście → logika → DynamoDB → odpowiedź.
+- **Konfiguracja** z `os.environ[...]` (ustawia Terraform), czytana raz na poziomie modułu (np. `USERS_TABLE`, `DISTRICTS`). Klienty AWS (`boto3.resource("dynamodb").Table(...)`) też na poziomie modułu — przeżywają między wywołaniami.
+
+**DynamoDB w kodzie**
+- Odczyt/zapis po kluczu: `get_item`, `put_item`, `update_item` z `UpdateExpression` i `ExpressionAttributeValues`; `if_not_exists(createdAt, :now)` dla pól ustawianych raz; `ReturnValues="ALL_NEW"`, gdy zwracamy rekord.
+- Liczby wracają jako `Decimal` (serializuje `_json_default`); `None` i puste wartości nie są zapisywane (tagger ma `sanitize()`).
+- **Bez `scan` w ścieżce żądania** (wolne i drogie przy wzroście) — wyjątek: budowa indeksu rekomendera w tle.
+- Każda tabela ma jednego właściciela, który do niej zapisuje (sekcja „Dane”).
+
+**Recepta: nowa trasa w API klienta**
+1. `src/client_api/handler.py`: funkcja trasy + `case "GET /api/<x>":` w `match`; logika w osobnym module, jeśli to więcej niż kilka linii; docstring na górze pliku uzupełniony o trasę.
+2. `infra/client_api.tf`: dopisz trasę do `for_each = toset([...])` (zasób tras ~linia 121); nowe uprawnienie (np. `dynamodb:GetItem` na `aws_dynamodb_table.events`) w `aws_iam_role_policy.client_api`; nowa zmienna w `environment.variables`.
+3. Kod pakuje Terraform (`archive_file` z `src/client_api`) przy `terraform apply`.
+4. **Zależności:** Lambda zip ma tylko bibliotekę standardową + `boto3`. Nowa biblioteka zewnętrzna = pytanie do Krzysztofa (trzeba ją spakować albo dać warstwę).
+5. Front: schemat + hook (patrz `src/frontend/AGENTS.md`).
+
+**Rekomender** (`src/recommender_api/`, logika w `recommender/`): Lambda z obrazu kontenera (model + torch). Zmiana kodu = `scripts/push-images.sh recommender` + `terraform apply`; przebudowa indeksu teraz: `scripts/recommender-refresh.sh`. Pola karty określa `src/recommender_api/present.py`, pola w indeksie `FIELDS` w `index_store.py` — nowe pole na karcie wymaga obu i przebudowy indeksu. Ranking LLM ma timeout; przy błędzie uzasadnienie składają reguły — nie usuwaj tej ścieżki awaryjnej.
+
+**Testy backendu:** czyste funkcje (np. `validate_answers`, `compute_preferences`) testuj `pytest` w `tests/` (np. `tests/client_api/test_onboarding.py`); handler można wywołać lokalnie z ręcznie złożonym `event` (`routeKey`, `requestContext.authorizer.jwt.claims`, `body`) — bez prawdziwego AWS podmień tabelę na atrapę.
+
+**Gotowe (backend):** zmiana addytywna; trasa w `handler.py` i w `infra/client_api.tf`; uprawnienia IAM tylko te potrzebne; komunikaty błędów po polsku; testy czystej logiki przechodzą; `terraform plan` bez niespodzianek; front zaktualizowany w tym samym PR albo zaraz po.
+
+## Dane
+- **Kontrakt:** rekord wydarzenia „schemat v1” (`src/importer/schema.py`), taksonomia tagów (`tagger/prompt.py`), kroki ankiety (`src/client_api/onboarding.py` — dodanie pytania nie wymaga zmian we froncie), karta rekomendacji (`src/recommender_api/present.py`). Front odwzorowuje je w `src/frontend/client/lib/schemas.ts`. **Zmiana kontraktu = informacja do zespołu i aktualizacja po obu stronach.**
+- **Tabele (DynamoDB) i jedyny zapisujący:** `codzis-events` — tagger (TTL `expiresAt` sam usuwa zakończone); `codzis-users` (klucz `userId` = `sub`) — client-api; `submissions`, `partners`, `payments` — API partnera.
+- **Niczego nie zmyślamy.** Wszystko, co widzi użytkownik, pochodzi z API miasta albo od partnerów i ma źródło.
+- **API UM** (`POST https://dane.um.warszawa.pl/api/action/<akcja>`) nie ma historii ani stronicowania i **blokuje adresy IP AWS** — import uruchamiamy z laptopa (`scripts/import-local.sh`).
+
+## Bezpieczeństwo
+- Sekrety (`WARSAW_API_TOKEN`, klucz DeepSeek, klucze AWS) tylko w `.env` (w `.gitignore`) albo w SSM. `config.js` frontu zawiera tylko dane publiczne (adres API, id puli i klienta Cognito).
+- Nigdy sekretów, tokenów ani danych osobowych w kodzie, logach, commitach ani na czacie. W logach Lambd bez treści żądań i lokalizacji użytkownika.
+
+## Zakres
+Działające demo ważniejsze niż kompletność. Nowa funkcja albo zależność = zgoda zespołu.
