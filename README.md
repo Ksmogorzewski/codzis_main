@@ -266,6 +266,20 @@ Jeden kształt dla wszystkich źródeł (importer i portal partnera). Pełny opi
 
 Pola portalu partnera i ich walidacja: `TEXT_FIELDS`, `DECLARED_FIELDS` i `_event_input` w `src/api/handler.py`. Opcje w `DECLARED_FIELDS` muszą być dokładnie opcjami z `tagger/prompt.py` (wartość spoza taksonomii tagger pominie); portal pobiera je z `GET /api/me` (`formOptions`). Cena (`priceMin`/`priceMax`, tylko przy „Płatne”) i link do biletów lądują w `attributes`. Kategorie: zmienna `event_categories`, dzielnice: `local.warsaw_districts`.
 
+## Wydarzenia demo (prezentacja)
+
+`src/importer/demo_events.json`: 31 dopracowanych, w pełni otagowanych wydarzeń pod prezentację (koncerty, warsztaty, sport, rodziny, seniorzy, sprawy miejskie, jedno online), ze zdjęciami z Unsplash. Organizatorzy i lokale są fikcyjne (przy prawdziwych ulicach), plenerowe dzieją się w przestrzeni publicznej (bulwary, parki, place). Terminy liczone są względem początku prezentacji, więc zawsze jest coś na dziś, jutro i weekend.
+
+```sh
+scripts/demo-events.sh --dry-run                    # podgląd rekordów
+scripts/demo-events.sh --start 2026-10-20T14:00     # wysyłka (czas warszawski; bez --start: teraz)
+scripts/demo-events.sh --delete                     # po prezentacji
+```
+
+Wysyłka idzie zwykłą drogą: SQS → tagger (dispatcher odpala go w ciągu minuty, tagowanie ~2-4 min) → `codzis-events`. Skrypt czeka na zapis, przebudowuje indeks rekomendera i usuwa zapisane zestawy rekomendacji, żeby przy najbliższym wejściu policzyły się już z wydarzeniami demo. Wszystkie wymiary tagów są zadeklarowane wprost (`declared`, jak u partnerów), więc tagger zostawia dokładnie te wartości.
+
+W UI wydarzenia demo nie są oznaczone; w polu „Źródło” stoi fikcyjny organizator. W danych rozpoznasz je po `origin` = `source` = `"demo"` i id `demo-…`. Zakończone usuwa TTL, wystawy wielodniowe zostają do miesiąca, więc po prezentacji uruchom `--delete`. Zmiana danych: edytuj JSON (tagi tylko z `tagger/prompt.py`, `image` = id zdjęcia z Unsplash) i wyślij ponownie; tagger zaktualizuje rekordy o tych samych `key`.
+
 ## Ograniczenia PoC
 
 - Klucz API to jedyny "login". Partner musi go chronić jak hasło, nie ma też resetu ani wygasania (poza usunięciem klucza).
