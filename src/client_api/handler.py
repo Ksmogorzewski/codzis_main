@@ -4,6 +4,22 @@
     GET /api/onboarding  pytania onboardingu (onboarding.py)
     PUT /api/profile     {"answers": {...}} -> walidacja, preferencje, zapis w tabeli users
 
+Eksploruj, zapisy i Popularne (logika: events.py, DynamoDB: store.py). Karta (`Card`) = karta
+rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za to z
+`saves` (liczba zapisanych) i `saved` (czy ja):
+
+    GET    /api/events?when=today|tomorrow|weekend|week|date&date=RRRR-MM-DD&cat=sport|kultura|rekreacja
+                       &district=&free=1&indoor=1&q=&limit=60 (maks. 200)
+           -> {"when", "window": {"from", "to"}, "total", "items": [Card]}  (od najbliższego startu)
+    GET    /api/events/stats?ids=a,b,c (maks. 100)   -> {"<id>": {"saves", "saved"}}
+    GET    /api/events/{id}             -> Card + {"text" (bez HTML), "occurrences", "importedAt"}; 404
+    PUT    /api/events/{id}/save        -> {"saved": true, "saves"}  (idempotentnie; 404 gdy brak wydarzenia)
+    DELETE /api/events/{id}/save        -> {"saved": false, "saves"} (idempotentnie)
+    GET    /api/events/{id}/attendees   -> {"saves", "saved", "people": [{"name", "isMe"}]}
+                                           (najnowsi najpierw, maks. 100; bez imienia "Ktoś"; nigdy e-maili)
+    GET    /api/popular                 -> {"window": {"from", "to"}, "items": [Card]}
+                                           (bieżący tydzień pon-nd, saves > 0, malejąco, maks. 20)
+
 Token weryfikuje API Gateway; tu korzystamy już tylko z jego claims (ID token Cognito).
 Po zapisaniu profilu i przy logowaniu rekomender w tle liczy zestawy na dziś, jutro i weekend
 (GET /api/recommendations obsługuje osobna Lambda: src/recommender_api).
@@ -12,13 +28,20 @@ Po zapisaniu profilu i przy logowaniu rekomender w tle liczy zestawy na dziś, j
 import json
 import logging
 import os
+from datetime import date, datetime
 
 import boto3
 
+import events
+import store
 from codzis_common.http import ApiError, now_iso, parse_body, response
 from onboarding import build_steps, compute_preferences, onboarding_version, public_steps, rag_profile, validate_answers
 
 USERS_TABLE = os.environ["USERS_TABLE"]
+POPULAR_LIMIT = 20
+MAX_STATS_IDS = 100
+MAX_NAME = 60
+ANONYMOUS = "Ktoś"
 DISTRICTS = json.loads(os.environ["DISTRICTS"])
 RECOMMENDER_FUNCTION = os.environ.get("RECOMMENDER_FUNCTION")
 
@@ -42,6 +65,20 @@ def handler(event, context):
                 return response(200, {"version": ONBOARDING_VERSION, "steps": public_steps(STEPS)})
             case "PUT /api/profile":
                 return response(200, put_profile(claims, parse_body(event)))
+            case "GET /api/events":
+                return response(200, get_events(claims, _query(event)))
+            case "GET /api/events/stats":
+                return response(200, get_stats(claims, _query(event)))
+            case "GET /api/events/{id}":
+                return response(200, get_event(claims, _event_id(event)))
+            case "PUT /api/events/{id}/save":
+                return response(200, put_save(claims, _event_id(event)))
+            case "DELETE /api/events/{id}/save":
+                return response(200, delete_save(claims, _event_id(event)))
+            case "GET /api/events/{id}/attendees":
+                return response(200, get_attendees(claims, _event_id(event)))
+            case "GET /api/popular":
+                return response(200, get_popular(claims))
         raise ApiError(404, "Nie znaleziono")
     except ApiError as e:
         return response(e.status, e.body)
@@ -91,6 +128,118 @@ def put_profile(claims: dict, body: dict) -> dict:
     )["Attributes"]
     _precompute(claims["sub"])  # nowe preferencje -> od razu nowe zestawy na dziś, jutro i weekend
     return _view(item)
+
+
+def get_events(claims: dict, params: dict) -> dict:
+    """Eksploruj: wszystko w oknie czasu, z filtrami, od najbliższego startu."""
+    now = _now()
+    filters, errors = events.parse_filters(params, events.warsaw_today(now), DISTRICTS)
+    if filters is None:
+        message = "Podaj dzień od dziś do 60 dni naprzód (RRRR-MM-DD)" if errors == ["date"] else "Niepoprawne filtry"
+        raise ApiError(400, message, fields=errors)
+    found = events.explore(list(store.all_events().values()), filters, now)
+    page = found[: filters.limit]
+    return {
+        "when": filters.when,
+        "window": _window(filters.date_from, filters.date_to),
+        "total": len(found),
+        "items": _cards(claims, page),
+    }
+
+
+def get_stats(claims: dict, params: dict) -> dict:
+    """Liczniki dla kart rekomendacji: {id: {saves, saved}}."""
+    ids = [i.strip() for i in (params.get("ids") or "").split(",") if i.strip()]
+    if not ids or len(ids) > MAX_STATS_IDS:
+        raise ApiError(400, f"Podaj od 1 do {MAX_STATS_IDS} identyfikatorów", fields=["ids"])
+    counts = store.saves_for(ids)
+    mine = store.saved_ids(claims["sub"])
+    return {i: {"saves": counts[i], "saved": i in mine} for i in ids}
+
+
+def get_event(claims: dict, event_id: str) -> dict:
+    """Szczegóły: karta z najbliższym terminem + pełny opis bez HTML."""
+    item = store.get_event(event_id)
+    if not item:
+        raise ApiError(404, "Nie znaleziono wydarzenia")
+    slot = events.next_slot(item, now=_now())
+    return events.detail(item, slot, store.saves_of(event_id), store.is_saved(event_id, claims["sub"]))
+
+
+def put_save(claims: dict, event_id: str) -> dict:
+    """Zapis na wydarzenie (kopiuje imię z tokenu). Ponowny zapis nic nie zmienia."""
+    if not store.get_event(event_id):
+        raise ApiError(404, "Nie znaleziono wydarzenia")
+    store.save(event_id, claims["sub"], _name(claims), now_iso())
+    return {"saved": True, "saves": store.saves_of(event_id)}
+
+
+def delete_save(claims: dict, event_id: str) -> dict:
+    """Wypisanie. Działa też dla wydarzeń, które już wygasły; ponowne nic nie zmienia."""
+    store.unsave(event_id, claims["sub"])
+    return {"saved": False, "saves": store.saves_of(event_id)}
+
+
+def get_attendees(claims: dict, event_id: str) -> dict:
+    """Lista zapisanych: tylko imiona (nigdy e-maile), najnowsi najpierw."""
+    rows = store.attendees(event_id)
+    me = claims["sub"]
+    return {
+        "saves": store.saves_of(event_id),
+        "saved": store.is_saved(event_id, me),
+        "people": [{"name": row.get("name") or ANONYMOUS, "isMe": row["userId"] == me} for row in rows],
+    }
+
+
+def get_popular(claims: dict) -> dict:
+    """Wydarzenia z bieżącego tygodnia (pon-nd) z największą liczbą zapisanych.
+
+    Indeks bySaves nie zna terminów, więc bierzemy zapas (store.POPULAR_FETCH) i filtrujemy:
+    pomijamy wydarzenia spoza tygodnia, już zakończone i te, których nie ma w codzis-events."""
+    now = _now()
+    monday, sunday = events.current_week(events.warsaw_today(now))
+    known = store.all_events()
+    page: list[tuple[dict, dict]] = []
+    for event_id in store.top_saved():
+        item = known.get(event_id)
+        slot = events.next_slot(item, monday, sunday, now) if item else None
+        if item and slot:
+            page.append((item, slot))
+        if len(page) == POPULAR_LIMIT:
+            break
+    return {"window": _window(monday, sunday), "items": _cards(claims, page)}
+
+
+def _cards(claims: dict, page: list[tuple[dict, dict]]) -> list[dict]:
+    """Karty z licznikami z bazy (nie z pamięci) i stanem "Zapisano" użytkownika."""
+    counts = store.saves_for(item["id"] for item, _ in page) if page else {}
+    mine = store.saved_ids(claims["sub"]) if page else set()
+    return [events.card(item, slot, counts[item["id"]], item["id"] in mine) for item, slot in page]
+
+
+def _window(date_from: date, date_to: date) -> dict:
+    return {"from": date_from.isoformat(), "to": date_to.isoformat()}
+
+
+def _name(claims: dict) -> str | None:
+    """Imię z ID tokenu (atrybut Cognito `name`); puste -> None (na listach "Ktoś")."""
+    name = " ".join(str(claims.get("name") or "").split())[:MAX_NAME]
+    return name or None
+
+
+def _now() -> datetime:
+    return datetime.now(events.WARSAW)
+
+
+def _query(event: dict) -> dict:
+    return event.get("queryStringParameters") or {}
+
+
+def _event_id(event: dict) -> str:
+    event_id = (event.get("pathParameters") or {}).get("id") or ""
+    if not event_id:
+        raise ApiError(404, "Nie znaleziono wydarzenia")
+    return event_id
 
 
 def _precompute(user_id: str) -> None:
