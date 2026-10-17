@@ -19,7 +19,7 @@ echo "== ruff format --check"
 
 # Każda Lambda ma własny moduł `handler`, więc mypy osobno dla każdego katalogu.
 echo "== mypy"
-for target in src/client_api src/api src/dispatcher tests; do
+for target in src/layers/common/python src/client_api src/api src/dispatcher tests; do
   "$BIN/mypy" "$target"
 done
 

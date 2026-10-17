@@ -12,10 +12,10 @@ Po zapisaniu profilu i przy logowaniu rekomender w tle liczy zestawy na dziś, j
 import json
 import logging
 import os
-from datetime import UTC, datetime
 
 import boto3
 
+from codzis_common.http import ApiError, now_iso, parse_body, response
 from onboarding import build_steps, compute_preferences, onboarding_version, public_steps, rag_profile, validate_answers
 
 USERS_TABLE = os.environ["USERS_TABLE"]
@@ -32,31 +32,24 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 
-class ApiError(Exception):
-    def __init__(self, status, message, **extra):
-        super().__init__(message)
-        self.status = status
-        self.body = {"error": message, **extra}
-
-
 def handler(event, context):
     claims = event["requestContext"]["authorizer"]["jwt"]["claims"]
     try:
         match event.get("routeKey"):
             case "GET /api/me":
-                return _response(200, get_me(claims))
+                return response(200, get_me(claims))
             case "GET /api/onboarding":
-                return _response(200, {"version": ONBOARDING_VERSION, "steps": public_steps(STEPS)})
+                return response(200, {"version": ONBOARDING_VERSION, "steps": public_steps(STEPS)})
             case "PUT /api/profile":
-                return _response(200, put_profile(claims, _body(event)))
+                return response(200, put_profile(claims, parse_body(event)))
         raise ApiError(404, "Nie znaleziono")
     except ApiError as e:
-        return _response(e.status, e.body)
+        return response(e.status, e.body)
 
 
 def get_me(claims: dict) -> dict:
     """Upsert danych z tokenu (e-mail, imię, dostawca) + ostatnie logowanie."""
-    now = _now()
+    now = now_iso()
     values = {":now": now, ":provider": _provider(claims)}
     updates = ["lastLoginAt = :now", "createdAt = if_not_exists(createdAt, :now)", "identityProvider = :provider"]
     for attr, claim in (("email", "email"), ("displayName", "name"), ("picture", "picture")):
@@ -81,7 +74,7 @@ def put_profile(claims: dict, body: dict) -> dict:
         raise ApiError(400, "Niepoprawne lub brakujące odpowiedzi", fields=errors)
 
     preferences = compute_preferences(answers, STEPS)
-    now = _now()
+    now = now_iso()
     item = users.update_item(
         Key={"userId": claims["sub"]},
         UpdateExpression=(
@@ -147,34 +140,3 @@ def _provider(claims: dict) -> str:
     except (TypeError, ValueError):
         pass
     return "Cognito"
-
-
-def _body(event: dict) -> dict:
-    try:
-        body = json.loads(event.get("body") or "{}")
-    except json.JSONDecodeError:
-        raise ApiError(400, "Niepoprawny JSON") from None
-    if not isinstance(body, dict):
-        raise ApiError(400, "Oczekiwano obiektu JSON")
-    return body
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
-
-
-def _json_default(value):
-    from decimal import Decimal
-
-    if isinstance(value, Decimal):
-        return int(value) if value == value.to_integral_value() else float(value)
-    raise TypeError(f"Nie da się zserializować {type(value).__name__}")
-
-
-def _response(status: int, body) -> dict:
-    # Nagłówki CORS dodaje HTTP API (cors_configuration w infra/client_api.tf)
-    return {
-        "statusCode": status,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps(body, ensure_ascii=False, default=_json_default),
-    }

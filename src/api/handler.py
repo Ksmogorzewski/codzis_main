@@ -11,6 +11,8 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.config import Config
 
+from codzis_common.http import ApiError, json_default, now_iso, parse_body, response
+
 SUBMISSIONS_TABLE = os.environ["SUBMISSIONS_TABLE"]
 EVENTS_QUEUE_URL = os.environ["EVENTS_QUEUE_URL"]
 PARTNERS_TABLE = os.environ["PARTNERS_TABLE"]
@@ -91,13 +93,6 @@ s3 = boto3.client(
 )
 
 
-class ApiError(Exception):
-    def __init__(self, status, message, **extra):
-        super().__init__(message)
-        self.status = status
-        self.body = {"error": message, **extra}
-
-
 def handler(event, context):
     # API GW wpuszcza tu tylko żądania z poprawnym kluczem, więc apiKeyId identyfikuje partnera.
     partner = _partner(event)
@@ -107,24 +102,24 @@ def handler(event, context):
     try:
         match (method, *path):
             case ("GET", "me"):
-                return _response(200, get_profile(partner))
+                return response(200, get_profile(partner))
             case ("GET", "events"):
-                return _response(200, list_events(partner))
+                return response(200, list_events(partner))
             case ("POST", "events"):
-                return _response(201, create_event(partner, _body(event)))
+                return response(201, create_event(partner, parse_body(event, parse_float=Decimal)))
             case ("GET", "payments"):
-                return _response(200, list_payments(partner))
+                return response(200, list_payments(partner))
             case ("POST", "payments"):
-                return _response(201, create_payment(partner, _body(event)))
+                return response(201, create_payment(partner, parse_body(event, parse_float=Decimal)))
             case ("GET", "payments", payment_id):
-                return _response(200, get_payment(partner, payment_id))
+                return response(200, get_payment(partner, payment_id))
             case ("POST", "payments", payment_id, "confirm"):
-                return _response(200, confirm_payment(partner, payment_id))
+                return response(200, confirm_payment(partner, payment_id))
             case ("POST", "payments", payment_id, "cancel"):
-                return _response(200, cancel_payment(partner, payment_id))
+                return response(200, cancel_payment(partner, payment_id))
         raise ApiError(404, "Nie znaleziono")
     except ApiError as e:
-        return _response(e.status, e.body)
+        return response(e.status, e.body)
 
 
 # --- profil ---
@@ -175,7 +170,7 @@ def create_event(partner, body):
         sqs.send_message(
             QueueUrl=EVENTS_QUEUE_URL,
             # Kontrakt taggera: body = JSON array rekordów; "source" i "id" są w rekordzie
-            MessageBody=json.dumps([record], ensure_ascii=False, default=_json_default),
+            MessageBody=json.dumps([record], ensure_ascii=False, default=json_default),
         )
     except Exception:
         # Kompensacja: zwrot kredytu i usunięcie zgłoszenia
@@ -289,7 +284,7 @@ def _price(value, errors, name):
 def _event_record(event_id, partner, data, photo_url):
     """Rekord we wspólnym schemacie v1 (opis pól: src/importer/schema.py)."""
     starts, ends = data["startsAt"], data["endsAt"]
-    now = _now()
+    now = now_iso()
     address = " ".join(filter(None, [data["street"], data["streetNumber"]])) or None
     return {
         "id": event_id,
@@ -367,7 +362,7 @@ def create_payment(partner, body):
         "amount": package["price"],
         "currency": CURRENCY,
         "status": "pending",
-        "createdAt": _now(),
+        "createdAt": now_iso(),
     }
     payments_table.put_item(Item=item)
     # Prawdziwa bramka zwróciłaby tu swój URL; mock to statyczna strona portalu.
@@ -384,7 +379,7 @@ def get_payment(partner, payment_id):
 def confirm_payment(partner, payment_id):
     # W prawdziwej integracji to byłby webhook bramki weryfikowany podpisem, nie wywołanie partnera.
     payment = get_payment(partner, payment_id)
-    paid_at = _now()
+    paid_at = now_iso()
     _transact(
         [
             _payment_transition(payment_id, "paid", paid_at),
@@ -398,7 +393,7 @@ def confirm_payment(partner, payment_id):
 def cancel_payment(partner, payment_id):
     payment = get_payment(partner, payment_id)
     _transact(
-        [_payment_transition(payment_id, "cancelled", _now())],
+        [_payment_transition(payment_id, "cancelled", now_iso())],
         ApiError(409, "Płatność została już rozliczona"),
     )
     return {**payment, "status": "cancelled"}
@@ -457,33 +452,5 @@ def _partner(event):
     return {"partnerId": key_id, "partnerName": PARTNERS.get(key_id, key_id)}
 
 
-def _body(event):
-    try:
-        body = json.loads(event.get("body") or "{}", parse_float=Decimal)
-    except json.JSONDecodeError:
-        raise ApiError(400, "Niepoprawny JSON") from None
-    if not isinstance(body, dict):
-        raise ApiError(400, "Oczekiwano obiektu JSON")
-    return body
-
-
-def _now():
-    return datetime.now(UTC).isoformat()
-
-
 def _is_blank(value):
     return value is None or (isinstance(value, str) and not value.strip())
-
-
-def _json_default(value):
-    if isinstance(value, Decimal):
-        return int(value) if value == value.to_integral_value() else float(value)
-    raise TypeError(f"Nie da się zserializować {type(value).__name__}")
-
-
-def _response(status, body):
-    return {
-        "statusCode": status,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps(body, ensure_ascii=False, default=_json_default),
-    }

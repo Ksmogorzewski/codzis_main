@@ -3,6 +3,8 @@
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Warstwa codzis_common (w Lambdzie: /opt/python)
+pythonpath = ["src/layers/common/python"]
 addopts = "-ra"
 
 # Lint i formatowanie: na razie tylko Lambdy API (klient, partner, dispatcher), wspólna warstwa i testy.
@@ -38,3 +40,4 @@ ignore_missing_imports = true  # boto3/moto bez pakietów stubów
 warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true
+mypy_path = "src/layers/common/python"
