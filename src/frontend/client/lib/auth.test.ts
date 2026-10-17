@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { authErrorMessage, cognitoErrorCode, nextSession, type Session, tokenStatus } from "./auth";
+import {
+  authErrorMessage,
+  cognitoErrorCode,
+  idTokenName,
+  nextSession,
+  normalizeName,
+  type Session,
+  signUpAttributes,
+  tokenStatus,
+} from "./auth";
 
 const NOW = 1_800_000_000_000;
 const session = (over: Partial<Session> = {}): Session => ({
@@ -66,5 +75,39 @@ describe("nowa sesja", () => {
   it("brak ExpiresIn: godzina", () => {
     const s = nextSession({ idToken: "a", accessToken: "b", expiresIn: 0 }, null, NOW, "password");
     expect(s.expiresAt).toBe(NOW + 3_600_000);
+  });
+});
+
+// JWT z podanym payloadem (podpis nieistotny - tylko czytamy claimy, weryfikuje API Gateway)
+const jwt = (payload: object) => {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  const b64 = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `eyJhbGciOiJSUzI1NiJ9.${b64}.podpis`;
+};
+
+describe("imię (atrybut Cognito name)", () => {
+  it("normalizuje imię: przycięte, pojedyncze spacje, maks. 40 znaków", () => {
+    expect(normalizeName("  Anna   Maria ")).toBe("Anna Maria");
+    expect(normalizeName("a".repeat(60))).toHaveLength(40);
+    expect(normalizeName("   ")).toBe("");
+  });
+
+  it("rejestracja wysyła e-mail i imię", () => {
+    expect(signUpAttributes("anna@example.pl", " Anna ")).toEqual([
+      { Name: "email", Value: "anna@example.pl" },
+      { Name: "name", Value: "Anna" },
+    ]);
+  });
+
+  it("czyta imię z ID tokenu (także polskie znaki)", () => {
+    expect(idTokenName(jwt({ sub: "1", name: "Łucja" }))).toBe("Łucja");
+    expect(idTokenName(jwt({ sub: "1", name: "  " }))).toBeNull();
+    expect(idTokenName(jwt({ sub: "1" }))).toBeNull();
+  });
+
+  it("zepsuty token: brak imienia zamiast wyjątku", () => {
+    expect(idTokenName("nie-jwt")).toBeNull();
+    expect(idTokenName("a.%%%.c")).toBeNull();
+    expect(idTokenName(null)).toBeNull();
   });
 });

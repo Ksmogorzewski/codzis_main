@@ -62,6 +62,34 @@ export function cognitoErrorCode(type: unknown): string {
 
 export const authFailure = (code: string): AuthFailure => ({ code, message: authErrorMessage(code) });
 
+const MAX_NAME = 40;
+
+/** Imię do Cognito: przycięte, pojedyncze spacje, maks. 40 znaków ("" = brak). */
+export const normalizeName = (raw: string) => raw.split(/\s+/).filter(Boolean).join(" ").slice(0, MAX_NAME);
+
+/** Atrybuty przy rejestracji: e-mail i imię (pokazywane innym na listach zapisanych). */
+export function signUpAttributes(email: string, name: string): { Name: string; Value: string }[] {
+  return [
+    { Name: "email", Value: email },
+    { Name: "name", Value: normalizeName(name) },
+  ];
+}
+
+/** Claim "name" z ID tokenu (bez weryfikacji podpisu - to robi API Gateway); null = brak imienia. */
+export function idTokenName(token: string | null): string | null {
+  const payload = token?.split(".")[1];
+  if (!payload) return null;
+  try {
+    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const claims: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    const name = typeof claims === "object" && claims !== null && "name" in claims ? claims.name : null;
+    return typeof name === "string" && name.trim() ? name.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Co zrobić z zapisaną sesją: użyć tokenu, odświeżyć go albo uznać, że trzeba się zalogować. */
 export function tokenStatus(session: Session | null, now: number): "valid" | "refresh" | "signed_out" {
   if (!session) return "signed_out";
@@ -187,12 +215,12 @@ export async function signIn(email: string, password: string): Promise<AuthResul
 }
 
 /** Rejestracja; data = adres, na który poszedł kod (zamaskowany przez Cognito, np. a***@e***). */
-export async function signUp(email: string, password: string): Promise<AuthResult<string>> {
+export async function signUp(email: string, password: string, name: string): Promise<AuthResult<string>> {
   const r = await idp<{ CodeDeliveryDetails?: { Destination?: string } }>("SignUp", {
     ClientId: config().clientId,
     Username: email,
     Password: password,
-    UserAttributes: [{ Name: "email", Value: email }],
+    UserAttributes: signUpAttributes(email, name),
   });
   if (r.error !== null) return r;
   return ok(r.data.CodeDeliveryDetails?.Destination ?? email);
@@ -221,6 +249,36 @@ export const confirmForgotPassword = (email: string, code: string, password: str
       Password: password,
     }),
   );
+
+// --- imię (jednorazowe uzupełnienie dla kont założonych przed polem „Imię”) ---
+
+/** Imię zalogowanego z aktualnego ID tokenu; null = konto bez imienia (albo brak sesji). */
+export const currentName = (): string | null => idTokenName(loadSession()?.idToken ?? null);
+
+/**
+ * Ustawia imię kontu, które go nie ma (UpdateUserAttributes access tokenem), i od razu odświeża
+ * tokeny, żeby nowy ID token miał claim "name" (backend kopiuje go do listy zapisanych).
+ * Imienia ustawionego raz nie zmieniamy - przy istniejącym nic nie wysyłamy.
+ */
+export async function setMissingName(raw: string): Promise<AuthResult<void>> {
+  const name = normalizeName(raw);
+  if (!name) return err({ code: "InvalidParameterException", message: "Podaj imię." });
+  if (currentName()) return ok(undefined);
+
+  const token = await getIdToken(); // odświeża sesję przed wygaśnięciem
+  if (token.error !== null) return token;
+  const accessToken = loadSession()?.accessToken;
+  if (token.data === null || !accessToken) return err(authFailure("NotAuthorizedException"));
+
+  const r = await idp("UpdateUserAttributes", {
+    AccessToken: accessToken,
+    UserAttributes: [{ Name: "name", Value: name }],
+  });
+  if (r.error !== null) return r;
+  const fresh = await refreshSession();
+  if (fresh.error !== null) return fresh;
+  return ok(undefined);
+}
 
 /** Wylogowanie: czyści sesję i (najwyżej 1,5 s) unieważnia refresh token w Cognito. */
 export async function signOut(): Promise<void> {
