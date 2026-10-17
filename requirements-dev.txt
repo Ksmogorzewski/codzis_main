@@ -5,3 +5,7 @@ pytest~=9.1
 moto[dynamodb,sqs]~=5.2
 ruff~=0.17.1
 mypy~=2.4
+# Test-only dependencies (not installed into the Lambda image).
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r recommender/requirements.txt -r requirements-dev.txt
