@@ -10,7 +10,7 @@ Rekomendacje („Dla Ciebie”) dają szybką decyzję, ale gdy nic nie pasuje, 
 - Przycisk **Zapisz / Zapisano** na karcie i w szczegółach (przełącza), z licznikiem „Zapisanych: N”.
 - W szczegółach wydarzenia **lista zapisanych** (imiona) i liczba.
 - **Eksploruj:** wszystkie wydarzenia w oknie czasu (dziś / jutro / weekend / inny dzień), filtry: kategoria (Sport / Kultura / Rekreacja), dzielnica, tylko darmowe, pod dachem; wyszukiwarka; sortowanie po najbliższym starcie (lub odległości, gdy znana pozycja).
-- **Popularne w tym tygodniu:** wydarzenia odbywające się w bieżącym tygodniu (pon–nd, Europe/Warsaw), posortowane po liczbie zapisanych, z licznikiem.
+- **Popularne w najbliższym tygodniu:** wydarzenia odbywające się dziś + 6 dni (Europe/Warsaw; decyzja Dawida, bo demo jest w niedzielę), posortowane po liczbie zapisanych, z licznikiem.
 - **Imię** użytkownika: pole „Imię” przy rejestracji i w profilu; pokazywane na listach zapisanych (i w czacie Kacpra).
 - **Dane testowe (seed)** na demo — patrz niżej.
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Dane testowe na demo: sztuczne zapisy na prawdziwe wydarzenia z bieżącego tygodnia.
+"""Dane testowe na demo: sztuczne zapisy na prawdziwe wydarzenia z najbliższego tygodnia
+(dziś + 6 dni, tak samo jak „Popularne” w API).
 
 Zapisuje WYŁĄCZNIE do `codzis-attendance` i `codzis-event-stats` (rekordy z `seed: true`,
 userId `seed-001`...). Nie dotyka `codzis-users` ani Cognito. `codzis-events` tylko czyta (scan).
@@ -8,10 +9,10 @@ Przykłady (region eu-central-1):
     python scripts/seed_demo.py --dry-run --profile default     # plan, nic nie zapisuje (domyślnie)
     python scripts/seed_demo.py --apply --profile default       # zapis (idempotentny)
     python scripts/seed_demo.py --apply --users 80 --seed-value 7
-    python scripts/seed_demo.py --dry-run --week 2026-10-19     # tydzień zawierający tę datę
+    python scripts/seed_demo.py --dry-run --week 2026-10-19     # 7 dni od tej daty
     python scripts/seed_demo.py --delete --profile default      # usuwa tylko rekordy seed, koryguje liczniki
 
-Wydarzenia: kind=event z terminem nakładającym się na tydzień (pon-niedz, czas warszawski)
+Wydarzenia: kind=event z terminem nakładającym się na okno 7 dni (czas warszawski)
 albo kind=recurring z niepustym `schedule` (liczy się w każdym tygodniu). Rozkład zapisów jest
 w stylu Zipfa (kilka wyraźnie popularnych, długi ogon), każda osoba zapisuje się na 1-5 wydarzeń.
 Losowanie jest deterministyczne dla danego `--seed-value`.
@@ -52,10 +53,9 @@ FIRST_NAMES = [
 
 
 def week_bounds(day: date) -> tuple[datetime, datetime]:
-    """Poniedziałek 00:00 (włącznie) i następny poniedziałek 00:00 (wyłącznie), czas warszawski."""
-    monday = day - timedelta(days=day.weekday())
-    start = datetime.combine(monday, datetime.min.time(), tzinfo=WARSAW)
-    return start, datetime.combine(monday + timedelta(days=7), datetime.min.time(), tzinfo=WARSAW)
+    """Okno 7 dni jak w `GET /api/popular`: `day` 00:00 (włącznie) do `day` + 7 dni 00:00 (wyłącznie)."""
+    start = datetime.combine(day, datetime.min.time(), tzinfo=WARSAW)
+    return start, datetime.combine(day + timedelta(days=7), datetime.min.time(), tzinfo=WARSAW)
 
 
 def in_week(event: dict, week: tuple[datetime, datetime]) -> bool:
@@ -247,7 +247,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     mode.add_argument("--delete", action="store_true", help="usuń rekordy seed i popraw liczniki")
     p.add_argument("--users", type=int, default=60, help="liczba sztucznych osób (domyślnie 60)")
     p.add_argument("--seed-value", type=int, default=DEFAULT_SEED_VALUE, help="ziarno losowania")
-    p.add_argument("--week", type=date.fromisoformat, default=None, help="data w tygodniu docelowym (YYYY-MM-DD)")
+    p.add_argument("--week", type=date.fromisoformat, default=None, help="pierwszy dzień okna 7 dni (YYYY-MM-DD), domyślnie dziś")
     p.add_argument("--events-table", default="codzis-events")
     p.add_argument("--attendance-table", default="codzis-attendance")
     p.add_argument("--stats-table", default="codzis-event-stats")

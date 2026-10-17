@@ -15,7 +15,7 @@ seed = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(seed)
 
 EVENTS, ATTENDANCE, STATS = "t-events", "t-attendance", "t-stats"
-WEEK_DAY = date(2026, 10, 21)  # tydzień 19-25.10.2026
+WEEK_DAY = date(2026, 10, 19)  # okno 19-25.10.2026
 
 
 def make_event(event_id, start, end=None):

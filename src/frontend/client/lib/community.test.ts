@@ -62,7 +62,7 @@ describe("liczniki i listy", () => {
     expect(attendeeLabel({ name: "Ktoś", isMe: true })).toBe("Ty");
   });
 
-  it("tydzień popularnych: pon–nd po warszawsku", () => {
+  it("okno popularnych: daty po warszawsku", () => {
     expect(weekLabel({ from: "2026-10-18T22:00:00Z", to: "2026-10-25T22:59:59Z" })).toBe("19.10 – 25.10");
     expect(weekLabel({ from: "2026-10-12", to: "2026-10-18" })).toBe("12.10 – 18.10"); // daty z API
     expect(weekLabel(null)).toBeNull();

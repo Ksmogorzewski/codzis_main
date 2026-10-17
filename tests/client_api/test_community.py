@@ -9,7 +9,7 @@ import pytest
 from tests.client_api.conftest import call
 
 WARSAW = ZoneInfo("Europe/Warsaw")
-NOW = datetime(2026, 10, 14, 12, 0, tzinfo=WARSAW)  # środa; tydzień 12-18.10
+NOW = datetime(2026, 10, 14, 12, 0, tzinfo=WARSAW)  # środa; najbliższy tydzień 14-20.10
 
 ALA = {"sub": "user-1", "email": "ala@example.com", "name": "Ala"}
 BARTEK = {"sub": "user-2", "email": "bartek@example.com", "name": "Bartek"}
@@ -42,7 +42,7 @@ def api(client_api, monkeypatch, events_table):
         record("tomorrow", "2026-10-15T18:00:00+02:00", district="Mokotów"),
         record("saturday", "2026-10-17T10:00:00+02:00", tags={"theme": ["Sport"], "cost": "Płatne"}),
         record("past", "2026-10-13T10:00:00+02:00", "2026-10-13T12:00:00+02:00"),
-        record("next-week", "2026-10-20T10:00:00+02:00"),
+        record("next-week", "2026-10-21T10:00:00+02:00"),
     ]:
         events_table.put_item(Item=item)
     return client_api
@@ -85,7 +85,7 @@ def test_explore_filters_and_counts(api):
 
 
 def test_explore_limit(api):
-    _, body = call(api, "GET /api/events", query={"when": "date", "date": "2026-10-20", "limit": "1"})
+    _, body = call(api, "GET /api/events", query={"when": "date", "date": "2026-10-21", "limit": "1"})
     assert body["total"] == 1 and len(body["items"]) == 1
 
 
@@ -236,11 +236,11 @@ def test_stats_requires_ids(api):
 # --- GET /api/popular ---
 
 
-def test_popular_this_week_by_saves(api, stats_table):
+def test_popular_next_seven_days_by_saves(api, stats_table):
     for who in (ALA, BARTEK, NONAME):
         save(api, "saturday", who)
     save(api, "today", ALA)
-    save(api, "next-week", ALA)  # poza tygodniem
+    save(api, "next-week", ALA)  # poza oknem (dziś + 6 dni)
     save(api, "past", BARTEK)  # już się odbyło
     save(api, "tomorrow", BARTEK)
     unsave(api, "tomorrow", BARTEK)  # 0 zapisów - pomijamy
@@ -249,9 +249,9 @@ def test_popular_this_week_by_saves(api, stats_table):
 
     status, body = call(api, "GET /api/popular", claims=BARTEK)
     assert status == 200
-    assert body["window"] == {"from": "2026-10-12", "to": "2026-10-18"}
+    assert body["window"] == {"from": "2026-10-14", "to": "2026-10-20"}
     assert [(c["id"], c["saves"], c["saved"]) for c in body["items"]] == [("saturday", 3, True), ("today", 1, False)]
 
 
 def test_popular_empty(api):
-    assert call(api, "GET /api/popular") == (200, {"window": {"from": "2026-10-12", "to": "2026-10-18"}, "items": []})
+    assert call(api, "GET /api/popular") == (200, {"window": {"from": "2026-10-14", "to": "2026-10-20"}, "items": []})

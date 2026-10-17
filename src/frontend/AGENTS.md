@@ -3,7 +3,7 @@
 Jeden projekt Vite, dwie aplikacje: **portal klienta** (`client/`, tryb `client`) i **panel partnera** (`partner/`, tryb `partner`). Ten plik opisuje portal klienta. **Pilnuj struktury opisanej niżej**; jeśli zmiana jej nie pasuje, zatrzymaj się i zapytaj, zamiast tworzyć nowy wzorzec. Panelu partnera nie zmieniaj bez zgody Krzysztofa.
 
 ## Produkt (portal klienta)
-Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni/inny dzień, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia (`GET /api/events/{id}`: pełny opis, lista zapisanych). **Eksploruj** (`GET /api/events`: wszystko w oknie czasu, bez profilu), **Popularne w tym tygodniu** (`GET /api/popular`), **Zapisz / Zapisano** na kartach i w szczegółach. Nawigacja: Dla Ciebie / Eksploruj / Popularne / Profil (nagłówek na desktopie, dolny pasek na telefonie). Wygląd: mockup WarsawNow, wariant 1a Karty.
+Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni/inny dzień, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia (`GET /api/events/{id}`: pełny opis, lista zapisanych). **Eksploruj** (`GET /api/events`: wszystko w oknie czasu, bez profilu), **Popularne w najbliższym tygodniu** (`GET /api/popular`, dziś + 6 dni), **Zapisz / Zapisano** na kartach i w szczegółach. Nawigacja: Dla Ciebie / Eksploruj / Popularne / Profil (nagłówek na desktopie, dolny pasek na telefonie). Wygląd: mockup WarsawNow, wariant 1a Karty.
 **Imię:** wymagane przy rejestracji (atrybut Cognito `name`), potem niezmienne; konta bez imienia dostają jednorazową prośbę przed pierwszym zapisem (`setMissingName` w `lib/auth.ts`). Na listach zapisanych tylko imię (brak → „Ktoś”), nigdy e-mail.
 **Poza zakresem bez zgody zespołu:** logowanie Google, „Sponsorowane”, czat (Kacper), pogoda, mapa.
 
@@ -31,7 +31,7 @@ routes/                  trasy plikowe; routeTree.gen.ts jest GENEROWANY — nie
   _app.tsx               strażnik sesji (beforeLoad)
   _app/index.tsx         Dla Ciebie: propozycje (search params: when, date, q, cat)
   _app/eksploruj.tsx     Eksploruj (search params: when, date, cat, district, free, indoor, q — lib/explore.ts)
-  _app/popularne.tsx     Popularne w tym tygodniu
+  _app/popularne.tsx     Popularne w najbliższym tygodniu
   _app/profil.tsx        ankieta
   _app/wydarzenie.$id.tsx szczegóły (+ lista zapisanych)
 components/<obszar>/     auth, events, explore, popular, community (zapis, imię, zapisani), survey, layout (nagłówek, tab-bar) — pliki kebab-case

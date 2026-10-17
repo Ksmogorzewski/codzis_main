@@ -18,7 +18,7 @@ rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za 
     GET    /api/events/{id}/attendees   -> {"saves", "saved", "people": [{"name", "isMe"}]}
                                            (najnowsi najpierw, maks. 100; bez imienia "Ktoś"; nigdy e-maili)
     GET    /api/popular                 -> {"window": {"from", "to"}, "items": [Card]}
-                                           (bieżący tydzień pon-nd, saves > 0, malejąco, maks. 20)
+                                           (dziś + 6 dni, saves > 0, malejąco, maks. 20)
 
 Token weryfikuje API Gateway; tu korzystamy już tylko z jego claims (ID token Cognito).
 Po zapisaniu profilu i przy logowaniu rekomender w tle liczy zestawy na dziś, jutro i weekend
@@ -192,22 +192,22 @@ def get_attendees(claims: dict, event_id: str) -> dict:
 
 
 def get_popular(claims: dict) -> dict:
-    """Wydarzenia z bieżącego tygodnia (pon-nd) z największą liczbą zapisanych.
+    """Wydarzenia z najbliższego tygodnia (dziś + 6 dni) z największą liczbą zapisanych.
 
     Indeks bySaves nie zna terminów, więc bierzemy zapas (store.POPULAR_FETCH) i filtrujemy:
-    pomijamy wydarzenia spoza tygodnia, już zakończone i te, których nie ma w codzis-events."""
+    pomijamy wydarzenia spoza okna, już zakończone i te, których nie ma w codzis-events."""
     now = _now()
-    monday, sunday = events.current_week(events.warsaw_today(now))
+    date_from, date_to = events.window("week", events.warsaw_today(now))
     known = store.all_events()
     page: list[tuple[dict, dict]] = []
     for event_id in store.top_saved():
         item = known.get(event_id)
-        slot = events.next_slot(item, monday, sunday, now) if item else None
+        slot = events.next_slot(item, date_from, date_to, now) if item else None
         if item and slot:
             page.append((item, slot))
         if len(page) == POPULAR_LIMIT:
             break
-    return {"window": _window(monday, sunday), "items": _cards(claims, page)}
+    return {"window": _window(date_from, date_to), "items": _cards(claims, page)}
 
 
 def _cards(claims: dict, page: list[tuple[dict, dict]]) -> list[dict]:

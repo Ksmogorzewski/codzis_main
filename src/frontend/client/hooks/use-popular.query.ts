@@ -3,7 +3,7 @@ import { apiGet, unwrap } from "@/lib/api";
 import { popularKey } from "@/lib/query-keys";
 import { EventListSchema } from "@/lib/schemas";
 
-// GET /api/popular: wydarzenia z bieżącego tygodnia (pon–nd) po liczbie zapisanych, malejąco (maks. 20).
+// GET /api/popular: wydarzenia z najbliższego tygodnia (dziś + 6 dni) po liczbie zapisanych, malejąco (maks. 20).
 export const popularQueryOptions = queryOptions({
   queryKey: popularKey(),
   queryFn: async ({ signal }) => unwrap(await apiGet("/api/popular", EventListSchema, signal)),

@@ -15,7 +15,7 @@ function EmptyState() {
     <div className="flex flex-col items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-input px-5 py-8 text-center">
       <Icon name="bookmark_add" size={40} className="text-muted-foreground" />
       <p className="text-lg font-bold">Jeszcze nikt się nie zapisał — bądź pierwszy</p>
-      <p className="max-w-md text-meta text-muted-foreground">Zapisz się na wydarzenie w tym tygodniu, a pojawi się tutaj.</p>
+      <p className="max-w-md text-meta text-muted-foreground">Zapisz się na wydarzenie z najbliższych 7 dni, a pojawi się tutaj.</p>
       <Button asChild size="sm">
         <Link to="/eksploruj">Eksploruj wydarzenia</Link>
       </Button>
@@ -23,7 +23,7 @@ function EmptyState() {
   );
 }
 
-/** Popularne w tym tygodniu: kolejność i liczniki z API (najwięcej zapisanych najpierw). */
+/** Popularne w najbliższym tygodniu (dziś + 6 dni): kolejność i liczniki z API (najwięcej zapisanych najpierw). */
 export function PopularView() {
   // Loader czeka na pierwszą odpowiedź; po zapisie lista odświeża się sama (useSave unieważnia klucz).
   const initial = route.useLoaderData();
@@ -38,7 +38,7 @@ export function PopularView() {
   return (
     <>
       <header className="flex flex-col gap-1">
-        <h1 className="text-[32px] leading-[1.05] font-extrabold tracking-[-0.03em] md:text-[40px]">Popularne w tym tygodniu</h1>
+        <h1 className="text-[32px] leading-[1.05] font-extrabold tracking-[-0.03em] md:text-[40px]">Popularne w najbliższym tygodniu</h1>
         <p className="text-lg text-muted-foreground">
           Na co zapisuje się najwięcej osób{week ? ` · ${week}` : ""}.
         </p>

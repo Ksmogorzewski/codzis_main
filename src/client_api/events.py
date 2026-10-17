@@ -152,12 +152,6 @@ def window(when: str, today: date, day: str | None = None) -> tuple[date, date]:
     return today, today
 
 
-def current_week(today: date) -> tuple[date, date]:
-    """Bieżący tydzień kalendarzowy: poniedziałek - niedziela (daty, więc zmiana czasu nie ma wpływu)."""
-    monday = today - timedelta(days=today.weekday())
-    return monday, monday + timedelta(days=6)
-
-
 # --------------------------------------------------------------------------- termin (port next_slot)
 
 

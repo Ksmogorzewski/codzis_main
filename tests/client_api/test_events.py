@@ -145,19 +145,6 @@ def test_windows(ev):
         ev.window("date", wed, "2026-10-13")  # przeszłość
 
 
-@pytest.mark.parametrize(
-    ("today", "monday", "sunday"),
-    [
-        (date(2026, 10, 12), date(2026, 10, 12), date(2026, 10, 18)),  # poniedziałek
-        (date(2026, 10, 18), date(2026, 10, 12), date(2026, 10, 18)),  # niedziela
-        (date(2026, 10, 25), date(2026, 10, 19), date(2026, 10, 25)),  # niedziela zmiany czasu (CEST -> CET)
-        (date(2026, 12, 31), date(2026, 12, 28), date(2027, 1, 3)),  # przełom roku
-    ],
-)
-def test_current_week_monday_to_sunday(ev, today, monday, sunday):
-    assert ev.current_week(today) == (monday, sunday)
-
-
 def test_today_warsaw_uses_local_date_not_utc(ev):
     # 23:30 UTC w sobotę = 01:30 w niedzielę w Warszawie (CEST)
     utc_late = datetime.fromisoformat("2026-10-17T23:30:00+00:00")

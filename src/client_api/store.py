@@ -29,7 +29,7 @@ STATS_TABLE = os.environ["STATS_TABLE"]
 
 STATS_KIND = "event"
 MAX_ATTENDEES = 100
-POPULAR_FETCH = 200  # zapas z indeksu bySaves (część wydarzeń jest poza tygodniem albo wygasła)
+POPULAR_FETCH = 200  # zapas z indeksu bySaves (część wydarzeń jest poza oknem albo wygasła)
 BATCH_GET_MAX = 100  # limit BatchGetItem
 
 # Pola rekordu v1 potrzebne do kart (bez długiego `text`) - mniej danych w pamięci kontenera

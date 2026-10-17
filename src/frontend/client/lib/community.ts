@@ -61,7 +61,7 @@ export function attendeeLabel(p: { name: string | null; isMe: boolean }): string
 
 const dayMonth = new Intl.DateTimeFormat("pl-PL", { timeZone: "Europe/Warsaw", day: "2-digit", month: "2-digit" });
 
-/** Okno „w tym tygodniu” z API -> "19.10 – 25.10" (po warszawsku). */
+/** Okno „najbliższy tydzień” z API -> "19.10 – 25.10" (po warszawsku). */
 export function weekLabel(window: { from: string; to: string } | null): string | null {
   if (!window) return null;
   const from = new Date(window.from);
