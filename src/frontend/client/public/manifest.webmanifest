@@ -1,0 +1,16 @@
+{
+  "name": "WarsawNow – co robić w Warszawie",
+  "short_name": "WarsawNow",
+  "description": "Propozycje na wolny czas w Warszawie dopasowane do Ciebie i Twojej okolicy.",
+  "lang": "pl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f5f1",
+  "theme_color": "#1d2a5c",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

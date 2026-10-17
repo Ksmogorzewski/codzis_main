@@ -1,5 +1,5 @@
 // Logika kafelków profilu, bez DOM. Kroki i pola przychodzą z GET /api/onboarding.
-import type { Answers, OnboardingField, OnboardingStep } from "./types";
+import type { Answers, OnboardingField, OnboardingStep } from "./schemas";
 
 export const values = (answers: Answers, field: OnboardingField) => answers[field.id] ?? [];
 export const isRequired = (step: OnboardingStep) => step.fields.some((f) => f.required);
@@ -65,3 +65,23 @@ export function clearStep(answers: Answers, step: OnboardingStep): Answers {
 
 // Okno z jednym polem jednokrotnego wyboru zamyka się samo po kliknięciu (jak w makiecie)
 export const autoApply = (step: OnboardingStep) => step.fields.length === 1 && step.fields[0]!.type !== "multi";
+
+// Okno kroku: komunikat, gdy nie da się go zatwierdzić „Gotowe” (null = można).
+export function stepProblem(step: OnboardingStep, draft: Answers): string | null {
+  if (!isFilled(step, draft)) return "Wybierz co najmniej jedną opcję";
+  if (!isComplete(step, draft)) return "Uzupełnij wymagane pola";
+  return null;
+}
+
+// Pola z błędem z odpowiedzi 400 PUT /api/profile ({fields}) -> id kafelków do poprawy
+export function stepsWithErrors(steps: OnboardingStep[], fields: readonly string[]): Set<string> {
+  const bad = new Set(fields);
+  return new Set(steps.filter((s) => s.fields.some((f) => bad.has(f.id))).map((s) => s.id));
+}
+
+// Start ankiety: niezapisany szkic z localStorage, a bez niego zapisany profil
+export const initialAnswers = (steps: OnboardingStep[], draft: Answers | null, saved: Answers | null | undefined) =>
+  sanitize(steps, draft ?? saved);
+
+// Klucz szkicu w localStorage (jak u nich: osobny dla każdego użytkownika)
+export const draftKey = (userId: string) => `warsawnow-draft-${userId}`;

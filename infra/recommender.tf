@@ -116,8 +116,9 @@ resource "aws_iam_role_policy" "recommender" {
         Resource = aws_dynamodb_table.users.arn
       },
       {
+        # UpdateItem: claim liczenia (i jego zdjęcie) na rekordzie zestawu, PutItem: gotowy zestaw
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
         Resource = aws_dynamodb_table.recommendations.arn
       },
       {

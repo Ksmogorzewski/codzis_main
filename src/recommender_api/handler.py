@@ -1,6 +1,6 @@
 """Rekomendacje (RAG) dla portalu klienta: Lambda z obrazu kontenera (pakiet recommender/).
 
-    GET /api/recommendations?when=today|tomorrow|weekend|week|date&date=RRRR-MM-DD&q=...&limit=12
+    GET /api/recommendations?when=today|tomorrow|weekend|week|date&date=RRRR-MM-DD&q=...&limit=16
         HTTP API + JWT authorizer Cognito; profil z tabeli users (preferences, ragProfile).
         Zawsze odpowiada od razu z zapisanego zestawu (tabela recommendations, results_store.py),
         także nieaktualnego - wtedy z "updating": true i nowym liczonym w tle. 202 {"status":
@@ -50,7 +50,9 @@ REFINE_SECONDS = 300         # dłużej faza AI nie trwa; potem zestaw zostaje z
 PRECOMPUTE_ACTIVE_DAYS = int(os.environ.get("PRECOMPUTE_ACTIVE_DAYS", "14"))
 DEFAULT_SETS = ["today", "tomorrow", "weekend"]  # liczone z góry: w nocy, po zmianie profilu, przy logowaniu
 MIN_RESULTS = 4              # mniej propozycji -> poszerzamy obszar (okolica -> sąsiednie -> cała Warszawa)
-DEFAULT_LIMIT, MAX_LIMIT = 12, 24
+# = RECOMMENDATIONS_LIMIT we froncie (hooks/use-recommendations.query.ts): z tym limitem liczą się zestawy
+# z góry, więc inny limit w zapytaniu to inny klucz zestawu i liczenie od zera
+DEFAULT_LIMIT, MAX_LIMIT = 16, 24
 MAX_QUERY = 120
 
 if os.environ.get("INDEX_PATH"):
@@ -133,11 +135,18 @@ def get_recommendations(user_id: str, params: dict) -> dict | None:
     key = set_key(when, span, query, limit)
     fingerprint = prefs_hash(user["preferences"], user.get("ragProfile"))
     body, fresh = _stored(results.get(user_id, key), fingerprint, now)
-    if not fresh and results.claim(user_id, key, fingerprint, now):
-        _start_compute(user_id, key, fingerprint, {"when": when, "from": span[0].isoformat(), "to": span[1].isoformat(),
-                                                   "q": query, "limit": limit})
-        if body:
-            body["updating"] = True
+    if not fresh:
+        try:
+            if results.claim(user_id, key, fingerprint, now):
+                _start_compute(user_id, key, fingerprint, {"when": when, "from": span[0].isoformat(),
+                                                           "to": span[1].isoformat(), "q": query, "limit": limit})
+                if body:
+                    body["updating"] = True
+        except Exception:
+            # Nie udało się zlecić liczenia: zapisany zestaw i tak pokazujemy, bez niego - 503 (strona ponowi)
+            log.exception("Nie udało się zlecić liczenia zestawu %s", key)
+            if body is None:
+                raise ApiError(503, "Nie udało się przygotować propozycji – spróbuj za chwilę.")
     return body  # None -> 202, strona zapyta ponownie
 
 

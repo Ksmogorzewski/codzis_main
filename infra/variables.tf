@@ -251,5 +251,7 @@ locals {
     svg  = "image/svg+xml"
     ico  = "image/x-icon"
     webp = "image/webp"
+    # manifest PWA portalu klienta (src/frontend/client/public)
+    webmanifest = "application/manifest+json"
   }
 }

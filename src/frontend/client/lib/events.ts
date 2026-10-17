@@ -1,6 +1,6 @@
 // Formatowanie kart rekomendacji. Czas zawsze po warszawsku, niezależnie od strefy przeglądarki.
 import { plural } from "../../shared/format";
-import type { Recommendation, Recommendations, Slot, When } from "./types";
+import type { Recommendation, Recommendations, Slot, When } from "./schemas";
 
 const TZ = "Europe/Warsaw";
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -8,12 +8,13 @@ const DAY_SHORT: Record<string, string> = {
   monday: "pon", tuesday: "wt", wednesday: "śr", thursday: "czw", friday: "pt", saturday: "sob", sunday: "nd",
 };
 
-// Zestawy liczone z góry (w nocy, po zmianie profilu); inny dzień liczy się przy pierwszym wyborze
 export const WHEN_OPTIONS: { id: When; label: string }[] = [
   { id: "today", label: "Dziś" },
   { id: "tomorrow", label: "Jutro" },
   { id: "weekend", label: "Weekend" },
+  { id: "week", label: "7 dni" },
 ];
+
 export const MAX_DAYS_AHEAD = 60; // = MAX_DAYS_AHEAD w src/recommender_api/user_context.py
 
 const dateFormat = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
@@ -40,18 +41,20 @@ export function dayLabel(iso: string, now: Date): string {
   return `${DAY_SHORT[weekday]} ${shortDate(iso)}`;
 }
 
-// Zakres dla wyboru "Inny dzień": od dziś do MAX_DAYS_AHEAD dni naprzód
+// "Inny dzień": od dziś do MAX_DAYS_AHEAD dni naprzód (min/max dla <input type="date">)
 export function dateBounds(now: Date): { min: string; max: string } {
   const min = warsawDate(now);
   return { min, max: addDays(min, MAX_DAYS_AHEAD) };
 }
 
-// "Sob 24.10" na przycisku wybranego dnia
+// "Pt 30.10" / "Jutro" na przycisku wybranego dnia
 export const chosenDayLabel = (iso: string, now: Date) => cap(dayLabel(iso, now));
 
-// "Przygotowane dziś o 05:02"
-export const preparedLabel = (generatedAt: string, now: Date) =>
-  `Przygotowane ${dayLabel(warsawDate(new Date(generatedAt)), now)} o ${timeFormat.format(new Date(generatedAt))}`;
+// Nagłówek ekranu dla wybranego dnia: "Co robimy w pt 30.10?" (dziś / jutro jak w filtrach)
+export function dateTitle(iso: string, now: Date): string {
+  const label = dayLabel(iso, now);
+  return label === "dziś" || label === "jutro" ? `Co robimy ${label}?` : `Co robimy w ${label}?`;
+}
 
 // "Dziś, 18:00–19:30" / "Trwa do 30.10" / "Pon 19.10, 16:00 · co tydzień"
 export function slotLabel(slot: Slot | null, now: Date): string | null {
@@ -133,4 +136,63 @@ export function tint(id: string): string {
   let hash = 0;
   for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
   return `oklch(0.8 0.08 ${hash} / 0.55)`;
+}
+
+// --- szczegóły wydarzenia ---
+
+// ["Pon 18:00–19:30", "Śr 07:00"] – plan zajęć cyklicznych (schedule: day monday..sunday, "HH:MM")
+export function scheduleLabels(schedule: Recommendation["schedule"]): string[] {
+  return schedule
+    .filter((s) => DAY_SHORT[s.day])
+    .map((s) => {
+      const time = s.start ? ` ${s.start}${s.end ? `–${s.end}` : ""}` : "";
+      return cap(`${DAY_SHORT[s.day]}${time}`);
+    });
+}
+
+const readAtFormat = new Intl.DateTimeFormat("pl-PL", {
+  timeZone: TZ,
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+// Czas odczytu danych (index.builtAt): "17.10, 10:05" po warszawsku
+export function readAtLabel(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = readAtFormat.formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("day")}.${get("month")}, ${get("hour")}:${get("minute")}`;
+}
+
+const dayLineFormat = new Intl.DateTimeFormat("pl-PL", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
+
+// "Sobota, 17 października" – linia daty na ekranie głównym
+export const dayLine = (now: Date) => cap(dayLineFormat.format(now));
+
+const SOURCE_LABEL: Record<string, string> = {
+  um_kalendarz: "Kalendarz wydarzeń m.st. Warszawy",
+  um_sport: "Zajęcia sportowe m.st. Warszawy",
+  partner: "Organizator wydarzenia",
+};
+
+// Skąd jest karta: nazwa organizatora albo opis zbioru danych miasta
+export function sourceLabel(item: Recommendation): string {
+  if (item.partnerName) return item.partnerName;
+  return SOURCE_LABEL[item.source] ?? "dane.um.warszawa.pl";
+}
+
+export type OutboundLink = { kind: "ticket" | "page"; label: string; href: string };
+
+// Główny link wychodzący: bilet, a bez niego strona wydarzenia (tylko http(s))
+export function outboundLink(item: Recommendation): OutboundLink | null {
+  const ticket = safeUrl(item.ticketUrl);
+  if (ticket) return { kind: "ticket", label: "Kup bilet", href: ticket };
+  const page = safeUrl(item.url);
+  if (page) return { kind: "page", label: "Zobacz szczegóły", href: page };
+  return null;
 }

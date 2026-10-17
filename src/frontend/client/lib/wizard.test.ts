@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
-import type { OnboardingStep } from "./types";
-import { autoApply, clearStep, filledCount, isComplete, merge, missingRequired, pick, ready, sanitize, summary } from "./wizard";
+import type { OnboardingStep } from "./schemas";
+import {
+  autoApply,
+  clearStep,
+  filledCount,
+  initialAnswers,
+  isComplete,
+  merge,
+  missingRequired,
+  pick,
+  ready,
+  sanitize,
+  stepProblem,
+  stepsWithErrors,
+  summary,
+} from "./wizard";
 
 const opt = (id: string) => ({ id, label: id.toUpperCase(), icon: "star", short: `s-${id}` });
 const STEPS: OnboardingStep[] = [
@@ -61,5 +75,28 @@ describe("wizard", () => {
   it("krótkie etykiety i automatyczne zamykanie okna", () => {
     expect(summary(where, { district: ["wola"], travel: ["city"] })).toEqual(["s-wola", "s-city"]);
     expect([autoApply(who), autoApply(vibe), autoApply(where)]).toEqual([true, false, false]);
+  });
+});
+
+describe("wizard: walidacja okna i błędy serwera", () => {
+  it("okno kroku: nic nie wybrano / brak wymaganego pola / ok", () => {
+    expect(stepProblem(who, {})).toBe("Wybierz co najmniej jedną opcję");
+    expect(stepProblem(where, { district: ["wola"] })).toBe("Uzupełnij wymagane pola");
+    expect(stepProblem(where, { district: ["wola"], travel: ["local"] })).toBeNull();
+    // krok opcjonalny też wymaga wyboru w oknie (do pominięcia jest przycisk „Pomiń”)
+    expect(stepProblem(city, {})).toBe("Wybierz co najmniej jedną opcję");
+    expect(stepProblem(city, { city: ["eco"] })).toBeNull();
+  });
+
+  it("pola z błędem z serwera -> kafelki do poprawy", () => {
+    expect([...stepsWithErrors(STEPS, ["travel", "vibe"])]).toEqual(["vibe", "where"]);
+    expect(stepsWithErrors(STEPS, ["answers", "nieznane"]).size).toBe(0);
+    expect(stepsWithErrors(STEPS, []).size).toBe(0);
+  });
+
+  it("odpowiedzi startowe: szkic ma pierwszeństwo przed zapisanym profilem, oba oczyszczone", () => {
+    expect(initialAnswers(STEPS, { who: ["kids"], old: ["x"] }, { who: ["solo"] })).toEqual({ who: ["kids"] });
+    expect(initialAnswers(STEPS, null, { who: ["solo"], vibe: ["a", "b", "c"] })).toEqual({ who: ["solo"], vibe: ["a", "b"] });
+    expect(initialAnswers(STEPS, null, undefined)).toEqual({});
   });
 });

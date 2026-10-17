@@ -116,7 +116,7 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 | `GET /api/me` | profil (pierwsze wywołanie zakłada rekord), `needsOnboarding`, `onboardingOutdated` |
 | `GET /api/onboarding` | kafelki z pytaniami (ikony, limity wyborów, wymagane pola) |
 | `PUT /api/profile` | `{"answers": {"who": ["kids"], ...}}` → walidacja, preferencje, zapis |
-| `GET /api/recommendations` | `?when=today\|tomorrow\|weekend\|date&date=2026-10-30&q=jazz&limit=12` → karty wydarzeń z uzasadnieniem (sekcja Rekomendacje); `202 {"status": "preparing"}` gdy zestaw właśnie się liczy, `409` bez profilu, `503` zanim powstanie indeks |
+| `GET /api/recommendations` | `?when=today\|tomorrow\|weekend\|week\|date&date=2026-10-30&q=jazz&limit=16` → karty wydarzeń z uzasadnieniem (sekcja Rekomendacje); `202 {"status": "preparing"}` gdy zestaw właśnie się liczy, `409` bez profilu, `503` zanim powstanie indeks |
 
 **Onboarding:** pytania i mapowanie odpowiedzi są w jednym miejscu, `src/client_api/onboarding.py`; frontend tylko je wyświetla. Jest 10 kafelków:
 - wymagane: z kim, klimat (maks. 2), co odkryć (maks. 2), gdzie (dzielnica i zasięg);
@@ -139,7 +139,7 @@ Testy frontendu: `npm --prefix src/frontend test`.
 
 ## Rekomendacje (RAG)
 
-Zakładka **Rekomendacje** w portalu klienta: wybór dnia (dziś / jutro / weekend / inny dzień do 60 dni naprzód), wyszukiwanie tekstem („jazz”, „joga”) i karty jak w makiecie (cena, miejsce, termin, „Pasuje: …”, Trasa, Bilet / Szczegóły). Silnik to pakiet [`recommender/`](recommender) z brancha `llm`, dostosowany do schematu v1 eventów.
+Zakładka **Rekomendacje** w portalu klienta: wybór dnia (dziś / jutro / weekend / 7 dni / inny dzień do 60 dni naprzód), wyszukiwanie tekstem („jazz”, „joga”), kategorie i karty jak w makiecie (cena, miejsce, termin, „Pasuje: …”, Trasa, Bilet / Szczegóły). Silnik to pakiet [`recommender/`](recommender) z brancha `llm`, dostosowany do schematu v1 eventów.
 
 **Zapisane zestawy (tabela `codzis-recommendations`):** rekomendacje liczą się raz i są zapisywane per użytkownik (`userId` + okno, daty i fraza). Ponowne wejście, przełączanie dni i odświeżanie strony czytają zapis.
 - **Z góry** liczą się zestawy na dziś, jutro i najbliższy weekend:
@@ -155,7 +155,7 @@ Zakładka **Rekomendacje** w portalu klienta: wybór dnia (dziś / jutro / weeke
 1. **Twarde filtry:** termin w wybranym oknie (już zakończone odpadają; zajęcia cykliczne wg dni tygodnia), dzielnica wg zasięgu dojazdu (okolica / sąsiednie dzielnice / cała Warszawa), koszt („tylko bezpłatne”), forma (na żywo / online), grupa odbiorców, budżet.
 2. **Podobieństwo wektorowe:** model `paraphrase-multilingual-MiniLM-L12-v2` (lokalnie, CPU) porównuje profil (tematy, formaty, kategorie) albo wpisaną frazę z tekstem eventu (tytuł, kategorie, tagi AI, opis).
 3. **Miękkie preferencje:** drobne punkty za zgodność tagów (tematy, formaty, z kim, aktywność, plener / pod dachem, zapisy, dostępność), porę dnia, bliskość dzielnicy; mniej za „wydarzenia” trwające miesiącami (to zwykle programy, nie propozycja na dziś). Potem dedupe tytułów i różnorodność (nie 5 kart z jednej pływalni).
-4. **DeepSeek** (opcjonalnie, ten sam klucz co tagger): układa 12 najlepszych kandydatów i pisze uzasadnienia. Przy błędzie lub po 60 s zostaje kolejność wektorowa z uzasadnieniem z reguł.
+4. **DeepSeek** (opcjonalnie, ten sam klucz co tagger): układa najlepszych kandydatów (tylu, ile kart prosi strona: 16) i pisze uzasadnienia. Przy błędzie lub po 60 s zostaje kolejność wektorowa z uzasadnieniem z reguł.
 
 Gdy w okolicy wyjdą mniej niż 4 propozycje, obszar poszerza się sam (strona to pokazuje).
 
