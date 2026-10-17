@@ -49,3 +49,58 @@ export type Me = {
   onboardingOutdated: boolean;
   profile: { answers: Answers; completedAt: string; preferences: Preferences; ragProfile: string } | null;
 };
+
+// --- rekomendacje (src/recommender_api/handler.py, present.py) ---
+
+export type When = "today" | "tomorrow" | "weekend" | "week";
+
+// Najbliższy termin w wybranym oknie: konkretne wydarzenie albo zajęcia co tydzień
+export type Slot =
+  | { recurring?: undefined; start: string; end: string | null; allDay: boolean }
+  | { recurring: true; date: string | null; day: string | null; start: string | null; end: string | null };
+
+export type Recommendation = {
+  id: string;
+  title: string;
+  lead: string;
+  url: string | null;
+  ticketUrl: string | null;
+  imageUrl: string | null;
+  origin: "um_warszawa" | "partner";
+  source: string;
+  kind: "event" | "recurring";
+  partnerName: string | null;
+  district: string | null;
+  venue: { name?: string | null; address?: string | null } | null;
+  location: { lat: number; lon: number } | null;
+  online: boolean;
+  slot: Slot | null;
+  schedule: { day: string; start?: string | null; end?: string | null }[];
+  price: { min: number | null; max: number | null; currency: string } | null;
+  tags: {
+    theme?: string[];
+    format?: string[];
+    audience?: string[];
+    cost?: string;
+    mode?: string;
+    setting?: string;
+    registration?: string;
+    activity_level?: string;
+  };
+  reason: string;
+  reasonSource: "llm" | "rules";
+  score: number;
+};
+
+export type Recommendations = {
+  generatedAt: string;
+  when: When;
+  window: { from: string; to: string };
+  query: string | null;
+  district: string | null;
+  area: "local" | "nearby" | "city";
+  areaRelaxed: boolean;
+  ranking: "llm" | "cosine";
+  items: Recommendation[];
+  index: { builtAt: string | null; events: number | null };
+};

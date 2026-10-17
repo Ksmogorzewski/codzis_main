@@ -1,0 +1,6 @@
+# Kontekst = katalog główny repo; do obrazu trafia tylko rekomender
+*
+!recommender/
+!src/recommender_api/
+**/__pycache__
+**/*.pyc

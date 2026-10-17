@@ -1,0 +1,116 @@
+# Infracost: założenia ruchu - scenariusz "start" (~2 tys. aktywnych klientów/mies., ~20 partnerów).
+# Ceny eu-central-1, bez darmowych limitów AWS (Infracost ich nie odejmuje).
+# Fargate (tagger/importer) uruchamiany przez RunTask - Infracost go nie wycenia, liczony osobno.
+version: 0.1
+
+resource_usage:
+  # --- Lambda (arm64, 128 MB) ---
+  aws_lambda_function.dispatcher:
+    monthly_requests: 43800 # co minutę
+    request_duration_ms: 200
+  aws_lambda_function.api:
+    monthly_requests: 30000
+    request_duration_ms: 150
+  aws_lambda_function.client_api:
+    monthly_requests: 60000
+    request_duration_ms: 100
+
+  # --- API Gateway ---
+  aws_api_gateway_rest_api.api:
+    monthly_requests: 30000
+  aws_apigatewayv2_api.client:
+    monthly_requests: 60000
+    request_size_kb: 2
+
+  # --- CloudFront (PriceClass_100, użytkownicy w Europie) ---
+  aws_cloudfront_distribution.client:
+    monthly_data_transfer_to_internet_gb:
+      europe: 20
+    monthly_https_requests:
+      europe: 600000
+  aws_cloudfront_distribution.portal:
+    monthly_data_transfer_to_internet_gb:
+      europe: 5
+    monthly_data_transfer_to_origin_gb:
+      europe: 0.5
+    monthly_https_requests:
+      europe: 150000
+
+  # --- DynamoDB on-demand ---
+  aws_dynamodb_table.events:
+    storage_gb: 0.5
+    monthly_write_request_units: 100000
+    monthly_read_request_units: 200000
+  aws_dynamodb_table.submissions:
+    storage_gb: 0.01
+    monthly_write_request_units: 2000
+    monthly_read_request_units: 20000
+  aws_dynamodb_table.partners:
+    storage_gb: 0.001
+    monthly_write_request_units: 2000
+    monthly_read_request_units: 30000
+  aws_dynamodb_table.payments:
+    storage_gb: 0.001
+    monthly_write_request_units: 500
+    monthly_read_request_units: 5000
+  aws_dynamodb_table.users:
+    storage_gb: 0.02
+    pitr_backup_storage_gb: 0.02
+    monthly_write_request_units: 10000
+    monthly_read_request_units: 60000
+
+  # --- SQS (dispatcher co minutę robi GetQueueAttributes = ~44 tys. żądań) ---
+  aws_sqs_queue.events:
+    monthly_requests: 100000
+    request_size_kb: 64
+  aws_sqs_queue.events_dlq:
+    monthly_requests: 100
+
+  # --- S3 ---
+  aws_s3_bucket.data:
+    standard:
+      storage_gb: 2 # surowe snapshoty API, 30 dni retencji
+      monthly_tier_1_requests: 2000
+      monthly_tier_2_requests: 2000
+  aws_s3_bucket.photos:
+    standard:
+      storage_gb: 2
+      monthly_tier_1_requests: 1000
+      monthly_tier_2_requests: 20000
+  aws_s3_bucket.website:
+    standard:
+      storage_gb: 0.01
+      monthly_tier_1_requests: 100
+      monthly_tier_2_requests: 10000
+  aws_s3_bucket.client_web:
+    standard:
+      storage_gb: 0.01
+      monthly_tier_1_requests: 100
+      monthly_tier_2_requests: 20000
+
+  # --- CloudWatch Logs (retencja 7 dni) ---
+  aws_cloudwatch_log_group.dispatcher:
+    monthly_data_ingested_gb: 0.1
+    storage_gb: 0.03
+  aws_cloudwatch_log_group.api:
+    monthly_data_ingested_gb: 0.05
+    storage_gb: 0.02
+  aws_cloudwatch_log_group.client_api:
+    monthly_data_ingested_gb: 0.1
+    storage_gb: 0.03
+  aws_cloudwatch_log_group.worker:
+    monthly_data_ingested_gb: 0.5
+    storage_gb: 0.15
+  aws_cloudwatch_log_group.importer:
+    monthly_data_ingested_gb: 0.05
+    storage_gb: 0.02
+
+  # --- ECR (lifecycle trzyma 3 obrazy) ---
+  aws_ecr_repository.worker:
+    storage_gb: 1.5
+  aws_ecr_repository.importer:
+    storage_gb: 0.6
+
+  # --- Cognito (pierwsze 10 tys. MAU darmowe) ---
+  aws_cognito_user_pool.clients:
+    monthly_active_users: 2000

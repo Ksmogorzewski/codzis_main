@@ -148,3 +148,13 @@ output "client_app_config" {
   description = "Konfiguracja strony klienta (to samo trafia do config.js na S3)"
   value       = local.client_app_config
 }
+
+# --- rekomendacje (RAG): scripts/push-images.sh recommender, scripts/recommender-refresh.sh ---
+
+output "recommender_repository_url" {
+  value = aws_ecr_repository.recommender.repository_url
+}
+
+output "recommender_function" {
+  value = aws_lambda_function.recommender.function_name
+}

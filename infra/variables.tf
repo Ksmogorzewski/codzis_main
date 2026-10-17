@@ -184,6 +184,38 @@ variable "google_client_secret" {
   sensitive   = true
 }
 
+# --- rekomendacje (RAG) ---
+
+variable "recommender_image_tag" {
+  description = "Tag obrazu rekomendera w ECR; Lambda dostaje jego aktualny digest przy każdym apply"
+  type        = string
+  default     = "latest"
+}
+
+variable "recommender_memory_mb" {
+  description = "Pamięć Lambdy rekomendera (od niej zależy CPU). Model ~0,5 GB; nowe konta AWS mają limit 3008 MB"
+  type        = number
+  default     = 3008
+}
+
+variable "recommender_refresh_minutes" {
+  description = "Co ile minut odświeżać indeks rekomendacji (embeddingi liczone tylko dla nowych eventów)"
+  type        = number
+  default     = 30
+}
+
+variable "recommender_keep_warm" {
+  description = "Wywołanie co 5 min, żeby model był w pamięci (zimny start z torchem trwa kilkanaście sekund)"
+  type        = bool
+  default     = true
+}
+
+variable "recommender_llm_enabled" {
+  description = "Czy DeepSeek układa kolejność i pisze uzasadnienia (false = ranking wektorowy + reguły)"
+  type        = bool
+  default     = true
+}
+
 locals {
   client_domains        = concat([var.client_domain_name], var.client_domain_aliases)
   client_origins        = [for d in local.client_domains : "https://${d}"]
