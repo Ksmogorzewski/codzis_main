@@ -1,5 +1,5 @@
-# Docelowa tabela: eventy z obu źródeł (source = "partner" | "um_warszawa") w kształcie
-# rekordu z API UM Warszawy, otagowane. Pisze do niej wyłącznie worker ECS.
+# Docelowa tabela: eventy ze wszystkich źródeł we wspólnym schemacie v1 (src/importer/schema.py),
+# otagowane. Pisze do niej wyłącznie tagger ECS.
 resource "aws_dynamodb_table" "events" {
   name         = "${local.name}-events"
   billing_mode = "PAY_PER_REQUEST"

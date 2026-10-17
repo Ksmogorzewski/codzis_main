@@ -91,10 +91,10 @@ const VIEWS = {
     list.replaceChildren(
       ...items.map((ev) => {
         const photo = el("div", { className: "photo" });
-        const img = el("img", { src: ev.image?.highlighted?.path || "", alt: "", loading: "lazy" });
+        const img = el("img", { src: ev.imageUrl || "", alt: "", loading: "lazy" });
         img.onerror = () => photo.replaceChildren("Brak zdjęcia");
         photo.append(img);
-        const where = [ev.address?.[0]?.name, ev.localization?.[0]?.name].filter(Boolean).join(" · ");
+        const where = [ev.venue?.name, ev.district].filter(Boolean).join(" · ");
         return el(
           "article",
           { className: "card event" },
@@ -109,7 +109,7 @@ const VIEWS = {
               el("span", { className: "badge", textContent: ev.category?.[0]?.name || "" }),
             ),
             el("h3", { textContent: ev.title }),
-            el("div", { className: "muted small", textContent: formatDate(ev.occurrence?.[0]?.from || ev.startsAt) }),
+            el("div", { className: "muted small", textContent: formatDate(ev.occurrences?.[0]?.start || ev.startsAt) }),
             el("div", { className: "muted small", textContent: where }),
             el("p", { className: "lead-text", textContent: ev.lead || "" }),
             tagList(ev.tags).length ? el("div", { className: "tags" }, ...tagList(ev.tags).map((t) => el("span", { textContent: t }))) : null,

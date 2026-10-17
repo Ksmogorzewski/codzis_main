@@ -41,3 +41,16 @@ output "deepseek_api_key_parameter" {
   description = "Ustaw wartość: aws ssm put-parameter --name <to> --type SecureString --overwrite --value sk-..."
   value       = aws_ssm_parameter.deepseek_api_key.name
 }
+
+output "importer_repository_url" {
+  value = aws_ecr_repository.importer.repository_url
+}
+
+output "um_api_token_parameter" {
+  description = "Ustaw wartość: aws ssm put-parameter --name <to> --type SecureString --overwrite --value <token>"
+  value       = aws_ssm_parameter.um_api_token.name
+}
+
+output "data_bucket" {
+  value = aws_s3_bucket.data.id
+}

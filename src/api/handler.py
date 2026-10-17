@@ -28,8 +28,8 @@ REGION = os.environ["AWS_REGION"]
 UPLOAD_EXPIRES_S = 300
 LIST_LIMIT = 50
 
-SOURCE = "partner"  # rekordy z API Warszawy mają source = "um_warszawa"
-LANGUAGE = "pl_PL"
+SOURCE = "partner"  # źródła miejskie: um_kalendarz | um_sport | um_boiska (importer)
+SCHEMA_VERSION = 1
 
 # Pola tekstowe formularza: nazwa -> (wymagane, max długość). Pozostałe pola są ignorowane.
 TEXT_FIELDS = {
@@ -212,48 +212,36 @@ def _event_input(body):
 
 
 def _event_record(event_id, partner, data, photo_url):
-    """Rekord w kształcie eventu z API UM Warszawy + nasze metadane na górnym poziomie."""
+    """Rekord we wspólnym schemacie v1 (opis pól: src/importer/schema.py)."""
     starts, ends = data["startsAt"], data["endsAt"]
     now = _now()
+    address = " ".join(filter(None, [data["street"], data["streetNumber"]])) or None
     return {
-        # metadane (wspólne dla obu źródeł)
         "id": event_id,
         "source": SOURCE,
+        "kind": "event",
+        "schemaVersion": SCHEMA_VERSION,
+        "title": data["title"],
+        "lead": data["lead"],
+        "text": _to_html(data["text"]),
+        "url": data["url"],
+        "category": [{"id": None, "name": data["category"]}],
+        "audience": [],
+        "district": data["district"],
+        "online": False,
+        "venue": {"name": data["venue"], "address": address},
+        "location": None,  # brak współrzędnych - do uzupełnienia geokodowaniem
+        "occurrences": [{"start": starts.isoformat(), "end": ends.isoformat() if ends else None, "allDay": False}],
+        "schedule": [],
+        "startsAt": _utc(starts),
+        "endsAt": _utc(ends or starts),
+        "imageUrl": photo_url,
+        "attributes": {},
+        # tylko partner
         "partnerId": partner["partnerId"],
         "partnerName": partner["partnerName"],
         "createdAt": now,
         "updatedAt": now,
-        "startsAt": _utc(starts),
-        "endsAt": _utc(ends or starts),
-        # pola jak w API UM Warszawy
-        "title": data["title"],
-        "lead": data["lead"],
-        "text": _to_html(data["text"]),
-        "language": LANGUAGE,
-        "availableLanguages": [LANGUAGE],
-        "category": [{"name": data["category"]}],
-        "localization": [{"name": data["district"]}],
-        "address": [{"name": data["venue"]}],
-        "map": {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "geometry": None,  # brak współrzędnych - do uzupełnienia geokodowaniem
-                    "properties": {
-                        "district": data["district"],
-                        "fullStreetName": data["street"],
-                        "shortStreetName": data["street"],
-                        "streetNumber": data["streetNumber"],
-                    },
-                }
-            ],
-        },
-        "occurrence": [
-            {"daily": False, "from": starts.isoformat(), "to": ends.isoformat() if ends else None}
-        ],
-        "image": {"highlighted": {"path": photo_url}, "small": {"path": photo_url}},
-        "url": data["url"],
     }
 
 

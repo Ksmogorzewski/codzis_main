@@ -101,6 +101,23 @@ variable "worker_max_wait_minutes" {
   default     = 60
 }
 
+variable "importer_schedule" {
+  description = "Jak często importer pobiera dane z API UM Warszawy (zbiory odświeżają się co 2 h)"
+  type        = string
+  default     = "rate(2 hours)"
+}
+
+variable "importer_image_tag" {
+  type    = string
+  default = "latest"
+}
+
+variable "raw_snapshot_retention_days" {
+  description = "Ile dni trzymać surowe odpowiedzi API w S3 (podgląd / ponowne przetworzenie)"
+  type        = number
+  default     = 30
+}
+
 variable "worker_image_tag" {
   type    = string
   default = "latest"

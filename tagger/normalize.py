@@ -2,7 +2,8 @@
 """
 Normalize — make records from every source fit one target-table schema.
 
-Pure, no I/O. Runs before tagging, on every record from SQS:
+Records with "schemaVersion" (importer, partner portal) are already standardized
+and pass through unchanged. Legacy raw Warsaw-API records get, before tagging:
     - "id"      record's own id (partner UUID) or stable hash of url
     - "source"  "partner" (set by the partner portal) or "um_warszawa" (default)
     - Warsaw API quirks: "+01" offsets -> "+01:00", http:// images -> https://
@@ -23,6 +24,9 @@ def normalize(raw: dict) -> dict:
     """Return a normalized copy. Raises ValueError if the record has no id/url."""
     if not raw.get("id") and not raw.get("url"):
         raise ValueError("record has neither id nor url - cannot derive a stable id")
+    if raw.get("schemaVersion"):
+        # Already in the target schema (importer / partner portal) - see src/importer/schema.py
+        return dict(raw)
 
     record = dict(raw)
     record["id"] = record_id(raw)

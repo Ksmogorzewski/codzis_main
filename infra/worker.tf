@@ -85,9 +85,10 @@ resource "aws_iam_role_policy" "worker_execution_secrets" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["ssm:GetParameters"]
-      Resource = aws_ssm_parameter.deepseek_api_key.arn
+      Effect = "Allow"
+      Action = ["ssm:GetParameters"]
+      # Rola wykonawcza jest wspólna dla taggera i importera
+      Resource = [aws_ssm_parameter.deepseek_api_key.arn, aws_ssm_parameter.um_api_token.arn]
     }]
   })
 }
@@ -149,6 +150,7 @@ resource "aws_ecs_task_definition" "worker" {
       { name = "DYNAMODB_TABLE", value = aws_dynamodb_table.events.name },
       { name = "SUBMISSIONS_TABLE", value = aws_dynamodb_table.submissions.name },
       { name = "AWS_REGION", value = var.region },
+      { name = "AWS_DEFAULT_REGION", value = var.region }, # tego używa botocore
     ]
 
     secrets = [
