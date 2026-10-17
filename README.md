@@ -1,76 +1,232 @@
-# Model Tagowania — event tagger (ECS one-shot task)
+# codzis_main
 
-Tags Warsaw city events into categories using DeepSeek (`deepseek-flash`) via the
-OpenAI-compatible API, then writes the tagged records to DynamoDB.
+PoC **WarsawNow**: co robić w Warszawie dziś.
+- **Portal klienta** (`portal.waw-out.pl`): logowanie e-mailem lub Google (Cognito), profil zbierany kafelkami (onboarding) i zapisywany w DynamoDB pod rekomendacje (RAG).
+- **Panel organizatora** (`partner.waw-out.pl`): partner loguje się kluczem API, kupuje kredyty (mock bramka płatności) i publikuje ogłoszenia (1 zdjęcie → S3, 1 ogłoszenie = 1 kredyt).
+- **Dane:** ogłoszenia partnerów i eventy z otwartych danych UM trafiają na kolejkę SQS, a tagger AI na ECS taguje je i zapisuje do docelowej tabeli DynamoDB.
 
-Designed to run as a **one-shot ECS container**: it polls an SQS queue for a batch
-of raw events (the diff from your backend), tags them, upserts them into a DynamoDB
-table (skipping records that already exist), deletes the processed SQS messages, and
-exits with code `0` (success) or `1` (failure) — which is how ECS knows the task ended.
-
-## Structure
+Frontend obu stron to React + TypeScript (`src/frontend`, Vite), wygląd według makiet z „UI mockups request”.
 
 ```
-run_task.py              # one-shot ECS entrypoint: SQS -> tag -> DynamoDB -> exit
-tagger/                  # the importable tagging module
-  __init__.py            # public API: tag_events, merge, prepare_records
-  config.py              # paths, .env loader, event_id, strip_html
-  prepare.py             # prepare_records(raw_events) — raw API -> slim records
-  client.py              # DeepSeekClient (API plumbing)
-  chunker.py             # token-budgeted chunking
-  prompt.py              # DIMENSIONS (multi-dim taxonomy) + prompt builder
-  parser.py              # parse & validate model output
-  orchestrator.py        # run loop, token accounting, incremental save
-  merger.py              # merge(raw_events, tagged) — full record + tags
-  sqs_source.py          # SQSSource — receive/delete SQS messages
-  dynamodb_sink.py       # DynamoDBSink — exists/put + DynamoDB sanitize
-requirements.txt
-.env                     # DEEPSEEK_API_KEY (gitignored); AWS via ECS task-role
+https://portal.<domena>/ ──▶ CloudFront ──▶ S3 (portal klienta, React)
+     logowanie: Cognito (e-mail + hasło: API Cognito; Google: Hosted UI + PKCE)
+     API: HTTP API (JWT authorizer Cognito) ──▶ Lambda client-api ──▶ users (profil + preferencje)
+
+https://<domena>/        ──▶ CloudFront ──▶ S3 (panel organizatora, React, prywatny, OAC)
+https://<domena>/api/*   ──▶ CloudFront ──▶ API GW (REST, API key, /{proxy+}) ──▶ Lambda ──▶ submissions + SQS
+https://<domena>/photos/* ──▶ CloudFront ──▶ S3 (zdjęcia, prywatny; upload przez presigned POST)
+
+importer ECS (EventBridge co 2 h): API UM Warszawy ──▶ schemat v1 ──▶ diff (S3) ──▶ SQS
+SQS ──▶ tagger ECS (Fargate Spot): tagi DeepSeek ──▶ events (docelowa) + submissions.status = published
+          ▲ RunTask
+dispatcher (Lambda, EventBridge co 1 min): gdy w kolejce jest ≥ 1 wiadomość i tagger nie działa → RunTask
 ```
 
-## Setup
+Panel organizatora: logowanie kluczem API, potem Moje wydarzenia (statusy, tagi AI), Dodaj wydarzenie (formularz z podglądem karty) i Płatności i kredyty. Mock bramka: `mock-pay.html`.
 
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+| Endpoint | Opis |
+| --- | --- |
+| `GET /api/me` | profil + saldo kredytów (pierwsze wywołanie zakłada partnera) |
+| `GET /api/events` | zgłoszenia partnera ze statusem `queued` / `published` i tagami |
+| `POST /api/events` | nowe ogłoszenie: transakcja odejmuje kredyt i zapisuje zgłoszenie, potem wiadomość na SQS; zwraca presigned POST na zdjęcie; `402` gdy brak kredytów, `503` (z kredytem zwróconym) gdy SQS nie przyjmie |
+| `GET /api/payments` | historia płatności |
+| `POST /api/payments` | `{"package": "standard"}` → płatność `pending` + `redirectUrl` do mock bramki |
+| `GET /api/payments/{id}` | szczegóły płatności |
+| `POST /api/payments/{id}/confirm` | mock "zapłacono": `paid` + dodanie kredytów (idempotentne, `409` przy powtórce) |
+| `POST /api/payments/{id}/cancel` | anulowanie płatności `pending` |
+
+Tabele DynamoDB: `events` (docelowa, pisze tylko worker), `submissions` i `payments` (GSI `byPartner`), `partners` (saldo). Pakiety, cena ogłoszenia i kredyty startowe: zmienne `credit_packages`, `event_cost_credits`, `starter_credits`.
+
+## Struktura
+
+- `run_task.py`, `tagger/` – tagowanie eventów przez AI (DeepSeek), jednorazowy task ECS: SQS → tagi → `events`. Szczegóły: [tagger/README.md](tagger/README.md)
+
+- `infra/` – Terraform
+- `src/api/handler.py` – Lambda API (walidacja pól: `TEXT_FIELDS`, `_event_input`)
+- `src/dispatcher/handler.py` – Lambda uruchamiająca task taggera
+- `src/importer/` – importer ECS: API UM Warszawy → wspólny schemat (`schema.py`, `sources.py`) → SQS
+- `Dockerfile` (tagger), `src/importer/Dockerfile`, `scripts/push-images.sh` – obrazy ECS i ich build + push do ECR
+- `src/client_api/` – Lambda API portalu klienta: `handler.py` (profil), `onboarding.py` (pytania + mapowanie odpowiedzi na preferencje)
+- `src/frontend/` – React + TS (Vite): `client/` portal klienta, `partner/` panel organizatora (+ `mock-pay.html`), `shared/`; `config.js` generuje Terraform
+
+## Deploy
+
+Frontend trzeba zbudować przed `terraform apply`, bo Terraform wgrywa na S3 pliki z `src/frontend/dist`. Bez builda plan zatrzyma się z błędem (`terraform_data.frontend_build`), zamiast skasować strony:
+
+```sh
+scripts/build-frontend.sh        # npm ci + testy + build obu aplikacji
 ```
 
-`.env` holds `DEEPSEEK_API_KEY`. AWS credentials are **not** in code — boto3 uses the
-ECS task-role IAM role automatically. DevOps configures:
+DNS domeny jest w home.pl, bez Route53. Portal działa pod `domain_name` (`partner.waw-out.pl`); opcjonalne dodatkowe nazwy na tym samym certyfikacie: `domain_aliases` (domyślnie brak). Rekordy w home.pl dodajesz ręcznie, dlatego deploy ma dwa etapy:
 
-| Env var | Purpose |
-|---|---|
-| `SQS_QUEUE_URL` | Source queue (backend drops diffs here) |
-| `DYNAMODB_TABLE` | Target table (default `warsaw_events` if unset) |
-| `AWS_REGION` | Table region (default `eu-central-1`) |
+```sh
+cd infra
+cp terraform.tfvars.example terraform.tfvars   # domena, aliasy, partnerzy
+terraform init
 
-ECS also needs a task-role IAM policy granting SQS (`ReceiveMessage`, `DeleteMessage`)
-and DynamoDB (`GetItem`, `PutItem`).
+# 1. certyfikat -> rekordy walidacyjne w home.pl (zostają na stałe: dzięki nim certyfikat sam się odnawia)
+terraform apply -target=aws_acm_certificate.portal
+terraform output acm_validation_records        # home.pl: CNAME <name> -> <value>, po jednym na domenę
 
-## Run
-
-```bash
-python3 run_task.py               # poll SQS until empty, then exit
-python3 run_task.py --max-batches 5
+# 2. reszta; apply czeka (do 2 h), aż certyfikat zostanie wydany (~5-30 min po dodaniu rekordów)
+terraform apply
+terraform output dns_records                   # home.pl: CNAME, Host "partner" -> <value> (dXXXX.cloudfront.net.)
 ```
 
-Exit code `0` = all batches processed; `1` = at least one failure (failed messages are
-left on the queue, not deleted).
+**Zmiana domeny w działającym deployu:** zrób od razu pełny `terraform apply`, bez etapu 1. Przy `-target` Terraform próbuje usunąć stary certyfikat, który jest jeszcze podpięty pod CloudFront, i apply kończy się błędem. Gdy apply czeka na `aws_acm_certificate_validation`, w drugim terminalu uruchom `scripts/acm-records.sh`: pokaże rekordy do wpisania w home.pl. Domena musi już działać w DNS (świeżo zarejestrowana `.pl` potrzebuje na to od kilku minut do kilku godzin).
 
-## Use as a module
-
-```python
-from tagger import tag_events, merge, prepare_records
-
-slim = prepare_records(raw_events)     # raw API records -> slim records
-summary = tag_events(slim)             # {"results", "usage", "failures"}
-merged = merge(raw_events, summary["results"])   # full records + "id" + "tags"
+```sh
+terraform output -json partner_api_keys        # klucze do przekazania partnerom
+aws ssm put-parameter --name "$(terraform output -raw um_api_token_parameter)" \
+  --type SecureString --overwrite --value "<token dane.um.warszawa.pl>"
+aws ssm put-parameter --name "$(terraform output -raw deepseek_api_key_parameter)" \
+  --type SecureString --overwrite --value "sk-..."   # klucz DeepSeek (poza state'em)
+cd ..
+scripts/push-images.sh                         # obrazy taggera i importera (wymaga Dockera)
 ```
 
-## Where to edit
+Do czasu wypchnięcia obrazu dispatcher będzie uruchamiał task, który nie wystartuje (brak obrazu w ECR), a wiadomości poczekają w kolejce (retencja 14 dni).
 
-| Change | File |
-|---|---|
-| Dimensions (taxonomy) | `tagger/prompt.py` → `DIMENSIONS` |
-| Model / endpoint | `tagger/client.py` |
-| Chunk token budget | `tagger/orchestrator.py` → `TARGET_TOKENS` |
+## Portal klienta (WarsawNow)
+
+**Domena:** `client_domain_name` (domyślnie `portal.waw-out.pl`). W home.pl potrzebne są 2 rekordy CNAME:
+- walidacja certyfikatu z `terraform output client_acm_validation_records` (albo `scripts/acm-records.sh portal.waw-out.pl` w trakcie apply);
+- `portal` → CloudFront z `terraform output client_dns_records`.
+
+W polu Host wpisujesz część przed `.waw-out.pl`.
+
+**Logowanie (Cognito):**
+- **E-mail + hasło:** własny formularz strony; rejestracja z 6-cyfrowym kodem z e-maila i reset hasła. Domyślna wysyłka Cognito ma limit ~50 e-maili dziennie.
+- **Google (domyślnie wyłączone):** bez `google_client_id` nie powstaje ani dostawca Google, ani domena Hosted UI, a strona nie pokazuje przycisku. Żeby włączyć, w [Google Cloud Console](https://console.cloud.google.com/apis/credentials) utwórz *OAuth client ID → Web application*:
+  - Authorized JavaScript origins: `terraform output cognito_hosted_ui`;
+  - Authorized redirect URIs: `terraform output google_oauth_redirect_uri`.
+
+  Client ID i secret wpisz do `infra/terraform.tfvars` (`google_client_id`, `google_client_secret`) i zrób `terraform apply`; przycisk „Kontynuuj przez Google” pojawi się sam. Ekran zgody w trybie *Testing* wpuszcza tylko dodanych testerów.
+- **E-maile** (kod przy rejestracji, kod resetu hasła) wysyła Cognito z domyślnej skrzynki AWS (`no-reply@verificationemail.com`, temat i treść z `verification_message_template` w `infra/client_auth.tf`). Limit to ~50 e-maili dziennie na konto AWS i nie da się zmienić nadawcy. Docelowo: Amazon SES z domeną `waw-out.pl` (rekordy DKIM w home.pl + wyjście z trybu sandbox), potem w Cognito `email_sending_account = "DEVELOPER"`.
+- Sesja jest trzymana w `localStorage` (refresh token na 30 dni). Konto e-mail i konto Google z tym samym adresem to w Cognito dwa osobne konta.
+
+**API** (HTTP API, ID token Cognito w `Authorization: Bearer …`, weryfikuje go API Gateway):
+
+| Endpoint | Opis |
+| --- | --- |
+| `GET /api/me` | profil (pierwsze wywołanie zakłada rekord), `needsOnboarding`, `onboardingOutdated` |
+| `GET /api/onboarding` | kafelki z pytaniami (ikony, limity wyborów, wymagane pola) |
+| `PUT /api/profile` | `{"answers": {"who": ["kids"], ...}}` → walidacja, preferencje, zapis |
+
+**Onboarding:** pytania i mapowanie odpowiedzi są w jednym miejscu, `src/client_api/onboarding.py`; frontend tylko je wyświetla. Jest 10 kafelków:
+- wymagane: z kim, klimat (maks. 2), co odkryć (maks. 2), gdzie (dzielnica i zasięg);
+- opcjonalne: sprawy miejskie, kiedy, budżet, styl (pod dachem / plener, aktywność), formuła (na żywo / online, zapisy), o Tobie (wiek, dostępność).
+
+**Rekord użytkownika (tabela `codzis-users`, klucz `userId` = `sub` z Cognito, PITR włączone):**
+
+| Pole | Opis |
+| --- | --- |
+| `email`, `displayName`, `picture`, `identityProvider` | z tokenu (`Google` / `Cognito`) |
+| `onboarding` | `{version, completedAt, answers}`: surowe odpowiedzi; zmiana pytań zmienia `version` |
+| `preferences` | odpowiedzi przemapowane na słownik eventów: `themes`, `formats`, `audience`, `occasion`, `activityLevel`, `cost`, `mode`, `setting`, `registration`, `accessibility` (opcje taksonomii taggera), `interests` (kategorie kalendarza UM), `days`/`timeOfDay`/`weekend` (jak `facets` eventów), `district`, `travelRange`, `maxPrice`, `ageRange` |
+| `ragProfile` | tekst pod RAG, np. `interests=[Czas wolny, Kultura] \| district=Śródmieście \| cost=Bezpłatne \| mode=Stacjonarne \| audience=Dorośli (18-64) \| …` |
+
+**Lokalny development** na wdrożonej infrze:
+- `scripts/frontend-dev.sh client` (http://localhost:8000; adres jest w callbackach Cognito i w CORS API);
+- `scripts/frontend-dev.sh partner` (http://localhost:8001; `/api` idzie przez proxy do domeny panelu).
+
+Testy frontendu: `npm --prefix src/frontend test`.
+
+## Initial load (pierwsze załadowanie danych)
+
+Po `terraform apply`, ustawieniu obu sekretów w SSM i `scripts/push-images.sh`:
+
+```sh
+scripts/initial-load.sh
+```
+
+Skrypt:
+1. sprawdza, czy sekrety nie mają wartości `CHANGE_ME`;
+2. uruchamia importer od razu, bez czekania na harmonogram. W S3 nie ma jeszcze stanu, więc na kolejkę idzie wszystko: ok. 1220 rekordów w ~62 wiadomościach;
+3. uruchamia tagger i powtarza to do opróżnienia kolejki (najwyżej 6 rund), bez czekania na dispatcher. Jeśli tagger już działa, bo uruchomił go dispatcher, skrypt czeka na niego zamiast startować drugi;
+4. pokazuje stan kolejki i DLQ oraz liczbę rekordów w `events` według źródła.
+
+Pojedyncze uruchomienia, także później: `scripts/run-task.sh importer|tagger` (czeka na koniec, kod wyjścia = kod kontenera, pokazuje logi taska). Podgląd na żywo: `aws logs tail /ecs/codzis-importer --follow` (tagger: `/ecs/codzis-worker`).
+
+**Pełne przeładowanie** (np. po zmianie schematu albo mapowania):
+1. Usuń stan importera: `aws s3 rm s3://$(terraform -chdir=infra output -raw data_bucket)/state/ --recursive`. Następny import wyśle wszystko od nowa.
+2. Tagger pomija rekordy, które już są w `events`. Jeśli mają zostać otagowane ponownie, trzeba też wyczyścić tabelę, np. `terraform -chdir=infra apply -replace=aws_dynamodb_table.events`. To kasuje dane, a ogłoszenia partnerów wrócą do tabeli tylko po ponownym wysłaniu ich na kolejkę.
+
+## Importer (API UM Warszawy → SQS)
+
+> **Blokada:** `dane.um.warszawa.pl` odrzuca połączenia z adresów IP AWS (timeout już na TCP; z polskiego łącza API odpowiada w 1-3 s, a z VPC działają SQS, DeepSeek i `um.warszawa.pl`). Do czasu rozwiązania harmonogram w ECS jest wyłączony (`importer_schedule_enabled = false`), a import uruchamia się lokalnie: `scripts/import-local.sh` (Docker + twoje credentiale AWS, zapis do S3/SQS jak w ECS). Możliwe rozwiązania docelowe: whitelista stałego IP po stronie UM (wymaga NAT z Elastic IP) albo uruchamianie importera z hosta w Polsce.
+
+Task ECS uruchamiany przez EventBridge (`importer_schedule`, domyślnie co 2 h; zbiory UM odświeżają się co 2 h). Zwykły Fargate, nie Spot: task trwa ~1 min.
+
+| Źródło (`source`) | Endpoint (`POST`, nagłówek `Authorization: <token>`) | Mapowanie |
+| --- | --- | --- |
+| `um_kalendarz` | `get_bmm_kalendarz_wydarzen` | `kind=event`, terminy z `occurrence`; wydarzenia zakończone są pomijane |
+| `um_sport` | `get_bmm_zajecia_sportowe` | `kind=recurring` (dni tygodnia + godzina startu → `schedule`) albo `event` gdy są konkretne daty; `dedicated` → `audience` |
+
+Przebieg dla każdego źródła: pobranie całego zbioru (API nie ma paginacji) → surowa kopia `s3://<data_bucket>/raw/<source>/…json.gz` (retencja `raw_snapshot_retention_days`) → mapowanie na schemat v1 → porównanie `contentHash` ze stanem `state/<source>.json` → **na SQS idą tylko nowe i zmienione rekordy** (JSON array po ≤ 20 rekordów) → zapis stanu. Pusta odpowiedź API nie nadpisuje stanu; awaria jednego źródła nie blokuje pozostałych (kod wyjścia 1).
+
+Lokalny podgląd bez AWS: `UM_API_TOKEN=… AWS_REGION=eu-central-1 SQS_QUEUE_URL=- DATA_BUCKET=- python src/importer/main.py --dry-run`.
+
+## Tagger AI (SQS → ECS → DynamoDB)
+
+Kod: `run_task.py` + `tagger/` ([tagger/README.md](tagger/README.md)), obraz z `Dockerfile` w katalogu głównym.
+
+- **Kontrakt wiadomości:** body = JSON array rekordów w schemacie v1. Importer wrzuca diffy, portal wrzuca `[rekord]`.
+- **Decyzja per rekord** (przed wywołaniem modelu, na podstawie rekordu w `events`):
+
+  | Sytuacja | Co robi tagger |
+  | --- | --- |
+  | nowy rekord | taguje |
+  | ten sam `contentHash` i `tagInputHash` | pomija |
+  | zmienił się np. termin, a dane dla modelu bez zmian | zapisuje rekord ze starymi tagami, **bez LLM** |
+  | zmienił się tytuł / opis / kategorie / grupy docelowe albo taksonomia | taguje ponownie |
+  | rekord partnera (bez `contentHash`) już w tabeli | pomija (portal nie edytuje ogłoszeń) |
+
+- **Model dostaje:** tytuł, lead, opis (bez HTML, przycięty do 1500 znaków), kategorie oraz podpowiedzi ze źródła: `audience_hint`, `kind`, `online`, `venue`.
+- **Tagi** (`tags`, 10 wymiarów z `tagger/prompt.py`): `theme`, `audience` (do 3), `format`, `cost`, `mode`, `setting` (w pomieszczeniu / na zewnątrz), `registration` (wstęp wolny / zapisy / bilet), `activity_level`, `occasion` (z dziećmi, na randkę…), `accessibility`. Zmiana taksonomii zmienia `taxonomyVersion`, więc rekordy, które przyjdą ponownie, zostaną przetagowane.
+- **Parametry z danych** (`facets`, bez LLM): `timeOfDay`, `days`, `weekend`, `multiDay`, `recurring`.
+- **TTL:** `expiresAt` = koniec eventu + 1 dzień; DynamoDB sam usuwa zakończone eventy. Zajęcia cykliczne nie wygasają.
+- **Koszt:** każda wiadomość loguje tokeny i przybliżony koszt (`LLM: … ~$…`) w `/ecs/codzis-worker`.
+- **Uruchamianie:** dispatcher odpala task na Fargate Spot (fallback: Fargate), task kończy się, gdy kolejka jest pusta. Kod wyjścia `1` = część wiadomości nie przeszła; po 5 próbach trafiają do `codzis-events-dlq`.
+- **Klucz DeepSeek** jest w SSM (`terraform output deepseek_api_key_parameter`); z placeholderem `CHANGE_ME` task kończy się od razu, bez ruszania kolejki.
+- **Start taggera:** dispatcher co minutę (`worker_check_minutes`) sprawdza kolejkę i uruchamia tagger, gdy jest w niej co najmniej `worker_min_messages` wiadomości (domyślnie 1, czyli przy każdej). Od pojawienia się wiadomości do startu kontenera mijają ~1-2 min. Visibility timeout kolejki: 30 min.
+
+## Rekord eventu: schemat v1 (tabela `events`)
+
+Jeden kształt dla wszystkich źródeł (importer i portal partnera). Pełny opis pól: `src/importer/schema.py`.
+
+| Pole | Opis |
+| --- | --- |
+| `id` | `kal-…` / `spt-…` = prefiks + `sha1(klucz źródła)[:12]`; partner: UUID |
+| `origin` | **skąd pochodzi event:** `um_warszawa` (otwarte dane UM, importer) \| `partner` (portal partnera) |
+| `source` | szczegółowe źródło: `um_kalendarz` \| `um_sport` \| `partner` |
+| `kind` | `event` (konkretne terminy) \| `recurring` (zajęcia co tydzień) |
+| `title`, `lead`, `text`, `url` | `text` to HTML: sanityzować przy wyświetlaniu |
+| `category`, `audience` | kategorie i grupy docelowe ze źródła (podpowiedzi dla taggera) |
+| `district`, `online`, `venue {name, address}`, `location {lat, lon}` | `location` = `null` dla partnerów i części eventów UM (brak współrzędnych w źródle) |
+| `occurrences [{start, end, allDay}]` | ISO 8601 z offsetem; dla `kind=event` |
+| `schedule [{day, start, end}]` | `monday`…`sunday`, `HH:MM`; dla `recurring` |
+| `startsAt`, `endsAt` | UTC, z `occurrences` (do sortowania/indeksów) |
+| `imageUrl`, `attributes` | zdjęcie po https; dodatki specyficzne dla źródła |
+| `contentHash`, `importedAt` | wykrywanie zmian w importerze |
+| `declared` | tylko partner: koszt, wejście, miejsce, dla kogo, dostępność podane w formularzu; tagger przepisuje je do `tags` zamiast zgadywać |
+| `tags` | dopisuje tagger: 10 wymiarów z `tagger/prompt.py` |
+| `facets` | dopisuje tagger, z danych: `timeOfDay`, `days`, `weekend`, `multiDay`, `recurring` |
+| `tagInputHash`, `taxonomyVersion`, `expiresAt` | tagger: wykrywanie zmian dla modelu, wersja taksonomii, TTL (epoch) |
+
+Pola portalu partnera i ich walidacja: `TEXT_FIELDS`, `DECLARED_FIELDS` i `_event_input` w `src/api/handler.py`. Opcje w `DECLARED_FIELDS` muszą być dokładnie opcjami z `tagger/prompt.py` (wartość spoza taksonomii tagger pominie); portal pobiera je z `GET /api/me` (`formOptions`). Cena (`priceMin`/`priceMax`, tylko przy „Płatne”) i link do biletów lądują w `attributes`. Kategorie: zmienna `event_categories`, dzielnice: `local.warsaw_districts`.
+
+## Ograniczenia PoC
+
+- Klucz API to jedyny "login". Partner musi go chronić jak hasło, nie ma też resetu ani wygasania (poza usunięciem klucza).
+- Klucze trafiają do state'u Terraforma (lokalnie, plaintext).
+- Mock bramka: `confirm` woła sam partner, więc każdy zalogowany może dodać sobie kredyty. Przy prawdziwej bramce (np. Stripe, PayU, Przelewy24) zastąp to webhookiem od operatora, weryfikowanym podpisem.
+- Kredyt jest pobierany przy zapisie ogłoszenia, przed uploadem zdjęcia. Jeśli upload się nie uda, `image.highlighted.path` wskazuje na nieistniejący plik.
+- Czas z formularza jest interpretowany w strefie przeglądarki partnera.
+- **Domena główna bez subdomeny** (np. samo `waw-out.pl`) nie zadziała z CloudFront przez home.pl: CNAME wymaga hosta, a rekord A wymagałby stałego IP, którego CloudFront nie ma. Dlatego obie strony są na subdomenach (`partner.`, `portal.`).
+- Portal klienta nie ma jeszcze rekomendacji: po zapisaniu profilu pokazuje jego podsumowanie i `ragProfile`.
+- Ogłoszenie partnera pojawia się w tabeli `events` po ~2-5 min (start kontenera + tagowanie).
+- Brak alarmu na DLQ: zepsute wiadomości trzeba sprawdzać ręcznie.
+- Rekordy usunięte w źródle przed końcem (np. odwołane eventy) zostają w tabeli do `expiresAt`; zajęcia cykliczne usunięte w źródle zostają na stałe (importer tylko loguje ich liczbę).
+- Zmiana taksonomii przetaguje tylko rekordy, które przyjdą ponownie; żeby przetagować wszystko: pełne przeładowanie (sekcja Initial load).
+- API GW jest też dostępne bezpośrednio pod `execute-api` (z tym samym kluczem).

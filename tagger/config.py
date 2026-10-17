@@ -30,6 +30,11 @@ def event_id(url: str) -> str:
     return hashlib.sha1((url or "").encode("utf-8")).hexdigest()[:12]
 
 
+def record_id(record: dict) -> str:
+    """Record's own id (partner records carry a UUID) or a stable hash of its url."""
+    return record.get("id") or event_id(record.get("url"))
+
+
 def strip_html(raw: str) -> str:
     """Remove HTML tags, unescape entities, collapse whitespace."""
     if not raw:

@@ -15,7 +15,7 @@ Usage:
 import json
 from pathlib import Path
 
-from .config import DATA_DIR, event_id
+from .config import DATA_DIR, record_id
 
 RAW_PATH = DATA_DIR / "raw_events.json"
 TAGGED_PATH = DATA_DIR / "tagged.jsonl"
@@ -31,7 +31,7 @@ def merge(raw_events: list[dict], tagged: dict) -> list[dict]:
     merged = []
     for raw in raw_events:
         record = dict(raw)                      # full original API record
-        record["id"] = event_id(raw.get("url"))  # stable id
+        record["id"] = record_id(raw)           # own id or stable hash of url
         record["tags"] = tagged.get(record["id"], {})  # LLM tags
         merged.append(record)
     return merged

@@ -1,0 +1,3 @@
+boto3==1.43.*
+# Strefa Europe/Warsaw dla zoneinfo, niezależnie od tzdata w obrazie
+tzdata==2026.*

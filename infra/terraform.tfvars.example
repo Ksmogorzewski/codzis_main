@@ -1,0 +1,11 @@
+domain_name    = "partner.waw-out.pl"
+domain_aliases = []
+partners       = ["demo"]
+
+# portal klienta (WarsawNow)
+client_domain_name    = "portal.waw-out.pl"
+client_domain_aliases = []
+
+# logowanie Google (opcjonalne): Google Cloud Console -> OAuth client "Web application"
+# google_client_id     = "....apps.googleusercontent.com"
+# google_client_secret = "..."

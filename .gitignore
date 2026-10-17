@@ -1,6 +1,14 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+infra/build/
+__pycache__/
 .env
 .venv/
-__pycache__/
 *.pyc
 data_real/
 data_tests/
+src/frontend/node_modules/
+src/frontend/dist/
+src/frontend/*/public/config.js
