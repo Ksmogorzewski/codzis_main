@@ -42,6 +42,11 @@ output "deepseek_api_key_parameter" {
   value       = aws_ssm_parameter.deepseek_api_key.name
 }
 
+output "google_maps_embed_key_parameter" {
+  description = "Ustaw wartość: aws ssm put-parameter --name <to> --type SecureString --overwrite --value AIza..., potem terraform apply"
+  value       = aws_ssm_parameter.google_maps_embed_key.name
+}
+
 output "importer_repository_url" {
   value = aws_ecr_repository.importer.repository_url
 }

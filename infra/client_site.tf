@@ -108,6 +108,24 @@ resource "aws_s3_object" "client_web" {
   cache_control = startswith(each.key, "assets/") ? "public, max-age=86400" : "no-cache"
 }
 
+# Klucz Google Maps Embed API (mapa z trasą w szczegółach wydarzenia). Wartość ustawiasz poza Terraformem
+# (jak klucz DeepSeek), a potem `terraform apply` wstawia ją do config.js:
+#   aws ssm put-parameter --name /codzis/google-maps-embed-key --type SecureString --overwrite --value AIza...
+# Dopóki jest CHANGE_ME, strona pokazuje sam przycisk do Map Google.
+resource "aws_ssm_parameter" "google_maps_embed_key" {
+  name  = "/${local.name}/google-maps-embed-key"
+  type  = "SecureString"
+  value = "CHANGE_ME"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+data "aws_ssm_parameter" "google_maps_embed_key" {
+  name = aws_ssm_parameter.google_maps_embed_key.name
+}
+
 resource "aws_s3_object" "client_config" {
   bucket        = aws_s3_bucket.client_web.id
   key           = "config.js"
@@ -117,6 +135,10 @@ resource "aws_s3_object" "client_config" {
 }
 
 locals {
+  # Klucz i tak jest publiczny (config.js) - chronią go ograniczenia w Google Cloud: tylko Maps Embed API
+  # i tylko domeny portalu. Bez nonsensitive() cały config (i jego output) byłby oznaczony jako sekret.
+  maps_embed_key = nonsensitive(data.aws_ssm_parameter.google_maps_embed_key.value)
+
   client_app_config = {
     region        = var.region
     userPoolId    = aws_cognito_user_pool.clients.id
@@ -125,5 +147,6 @@ locals {
     googleEnabled = local.google_enabled
     apiUrl        = aws_apigatewayv2_api.client.api_endpoint
     partnerPortal = local.website_origin
+    mapsEmbedKey  = local.maps_embed_key == "CHANGE_ME" ? "" : local.maps_embed_key
   }
 }

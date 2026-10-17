@@ -9,7 +9,9 @@ import { Icon } from "@/components/ui/icon";
 import { Separator } from "@/components/ui/separator";
 import { useEvent } from "@/hooks/use-event.query";
 import { useEventCard } from "@/hooks/use-event-card.query";
+import { useMe } from "@/hooks/use-me.query";
 import { CATEGORY_LABEL, categoryOf } from "@/lib/categories";
+import { config } from "@/lib/config";
 import {
   mapsUrl,
   outboundLink,
@@ -23,11 +25,13 @@ import {
 } from "@/lib/events";
 import { walkLabel } from "@/lib/geo";
 import { startLocation, useLocation } from "@/lib/location";
+import { destinationOf, districtOf, mapsEmbedUrl, originOf } from "@/lib/maps";
 import type { Card as CardData, EventDetail } from "@/lib/schemas";
 import { lastSearch } from "@/lib/search";
 import { DetailSkeleton } from "./detail-skeleton";
 import { EventBadges } from "./event-badges";
 import { EventImage } from "./event-image";
+import { RouteMap } from "./route-map";
 
 const route = getRouteApi("/_app/wydarzenie/$id");
 
@@ -91,6 +95,16 @@ type DetailProps = { card: CardData; builtAt: string | null; detail?: EventDetai
 
 function Detail({ card, builtAt, detail }: DetailProps) {
   const { position, status } = useLocation();
+  const me = useMe();
+  const district = districtOf(me.data?.profile?.preferences);
+  // Mapa z trasą komunikacją: start z lokalizacji (gdy jest zgoda), inaczej z dzielnicy z profilu
+  const origin = originOf(position, district);
+  const mapSrc = mapsEmbedUrl({ key: config().mapsEmbedKey, origin, destination: destinationOf(card) });
+  const mapCaption = position
+    ? "Trasa komunikacją miejską z Twojej lokalizacji"
+    : origin
+      ? `Trasa komunikacją miejską z dzielnicy ${district}`
+      : "Miejsce wydarzenia na mapie";
   const now = new Date();
   const when = slotLabel(card.slot, now);
   const plan = scheduleLabels(card.schedule);
@@ -147,7 +161,8 @@ function Detail({ card, builtAt, detail }: DetailProps) {
           <AttendeesSection id={card.id} />
         </div>
 
-        <Card>
+        {/* Karta z faktami obok treści i mapy (na telefonie: przed mapą) */}
+        <Card className="md:row-span-2">
           <dl className="grid grid-cols-2 gap-4 p-5">
             <Fact label="Termin" wide>
               {when ?? "—"}
@@ -185,8 +200,8 @@ function Detail({ card, builtAt, detail }: DetailProps) {
                 {route && (
                   <Button asChild variant="outline" size="lg">
                     <a href={route} target="_blank" rel="noopener noreferrer">
-                      <Icon name="directions" size={22} />
-                      Wyznacz trasę
+                      <Icon name={mapSrc ? "open_in_new" : "directions"} size={22} />
+                      {mapSrc ? "Otwórz w Mapach Google" : "Wyznacz trasę"}
                     </a>
                   </Button>
                 )}
@@ -202,6 +217,8 @@ function Detail({ card, builtAt, detail }: DetailProps) {
             </>
           )}
         </Card>
+
+        {mapSrc && <RouteMap src={mapSrc} eventTitle={card.title} caption={mapCaption} className="md:col-start-1" />}
       </div>
 
       <footer className="text-sm text-muted-foreground">

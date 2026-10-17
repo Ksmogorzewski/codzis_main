@@ -9,6 +9,8 @@ const ClientConfigSchema = z.object({
   clientId: z.string().min(1),
   apiUrl: z.string().min(1).transform((url) => url.replace(/\/+$/, "")),
   partnerPortal: z.string().default(""),
+  // Klucz Google Maps Embed API (mapa z trasą w szczegółach); pusty = sam link do Map Google
+  mapsEmbedKey: z.string().default(""),
 });
 
 export type ClientConfig = z.infer<typeof ClientConfigSchema>;

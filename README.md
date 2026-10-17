@@ -66,7 +66,8 @@ DNS domeny jest w home.pl, bez Route53. Portal działa pod `domain_name` (`partn
 
 ```sh
 cd infra
-cp terraform.tfvars.example terraform.tfvars   # domena, aliasy, partnerzy
+# terraform.tfvars (domena, aliasy, partnerzy) jest w repo - edytuj go zamiast kopiować .example
+../scripts/bootstrap-tfstate.sh                # jednorazowo: bucket S3 na state (lock: .tflock w buckecie)
 terraform init
 
 # 1. certyfikat -> rekordy walidacyjne w home.pl (zostają na stałe: dzięki nim certyfikat sam się odnawia)
@@ -106,9 +107,22 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
   - Authorized JavaScript origins: `terraform output cognito_hosted_ui`;
   - Authorized redirect URIs: `terraform output google_oauth_redirect_uri`.
 
-  Client ID i secret wpisz do `infra/terraform.tfvars` (`google_client_id`, `google_client_secret`) i zrób `terraform apply`; przycisk „Kontynuuj przez Google” pojawi się sam. Ekran zgody w trybie *Testing* wpuszcza tylko dodanych testerów.
+  Client ID i secret wpisz do `infra/secrets.auto.tfvars` (`google_client_id`, `google_client_secret`; plik jest w `.gitignore`, Terraform wczytuje go sam) i zrób `terraform apply`; przycisk „Kontynuuj przez Google” pojawi się sam. Ekran zgody w trybie *Testing* wpuszcza tylko dodanych testerów.
 - **E-maile** (kod przy rejestracji, kod resetu hasła) wysyła Cognito z domyślnej skrzynki AWS (`no-reply@verificationemail.com`, temat i treść z `verification_message_template` w `infra/client_auth.tf`). Limit to ~50 e-maili dziennie na konto AWS i nie da się zmienić nadawcy. Docelowo: Amazon SES z domeną `waw-out.pl` (rekordy DKIM w home.pl + wyjście z trybu sandbox), potem w Cognito `email_sending_account = "DEVELOPER"`.
 - Sesja jest trzymana w `localStorage` (refresh token na 30 dni). Konto e-mail i konto Google z tym samym adresem to w Cognito dwa osobne konta.
+
+**Mapa dojazdu (szczegóły wydarzenia):** osadzona mapa Google z trasą komunikacją miejską (Maps Embed API). Start trasy to lokalizacja z przeglądarki, gdy użytkownik się zgodzi, a bez zgody dzielnica z profilu; do naszego API lokalizacja nie trafia. Bez klucza strona pokazuje sam przycisk do Map Google. Klucz:
+1. W [Google Cloud Console](https://console.cloud.google.com/) utwórz projekt z podpiętym kontem rozliczeniowym (Maps Embed API jest bezpłatne, ale Google Maps Platform wymaga rozliczeń).
+2. *APIs & Services → Library*: włącz **Maps Embed API**.
+3. *APIs & Services → Credentials → Create credentials → API key*, a potem w ustawieniach klucza:
+   - *Application restrictions → Websites*: `https://portal.waw-out.pl/*` i `http://localhost:8000/*`;
+   - *API restrictions*: tylko **Maps Embed API**.
+4. Klucz trzymamy w SSM (`terraform output google_maps_embed_key_parameter`, domyślnie `CHANGE_ME` = sama mapa wyłączona):
+   ```sh
+   aws ssm put-parameter --name /codzis/google-maps-embed-key --type SecureString --overwrite --value "AIza..."
+   terraform -chdir=infra apply      # wstawia klucz do config.js
+   ```
+   Klucz trafia do publicznego `config.js`, więc ograniczenia z punktu 3 są obowiązkowe.
 
 **API** (HTTP API, ID token Cognito w `Authorization: Bearer …`, weryfikuje go API Gateway):
 
@@ -266,6 +280,20 @@ Jeden kształt dla wszystkich źródeł (importer i portal partnera). Pełny opi
 | `tagInputHash`, `taxonomyVersion`, `expiresAt` | tagger: wykrywanie zmian dla modelu, wersja taksonomii, TTL (epoch) |
 
 Pola portalu partnera i ich walidacja: `TEXT_FIELDS`, `DECLARED_FIELDS` i `_event_input` w `src/api/events.py`. Opcje w `DECLARED_FIELDS` muszą być dokładnie opcjami z `tagger/prompt.py` (wartość spoza taksonomii tagger pominie); portal pobiera je z `GET /api/me` (`formOptions`). Cena (`priceMin`/`priceMax`, tylko przy „Płatne”) i link do biletów lądują w `attributes`. Kategorie: zmienna `event_categories`, dzielnice: `local.warsaw_districts`.
+
+## Wydarzenia demo (prezentacja)
+
+`src/importer/demo_events.json`: 31 dopracowanych, w pełni otagowanych wydarzeń pod prezentację (koncerty, warsztaty, sport, rodziny, seniorzy, sprawy miejskie, jedno online), ze zdjęciami z Unsplash. Organizatorzy i lokale są fikcyjne (przy prawdziwych ulicach), plenerowe dzieją się w przestrzeni publicznej (bulwary, parki, place). Terminy liczone są względem początku prezentacji, więc zawsze jest coś na dziś, jutro i weekend.
+
+```sh
+scripts/demo-events.sh --dry-run                    # podgląd rekordów
+scripts/demo-events.sh --start 2026-10-20T14:00     # wysyłka (czas warszawski; bez --start: teraz)
+scripts/demo-events.sh --delete                     # po prezentacji
+```
+
+Wysyłka idzie zwykłą drogą: SQS → tagger (dispatcher odpala go w ciągu minuty, tagowanie ~2-4 min) → `codzis-events`. Skrypt czeka na zapis, przebudowuje indeks rekomendera i usuwa zapisane zestawy rekomendacji, żeby przy najbliższym wejściu policzyły się już z wydarzeniami demo. Wszystkie wymiary tagów są zadeklarowane wprost (`declared`, jak u partnerów), więc tagger zostawia dokładnie te wartości.
+
+W UI wydarzenia demo nie są oznaczone; w polu „Źródło” stoi fikcyjny organizator. W danych rozpoznasz je po `origin` = `source` = `"demo"` i id `demo-…`. Zakończone usuwa TTL, wystawy wielodniowe zostają do miesiąca, więc po prezentacji uruchom `--delete`. Zmiana danych: edytuj JSON (tagi tylko z `tagger/prompt.py`, `image` = id zdjęcia z Unsplash) i wyślij ponownie; tagger zaktualizuje rekordy o tych samych `key`.
 
 ## Ograniczenia PoC
 

@@ -3,9 +3,9 @@
 Jeden projekt Vite, dwie aplikacje: **portal klienta** (`client/`, tryb `client`) i **panel partnera** (`partner/`, tryb `partner`). Ten plik opisuje portal klienta. **Pilnuj struktury opisanej niżej**; jeśli zmiana jej nie pasuje, zatrzymaj się i zapytaj, zamiast tworzyć nowy wzorzec. Panelu partnera nie zmieniaj bez zgody Krzysztofa.
 
 ## Produkt (portal klienta)
-Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni/inny dzień, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia (`GET /api/events/{id}`: pełny opis, lista zapisanych). **Eksploruj** (`GET /api/events`: wszystko w oknie czasu, bez profilu), **Popularne w najbliższym tygodniu** (`GET /api/popular`, dziś + 6 dni), **Zapisz / Zapisano** na kartach i w szczegółach. Nawigacja: Dla Ciebie / Eksploruj / Popularne / Profil (nagłówek na desktopie, dolny pasek na telefonie). Wygląd: mockup WarsawNow, wariant 1a Karty.
+Logowanie (Cognito: e-mail + hasło, rejestracja z kodem z e-maila, reset hasła) → ankieta z kroków `GET /api/onboarding` → propozycje z `GET /api/recommendations` (filtr czasu dziś/jutro/weekend/7 dni/inny dzień, wyszukiwarka, kategorie, odległość z geolokalizacji, uzasadnienie „Pasuje: …”) → szczegóły wydarzenia (`GET /api/events/{id}`: pełny opis, lista zapisanych, mapa Google z trasą komunikacją miejską). **Eksploruj** (`GET /api/events`: wszystko w oknie czasu, bez profilu), **Popularne w najbliższym tygodniu** (`GET /api/popular`, dziś + 6 dni), **Zapisz / Zapisano** na kartach i w szczegółach. Nawigacja: Dla Ciebie / Eksploruj / Popularne / Profil (nagłówek na desktopie, dolny pasek na telefonie). Wygląd: mockup WarsawNow, wariant 1a Karty.
 **Imię:** wymagane przy rejestracji (atrybut Cognito `name`), potem niezmienne; konta bez imienia dostają jednorazową prośbę przed pierwszym zapisem (`setMissingName` w `lib/auth.ts`). Na listach zapisanych tylko imię (brak → „Ktoś”), nigdy e-mail.
-**Poza zakresem bez zgody zespołu:** logowanie Google, „Sponsorowane”, czat (Kacper), pogoda, mapa.
+**Poza zakresem bez zgody zespołu:** logowanie Google, „Sponsorowane”, czat (Kacper), pogoda.
 
 ## Komendy (z `src/frontend/`)
 ```sh
@@ -42,7 +42,8 @@ hooks/                   use-<x>.query.ts / use-<x>.mutation.ts (jeden hook na e
 lib/                     config (APP_CONFIG), auth (Cognito), api (Result, błędy, ponawianie zimnego startu),
                          schemas (Zod odpowiedzi API), query-keys, search, categories, geo, wizard (walidacja ankiety),
                          events (formaty terminów/cen), explore (filtry, sortowanie), community (zapisy: stan
-                         optymistyczny, podpisy), nav, recommendations-cache, theme, storage, utils (cn)
+                         optymistyczny, podpisy), maps (osadzona mapa z trasą), nav, recommendations-cache, theme,
+                         storage, utils (cn)
 styles.css               Tailwind + tokeny (jasny i ciemny) — jedyny plik CSS
 public/                  ikony i manifest PWA (config.js tylko lokalnie)
 ```
@@ -55,7 +56,8 @@ Testy obok kodu: `lib/*.test.ts`. Import: alias `@/` = `client/`.
 - **Rekomendacje:** `retry: false` + pomocnik zimnego startu z `lib/api.ts` (ponowienia po 5 i 10 s, komunikat „Dobieramy propozycje…”). `202 {"status": "preparing"}` (zestaw się liczy) obsługuje `pollWhilePreparing`, a `"updating": true` — `refetchInterval` co 3 s. Parametry zapytania z filtrów: `recommendationsParams` (`lib/search.ts`); `limit` = 16 jak na serwerze (inny limit = inny zapisany zestaw). Po zapisie ankiety: `setQueryData(["me"])` i `removeQueries(["recommendations"])`.
 - **Zapisy:** `useSave` (`hooks/use-save.mutation.ts`) zmienia stan i licznik optymistycznie we wszystkich cache (`events`, `popular`, `event`, `attendees`, `event-stats`), przy błędzie przywraca i pokazuje toast, po sukcesie unieważnia `attendees`, `popular`, `events`. Karty rekomendacji dostają `saves`/`saved` z `GET /api/events/stats?ids=` (`withStats`). Jedna karta (`EventCard`) na wszystkich listach.
 - **Stan w adresie:** filtry ekranu głównego i Eksploruj to search params walidowane Zodem (`lib/search.ts`, `lib/explore.ts`). Nawigacja przez `<Link>` / `navigate`.
-- **Lokalizacja użytkownika** służy tylko do liczenia odległości na kliencie — **nie wysyłamy jej do API**.
+- **Lokalizacja użytkownika** służy do liczenia odległości na kliencie i — gdy użytkownik się zgodzi — jako punkt startu trasy w osadzonej mapie Google (Maps Embed API, `lib/maps.ts`; bez zgody start z dzielnicy z profilu). **Do naszego API jej nie wysyłamy** i nie logujemy.
+- **Mapa dojazdu:** iframe Maps Embed API (`components/events/route-map.tsx`) tylko z kluczem `mapsEmbedKey` z `config.js` (SSM `/codzis/google-maps-embed-key` → Terraform → `config.js`); bez klucza zostaje link do Map Google (`mapsUrl`, tryb komunikacji miejskiej).
 - **Bezpieczeństwo:** bez `dangerouslySetInnerHTML`; linki zewnętrzne tylko `http(s)` z `rel="noopener noreferrer"`; tokenów nie logujemy.
 
 ## Recepty (wzorowane na firmowym `valinor`)

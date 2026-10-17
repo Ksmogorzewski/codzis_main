@@ -2,7 +2,8 @@
 .terraform/
 *.tfstate
 *.tfstate.*
-*.tfvars
+# Wspólna konfiguracja deployu (bez sekretów). Sekrety, np. google_client_secret, w infra/secrets.auto.tfvars
+infra/secrets.auto.tfvars
 infra/build/
 
 # Secrets — NEVER commit API keys

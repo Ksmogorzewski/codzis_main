@@ -16,6 +16,11 @@ describe("config", () => {
     expect(parseConfig(valid).data?.apiUrl).toBe("https://api.example");
   });
 
+  it("klucz Google Maps Embed API opcjonalny (bez niego sam link do Map Google)", () => {
+    expect(parseConfig(valid).data?.mapsEmbedKey).toBe("");
+    expect(parseConfig({ ...valid, mapsEmbedKey: "AIza-test" }).data?.mapsEmbedKey).toBe("AIza-test");
+  });
+
   it("brak config.js albo brak pól: błąd", () => {
     expect(parseConfig(undefined).error).not.toBeNull();
     expect(parseConfig({ ...valid, clientId: "" }).error).not.toBeNull();
