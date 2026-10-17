@@ -8,6 +8,7 @@ import {
   patchAttendees,
   patchSaveInList,
   type SaveState,
+  savedAsText,
   type StatsMap,
   toggleSave,
 } from "@/lib/community";
@@ -34,8 +35,9 @@ function patchCaches(qc: QueryClient, id: string, next: (s: SaveState) => KnownS
 
 /**
  * PUT / DELETE /api/events/{id}/save -> {saved, saves}. Optymistycznie: stan i licznik zmieniają się
- * od razu wszędzie; błąd przywraca poprzedni stan i pokazuje toast. Po sukcesie: wartości z serwera
- * i odświeżenie listy zapisanych, Popularnych i list Eksploruj.
+ * od razu wszędzie (na liście zapisanych mój wpis z imieniem z ID tokenu); błąd przywraca poprzedni
+ * stan i pokazuje toast. Po sukcesie: wartości z serwera, toast „Zapisano jako <imię>” i odświeżenie
+ * listy zapisanych, Popularnych i list Eksploruj.
  */
 export function useSave() {
   const qc = useQueryClient();
@@ -61,8 +63,9 @@ export function useSave() {
       for (const [key, data] of context?.snapshot ?? []) qc.setQueryData(key, data);
       toast.error(errorText(error, "Nie udało się zapisać. Spróbuj ponownie."));
     },
-    onSuccess: (result, { id }) => {
+    onSuccess: (result, { id, save }) => {
       patchCaches(qc, id, () => result);
+      if (save) toast(savedAsText(currentName()));
       void qc.invalidateQueries({ queryKey: attendeesKey(id) });
       void qc.invalidateQueries({ queryKey: popularKey() });
       void qc.invalidateQueries({ queryKey: eventsRootKey() });
