@@ -3,8 +3,8 @@
 Ten sam kształt mają rekordy ze wszystkich źródeł (API UM Warszawy i portal partnera):
 
     id             str   "<prefiks źródła>-<sha1(klucz źródła)[:12]>"; partner: UUID
-    source         str   um_kalendarz | um_sport | um_boiska | um_trasy | partner
-    kind           str   event (konkretne terminy) | recurring (zajęcia co tydzień) | venue (obiekt otwarty w godzinach)
+    source         str   um_kalendarz | um_sport | um_trasy | partner
+    kind           str   event (konkretne terminy) | recurring (zajęcia co tydzień)
                          | route (trasa do przejścia w dowolnym momencie; ślad w attributes.trace)
     schemaVersion  int   1
     title          str
@@ -18,7 +18,7 @@ Ten sam kształt mają rekordy ze wszystkich źródeł (API UM Warszawy i portal
     venue          {name?, address?}
     location       {lat, lon}?
     occurrences    [{start, end?, allDay}]  ISO 8601 z offsetem (kind=event)
-    schedule       [{day, start?, end?}]    day: monday..sunday, "HH:MM" (kind=recurring|venue)
+    schedule       [{day, start?, end?}]    day: monday..sunday, "HH:MM" (kind=recurring)
     startsAt       str?  UTC, najwcześniejszy start z occurrences (do sortowania/indeksów)
     endsAt         str?  UTC, najpóźniejszy koniec z occurrences
     imageUrl       str?  https

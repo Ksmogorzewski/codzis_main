@@ -28,7 +28,7 @@ REGION = os.environ["AWS_REGION"]
 UPLOAD_EXPIRES_S = 300
 LIST_LIMIT = 50
 
-SOURCE = "partner"  # źródła miejskie: um_kalendarz | um_sport | um_boiska (importer)
+SOURCE = "partner"  # źródła miejskie (importer): um_kalendarz | um_sport | um_trasy
 SCHEMA_VERSION = 1
 
 # Pola tekstowe formularza: nazwa -> (wymagane, max długość). Pozostałe pola są ignorowane.

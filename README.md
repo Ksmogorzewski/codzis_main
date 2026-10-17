@@ -76,7 +76,7 @@ scripts/initial-load.sh
 
 Skrypt:
 1. sprawdza, czy sekrety nie mają wartości `CHANGE_ME`;
-2. uruchamia importer od razu, bez czekania na harmonogram. W S3 nie ma jeszcze stanu, więc na kolejkę idzie wszystko: ok. 2270 rekordów w ~116 wiadomościach;
+2. uruchamia importer od razu, bez czekania na harmonogram. W S3 nie ma jeszcze stanu, więc na kolejkę idzie wszystko: ok. 1230 rekordów w ~63 wiadomościach;
 3. uruchamia tagger i powtarza to do opróżnienia kolejki (najwyżej 6 rund), bez czekania na dispatcher. Jeśli tagger już działa, bo uruchomił go dispatcher, skrypt czeka na niego zamiast startować drugi;
 4. pokazuje stan kolejki i DLQ oraz liczbę rekordów w `events` według źródła.
 
@@ -94,7 +94,6 @@ Task ECS uruchamiany przez EventBridge (`importer_schedule`, domyślnie co 2 h; 
 | --- | --- | --- |
 | `um_kalendarz` | `get_bmm_kalendarz_wydarzen` | `kind=event`, terminy z `occurrence`; wydarzenia zakończone są pomijane |
 | `um_sport` | `get_bmm_zajecia_sportowe` | `kind=recurring` (dni tygodnia + godzina startu → `schedule`) albo `event` gdy są konkretne daty; `dedicated` → `audience` |
-| `um_boiska` | `get_be_otwarte_boiska` | `kind=venue`: jeden rekord na (szkoła, adres, typ obiektu), np. „Piłka nożna – SP 92”; godziny otwarcia z kilku wierszy scalone w `schedule` |
 | `um_trasy` | `get_sbt_trasy_turystyczne` | `kind=route`: trasa dostępna o każdej porze; punkty do zwiedzania w `attributes.points`, ślad GPS uproszczony do 200 punktów w `attributes.trace` (`[lat, lon]`), `location` = start trasy |
 
 Przebieg dla każdego źródła: pobranie całego zbioru (API nie ma paginacji) → surowa kopia `s3://<data_bucket>/raw/<source>/…json.gz` (retencja `raw_snapshot_retention_days`) → mapowanie na schemat v1 → porównanie `contentHash` ze stanem `state/<source>.json` → **na SQS idą tylko nowe i zmienione rekordy** (JSON array po ≤ 20 rekordów) → zapis stanu. Pusta odpowiedź API nie nadpisuje stanu; awaria jednego źródła nie blokuje pozostałych (kod wyjścia 1).
@@ -118,16 +117,16 @@ Jeden kształt dla wszystkich źródeł (importer i portal partnera). Pełny opi
 
 | Pole | Opis |
 | --- | --- |
-| `id` | `kal-…` / `spt-…` / `bsk-…` / `trs-…` = prefiks + `sha1(klucz źródła)[:12]`; partner: UUID |
-| `source` | `um_kalendarz` \| `um_sport` \| `um_boiska` \| `um_trasy` \| `partner` |
-| `kind` | `event` (konkretne terminy) \| `recurring` (co tydzień) \| `venue` (obiekt otwarty w godzinach) \| `route` (trasa, o każdej porze) |
+| `id` | `kal-…` / `spt-…` / `trs-…` = prefiks + `sha1(klucz źródła)[:12]`; partner: UUID |
+| `source` | `um_kalendarz` \| `um_sport` \| `um_trasy` \| `partner` |
+| `kind` | `event` (konkretne terminy) \| `recurring` (co tydzień) \| `route` (trasa, o każdej porze) |
 | `title`, `lead`, `text`, `url` | `text` to HTML: sanityzować przy wyświetlaniu |
 | `category`, `audience` | kategorie i grupy docelowe ze źródła (podpowiedzi dla taggera) |
-| `district`, `online`, `venue {name, address}`, `location {lat, lon}` | `location` = `null` dla boisk i partnerów (brak współrzędnych w źródle) |
+| `district`, `online`, `venue {name, address}`, `location {lat, lon}` | `location` = `null` dla partnerów i części eventów UM (brak współrzędnych w źródle) |
 | `occurrences [{start, end, allDay}]` | ISO 8601 z offsetem; dla `kind=event` |
-| `schedule [{day, start, end}]` | `monday`…`sunday`, `HH:MM`; dla `recurring` i `venue` |
+| `schedule [{day, start, end}]` | `monday`…`sunday`, `HH:MM`; dla `recurring` |
 | `startsAt`, `endsAt` | UTC, z `occurrences` (do sortowania/indeksów) |
-| `imageUrl`, `attributes` | zdjęcie po https; dodatki specyficzne dla źródła (np. nawierzchnia boiska) |
+| `imageUrl`, `attributes` | zdjęcie po https; dodatki specyficzne dla źródła (np. ślad trasy) |
 | `contentHash`, `importedAt` | wykrywanie zmian w importerze |
 | `tags` | dopisuje tagger (wymiary z `tagger/prompt.py`) |
 
