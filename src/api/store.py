@@ -9,6 +9,7 @@ from botocore.config import Config
 from codzis_common.aws import AWS_CONFIG
 from codzis_common.http import ApiError
 from config import LIST_LIMIT, PARTNERS_TABLE, PAYMENTS_TABLE, REGION, STARTER_CREDITS, SUBMISSIONS_TABLE
+from schemas import Partner
 
 dynamodb = boto3.resource("dynamodb", config=AWS_CONFIG)
 submissions_table = dynamodb.Table(SUBMISSIONS_TABLE)
@@ -26,7 +27,7 @@ s3 = boto3.client(
 )
 
 
-def transact(items, condition_error):
+def transact(items: list[dict[str, Any]], condition_error: ApiError) -> None:
     """Transakcja DynamoDB. Niespełniony warunek -> condition_error, inny konflikt -> 409."""
     try:
         ddb.transact_write_items(TransactItems=items)
@@ -37,7 +38,7 @@ def transact(items, condition_error):
         raise ApiError(409, "Konflikt zapisu, spróbuj ponownie") from e
 
 
-def ensure_partner(partner):
+def ensure_partner(partner: Partner) -> dict[str, Any]:
     """Rekord partnera (aktualna nazwa); pierwsze wywołanie zakłada go z kredytami startowymi."""
     return partners_table.update_item(
         Key={"partnerId": partner["partnerId"]},
@@ -47,7 +48,7 @@ def ensure_partner(partner):
     )["Attributes"]
 
 
-def credit_update(partner, delta, require_funds=True):
+def credit_update(partner: Partner, delta: int, require_funds: bool = True) -> dict[str, Any]:
     """Element transakcji zmieniający saldo kredytów partnera (ujemne delta wymaga środków)."""
     update: dict[str, Any] = {
         "TableName": PARTNERS_TABLE,
@@ -61,7 +62,7 @@ def credit_update(partner, delta, require_funds=True):
     return {"Update": update}
 
 
-def query_by_partner(table, partner):
+def query_by_partner(table: Any, partner: Partner) -> list[dict[str, Any]]:
     """Ostatnie rekordy partnera (indeks byPartner, najnowsze najpierw)."""
     return table.query(
         IndexName="byPartner",

@@ -43,7 +43,7 @@ PHOTO_TYPES = {
 
 
 class Partner(TypedDict):
-    """Partner z żądania (token Google albo klucz API) - patrz `partners.current_partner`."""
+    """Partner z żądania (token Google albo klucz API) - patrz `routes.current_partner`."""
 
     partnerId: str
     partnerName: str
