@@ -2,7 +2,7 @@
 # Jedyny zapisujący: Lambda client-api (src/client_api/store.py) + scripts/seed_demo.py (tylko rekordy seed: true).
 
 # Kto zapisał się na wydarzenie: get_item (czy ja), query po eventId (lista zapisanych),
-# GSI byUser (na co się zapisałem - stan "Zapisano" na kartach). Źródło członków czatu.
+# GSI byUser (na co się zapisałem - stan "Zapisano" na kartach). Czat ekipy jest tylko dla zapisanych (tabela crews niżej).
 resource "aws_dynamodb_table" "attendance" {
   name         = "${local.name}-attendance"
   billing_mode = "PAY_PER_REQUEST"
@@ -94,6 +94,38 @@ resource "aws_dynamodb_table" "friends" {
   }
 
   # Znajomości użytkowników - nie da się ich odtworzyć
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+# Ekipy na wydarzenia i ich czaty (src/client_api/crews.py - tam pełny opis modelu). Jedyny zapisujący: client-api.
+# Jedna tabela bez GSI, wszystko po kluczu: PK eventId, SK sk:
+#   crew#<nr> (ekipa do 4 osób: członkowie, licznik wiadomości, ostatnia wiadomość),
+#   member#<sub> (moja ekipa i ile przeczytałem), msg#<nr>#<sentAt>#<los> (wiadomości ekipy, po czasie).
+resource "aws_dynamodb_table" "crews" {
+  name         = "${local.name}-crews"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "eventId"
+  range_key    = "sk"
+
+  attribute {
+    name = "eventId"
+    type = "S"
+  }
+
+  attribute {
+    name = "sk"
+    type = "S"
+  }
+
+  # Czat znika sam 30 dni po końcu wydarzenia (sekundy epoki, liczy crews.expires_at)
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
+  }
+
+  # Wiadomości użytkowników - nie da się ich odtworzyć
   point_in_time_recovery {
     enabled = true
   }

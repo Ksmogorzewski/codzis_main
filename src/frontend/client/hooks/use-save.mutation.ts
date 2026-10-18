@@ -15,10 +15,12 @@ import {
 import { patchMyEvents } from "@/lib/my-events";
 import {
   attendeesKey,
+  crewKey,
   eventKey,
   eventStatsRootKey,
   eventsRootKey,
   friendsGoingKey,
+  myCrewsKey,
   myEventsKey,
   popularKey,
 } from "@/lib/query-keys";
@@ -67,7 +69,8 @@ function patchCaches(qc: QueryClient, id: string, next: (s: SaveState) => KnownS
  * od razu wszędzie (na liście zapisanych mój wpis z imieniem z ID tokenu); błąd przywraca poprzedni
  * stan i pokazuje toast. Po sukcesie: wartości z serwera, toast „Zapisano jako <imię>” i odświeżenie
  * listy zapisanych, Popularnych, list Eksploruj, „Znajomi idą” i „Twoich” (po wypisaniu tylko oznaczenie
- * jako nieaktualne: indeks byUser jest odczytem ostatecznie spójnym, a lista już jest poprawna).
+ * jako nieaktualne: indeks byUser jest odczytem ostatecznie spójnym, a lista już jest poprawna) oraz moich
+ * ekip - wypisanie to też wyjście z ekipy czatu, więc zapamiętany czat tego wydarzenia znika.
  */
 export function useSave() {
   const qc = useQueryClient();
@@ -101,6 +104,8 @@ export function useSave() {
       void qc.invalidateQueries({ queryKey: eventsRootKey() });
       void qc.invalidateQueries({ queryKey: friendsGoingKey() });
       void qc.invalidateQueries({ queryKey: myEventsKey(), refetchType: save ? "active" : "none" });
+      void qc.invalidateQueries({ queryKey: myCrewsKey() });
+      if (!save) qc.removeQueries({ queryKey: crewKey(id) });
     },
   });
 }

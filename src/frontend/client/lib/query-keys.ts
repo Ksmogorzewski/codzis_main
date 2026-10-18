@@ -34,8 +34,19 @@ export const eventStatsRootKey = () => ["event-stats"] as const;
 
 export const eventStatsKey = (ids: readonly string[]) => ["event-stats", [...ids].sort().join(",")] as const;
 
-/** Zakładka „Twoje”: moje zapisy (GET /api/me/events); też plakietka nieprzeczytanych w nawigacji. */
+/** Zakładka „Twoje”: moje zapisy (GET /api/me/events). */
 export const myEventsKey = () => ["my-events"] as const;
+
+// --- Czat ekipy ---
+
+/** Prefiks czatów ekip (unieważniany po podaniu imienia - czat wymaga imienia). */
+export const crewRootKey = () => ["crew"] as const;
+
+/** GET /api/events/{id}/crew: moja ekipa i wiadomości (co 3 s, nowe dokładane po `cursor`). */
+export const crewKey = (id: string) => ["crew", id] as const;
+
+/** GET /api/me/crews: moje ekipy - plakietka nieprzeczytanych w nawigacji, wiersze czatu na „Twoje”. */
+export const myCrewsKey = () => ["my-crews"] as const;
 
 // --- Znajomi ---
 

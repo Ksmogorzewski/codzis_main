@@ -12,6 +12,7 @@ EVENTS_TABLE = "test-events"
 ATTENDANCE_TABLE = "test-attendance"
 STATS_TABLE = "test-event-stats"
 FRIENDS_TABLE = "test-friends"
+CREWS_TABLE = "test-crews"
 REQUEST_ID = "req-client-1"
 PHOTOS_BUCKET = "test-photos"
 PHOTOS_BASE_URL = "https://partner.example.com"
@@ -20,6 +21,15 @@ PHOTOS_BASE_URL = "https://partner.example.com"
 def _create_tables():
     """Tabele jak w infra/client_api.tf i infra/community.tf (klucze i indeksy)."""
     dynamodb = boto3.resource("dynamodb")
+    dynamodb.create_table(
+        TableName=CREWS_TABLE,
+        KeySchema=[{"AttributeName": "eventId", "KeyType": "HASH"}, {"AttributeName": "sk", "KeyType": "RANGE"}],
+        AttributeDefinitions=[
+            {"AttributeName": "eventId", "AttributeType": "S"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+        ],
+        BillingMode="PAY_PER_REQUEST",
+    )
     dynamodb.create_table(
         TableName=FRIENDS_TABLE,
         KeySchema=[{"AttributeName": "userId", "KeyType": "HASH"}, {"AttributeName": "sk", "KeyType": "RANGE"}],
@@ -94,6 +104,7 @@ def client_api(monkeypatch):
     monkeypatch.setenv("ATTENDANCE_TABLE", ATTENDANCE_TABLE)
     monkeypatch.setenv("STATS_TABLE", STATS_TABLE)
     monkeypatch.setenv("FRIENDS_TABLE", FRIENDS_TABLE)
+    monkeypatch.setenv("CREWS_TABLE", CREWS_TABLE)
     monkeypatch.setenv("DISTRICTS", json.dumps(DISTRICTS, ensure_ascii=False))
     monkeypatch.setenv("PHOTOS_BUCKET", PHOTOS_BUCKET)
     monkeypatch.setenv("PHOTOS_BASE_URL", PHOTOS_BASE_URL)
@@ -129,6 +140,17 @@ def stats_table(client_api):
 @pytest.fixture
 def friends_table(client_api):
     return boto3.resource("dynamodb").Table(FRIENDS_TABLE)
+
+
+@pytest.fixture
+def crews_table(client_api):
+    return boto3.resource("dynamodb").Table(CREWS_TABLE)
+
+
+@pytest.fixture
+def crews(client_api):
+    """Moduł src/client_api/crews.py na tej samej atrapie DynamoDB co handler."""
+    return sys.modules.get("crews") or load_lambda(CLIENT_API_DIR, "crews")
 
 
 @pytest.fixture

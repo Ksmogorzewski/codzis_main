@@ -37,6 +37,23 @@ rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za 
                                            minione - past = true, slot = ostatni termin - od najświeższego;
                                            maks. 100 najnowszych zapisów; bez wydarzeń wygasłych z codzis-events)
 
+Czat ekipy (logika i DynamoDB: crews.py): zapisani na wydarzenie łączą się w ekipy do 4 osób, każda ma
+własny czat; wypisanie z wydarzenia = wyjście z ekipy. Wiadomość = {"id", "kind" ("user" | komunikat
+Wodzireja: "welcome", "joined", "left", "full"), "userId", "name", "text" (tylko "user"), "sentAt", "isMe"}:
+
+    GET    /api/events/{id}/crew?after=<sentAt>  (zapisani, imię) -> {"crew", "capacity", "members": [{"userId",
+                                       "name", "isMe"}], "messageCount", "icebreaker", "answered", "messages",
+                                       "cursor"}; pierwsze wejście dołącza do ekipy z wolnym miejscem (albo
+                                       zakłada nową), każde oznacza wiadomości jako przeczytane; bez after -
+                                       najnowsze 200, z after - nowe (z 15 s zapasu, powtórki pomija front);
+                                       answered = czy już coś napisałem (lodołamacz odblokowuje czat)
+    POST   /api/events/{id}/crew/messages (zapisani, imię) {"text"} -> {"message"}; 1-500 znaków po
+                                       oczyszczeniu (400 fields ["text"]), 429 {"code": "too_fast"} częściej niż co 1 s
+    GET    /api/me/crews              -> {"items": [{"eventId", "title", "crew", "capacity", "members",
+                                       "messageCount", "unread", "last": Wiadomość bez id | null}], "unread"}
+                                       (plakietki: moje zapisy, w których mam ekipę; wydarzenia od najnowszego zapisu)
+    Błędy: 404 brak wydarzenia, 409 {"code": "not_attending"} bez zapisu na wydarzenie, 409 name_required.
+
 Imię widoczne dla innych (zapisy, zaproszenia, znajomi, podgląd kodu) składa display_name: imię + inicjał
 nazwiska („Ola K.”, nazwisko opcjonalne przy rejestracji); pełnego nazwiska nie oddajemy nikomu.
 
@@ -78,6 +95,7 @@ from datetime import date, datetime
 import boto3
 
 import account
+import crews
 import events
 import friends
 import store
@@ -151,6 +169,12 @@ def route(event: dict) -> dict:
             return response(200, get_popular(claims))
         case "GET /api/me/events":
             return response(200, get_my_events(claims))
+        case "GET /api/events/{id}/crew":
+            return response(200, get_crew(claims, _event_id(event), _query(event)))
+        case "POST /api/events/{id}/crew/messages":
+            return response(200, post_message(claims, _event_id(event), parse_body(event)))
+        case "GET /api/me/crews":
+            return response(200, get_my_crews(claims))
         case "GET /api/friends":
             return response(200, get_friends(claims))
         case "POST /api/friends/code":
@@ -322,8 +346,9 @@ def put_save(claims: dict, event_id: str) -> dict:
 
 
 def delete_save(claims: dict, event_id: str) -> dict:
-    """Wypisanie. Działa też dla wydarzeń, które już wygasły; ponowne nic nie zmienia."""
+    """Wypisanie (i wyjście z ekipy czatu). Działa też dla wydarzeń, które już wygasły; ponowne nic nie zmienia."""
     store.unsave(event_id, claims["sub"])
+    crews.leave(event_id, claims["sub"], _now())
     return {"saved": False, "saves": store.saves_of(event_id)}
 
 
@@ -376,6 +401,50 @@ def get_my_events(claims: dict) -> dict:
             for item, slot, row in found
         ]
     }
+
+
+def get_crew(claims: dict, event_id: str, params: dict) -> dict:
+    """Czat mojej ekipy na wydarzenie (front pyta co kilka sekund z ?after= = cursor z poprzedniej odpowiedzi)."""
+    name = _require_name(claims, "Podaj imię, zanim dołączysz do ekipy")
+    return crews.open_chat(event_id, _crew_event(claims, event_id), claims["sub"], name, _after(params), _now())
+
+
+def post_message(claims: dict, event_id: str, body: dict) -> dict:
+    name = _require_name(claims, "Podaj imię, zanim napiszesz do ekipy")
+    return crews.send(event_id, _crew_event(claims, event_id), claims["sub"], name, body.get("text"), _now())
+
+
+def get_my_crews(claims: dict) -> dict:
+    """Plakietki czatów: moje ekipy na wydarzenia, na które jestem zapisany (bez wydarzeń wygasłych)."""
+    known = store.all_events()
+    ids = [row["eventId"] for row in store.my_saves(claims["sub"]) if row["eventId"] in known][:MY_EVENTS_LIMIT]
+    found = crews.summaries(claims["sub"], ids)
+    items = [{"eventId": i, "title": events.plain_text(known[i].get("title"))} | found[i] for i in ids if i in found]
+    return {"items": items, "unread": sum(item["unread"] for item in items)}
+
+
+def _crew_event(claims: dict, event_id: str) -> dict:
+    """Wydarzenie czatu (z pamięci, a świeżo dodane - z tabeli); czat jest tylko dla zapisanych."""
+    event = store.all_events().get(event_id) or store.get_event(event_id)
+    if not event:
+        raise ApiError(404, "Nie znaleziono wydarzenia")
+    if not store.is_saved(event_id, claims["sub"]):
+        raise ApiError(409, "Czat jest tylko dla zapisanych na wydarzenie", code="not_attending")
+    return event
+
+
+def _after(params: dict) -> datetime | None:
+    """?after= z poprzedniej odpowiedzi czatu (cursor, ISO 8601 ze strefą); brak = od najnowszych."""
+    raw = params.get("after")
+    if not raw:
+        return None
+    try:
+        after = datetime.fromisoformat(raw)
+    except ValueError:
+        after = None
+    if after is None or after.tzinfo is None:
+        raise ApiError(400, "Niepoprawny parametr after", fields=["after"])
+    return after
 
 
 def get_friends(claims: dict) -> dict:
@@ -455,11 +524,11 @@ def _upcoming(slot: dict | None) -> bool:
     return bool(slot and (slot.get("date") or slot.get("start")))
 
 
-def _require_name(claims: dict) -> str:
-    """Znajomi muszą wiedzieć, kogo dodają: imię z tokenu albo z users, inaczej 409 name_required."""
+def _require_name(claims: dict, message: str = "Podaj imię, zanim dodasz znajomych") -> str:
+    """Znajomi i ekipa muszą wiedzieć, kim jestem: imię z tokenu albo z users, inaczej 409 name_required."""
     name = display_name(claims) or _stored_name(claims["sub"])
     if not name:
-        raise ApiError(409, "Podaj imię, zanim dodasz znajomych", code="name_required")
+        raise ApiError(409, message, code="name_required")
     return name
 
 

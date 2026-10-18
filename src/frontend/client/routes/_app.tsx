@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { NameDialog } from "@/components/community/name-dialog";
+import { NewMessageToasts } from "@/components/crew/new-message-toasts";
 import { Header } from "@/components/layout/header";
 import { PageRouteError } from "@/components/layout/route-error";
 import { TabBar } from "@/components/layout/tab-bar";
@@ -9,7 +10,7 @@ import { meQueryOptions } from "@/hooks/use-me.query";
 import { currentName } from "@/lib/auth";
 import { rememberTarget, requireSession, takeGoogleTarget } from "@/lib/login-redirect";
 import { namePrompt, useNamePrompt } from "@/lib/name-prompt";
-import { friendCodeRootKey, friendsGoingKey, friendsKey } from "@/lib/query-keys";
+import { crewRootKey, friendCodeRootKey, friendsGoingKey, friendsKey, myCrewsKey } from "@/lib/query-keys";
 import { toggleDark, useDark } from "@/lib/theme";
 
 // Pathless layout: strażnik logowania (bez sesji -> /login z powrotem na ten adres) + nagłówek wokół chronionych tras.
@@ -60,13 +61,14 @@ function AppLayout() {
       </main>
       <TabBar />
       <RequiredName />
+      <NewMessageToasts />
     </>
   );
 }
 
 /**
- * Konto bez imienia (sprzed 18.10) podaje je raz, zaraz po zalogowaniu - bez zamykania, bo znajomi muszą
- * wiedzieć, kogo dodają. To samo okno otwiera 409 name_required z tras znajomych (namePrompt).
+ * Konto bez imienia (sprzed 18.10) podaje je raz, zaraz po zalogowaniu - bez zamykania, bo znajomi i ekipa
+ * muszą wiedzieć, kim jestem. To samo okno otwiera 409 name_required z tras znajomych i czatu (namePrompt).
  */
 function RequiredName() {
   const queryClient = useQueryClient();
@@ -82,10 +84,12 @@ function RequiredName() {
       onDone={() => {
         setMissing(false);
         namePrompt.close();
-        // nowy token ma imię: trasy znajomych przestają odpowiadać 409
+        // nowy token ma imię: trasy znajomych i czatu ekipy przestają odpowiadać 409
         void queryClient.invalidateQueries({ queryKey: friendsKey() });
         void queryClient.invalidateQueries({ queryKey: friendsGoingKey() });
         void queryClient.invalidateQueries({ queryKey: friendCodeRootKey() });
+        void queryClient.invalidateQueries({ queryKey: crewRootKey() });
+        void queryClient.invalidateQueries({ queryKey: myCrewsKey() });
         void router.invalidate();
       }}
     />

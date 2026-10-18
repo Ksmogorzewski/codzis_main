@@ -1,5 +1,5 @@
 # API portalu klienta: HTTP API + JWT authorizer (Cognito) -> Lambda -> tabela users
-# (+ odczyt codzis-events, zapisy na wydarzenia, liczniki i znajomi: infra/community.tf).
+# (+ odczyt codzis-events, zapisy na wydarzenia, liczniki, znajomi i czat ekipy: infra/community.tf).
 
 # Profile klientów pod rekomendacje (RAG): odpowiedzi z onboardingu, preferencje, profil tekstowy
 resource "aws_dynamodb_table" "users" {
@@ -88,6 +88,15 @@ resource "aws_iam_role_policy" "client_api" {
         Resource = aws_dynamodb_table.friends.arn
       },
       {
+        # Czat ekipy: ekipy, członkowie, wiadomości, plakietki (Put/Update/Delete także w TransactWriteItems)
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem", "dynamodb:Query",
+          "dynamodb:BatchGetItem",
+        ]
+        Resource = aws_dynamodb_table.crews.arn
+      },
+      {
         # Po zapisaniu profilu i przy logowaniu: przeliczenie rekomendacji w tle
         Effect   = "Allow"
         Action   = ["lambda:InvokeFunction"]
@@ -124,6 +133,7 @@ resource "aws_lambda_function" "client_api" {
       ATTENDANCE_TABLE     = aws_dynamodb_table.attendance.name
       STATS_TABLE          = aws_dynamodb_table.event_stats.name
       FRIENDS_TABLE        = aws_dynamodb_table.friends.name
+      CREWS_TABLE          = aws_dynamodb_table.crews.name
       # zdjęcia profilowe w buckecie zdjęć ogłoszeń, serwowane przez CloudFront panelu pod /photos/*
       PHOTOS_BUCKET   = aws_s3_bucket.photos.id
       PHOTOS_BASE_URL = local.website_origin
@@ -191,6 +201,9 @@ resource "aws_apigatewayv2_route" "client" {
     "DELETE /api/friends/requests/{userId}",
     "DELETE /api/friends/{userId}",
     "GET /api/friends/going",
+    "GET /api/events/{id}/crew",
+    "POST /api/events/{id}/crew/messages",
+    "GET /api/me/crews",
   ])
 
   api_id             = aws_apigatewayv2_api.client.id
