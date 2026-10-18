@@ -13,7 +13,6 @@ from tests.support import REPO
 VALID_ANSWERS = {
     "who": "kids",
     "vibe": ["active"],
-    "discover": ["history", "guided"],
     "district": "Wola",
     "travel": "local",
     "budget": "up50",

@@ -10,7 +10,6 @@ from tests.client_api.conftest import REQUEST_ID, api_event, call
 VALID_ANSWERS = {
     "who": "kids",
     "vibe": ["active"],
-    "discover": ["history", "guided"],
     "district": "Wola",
     "travel": "local",
     "budget": "up50",
@@ -84,7 +83,7 @@ def test_get_onboarding_shape(client_api):
     assert set(body) == {"version", "steps"}
     assert body["version"] == client_api.ONBOARDING_VERSION
     assert len(body["version"]) == 12
-    assert [s["id"] for s in body["steps"]][:4] == ["who", "vibe", "discover", "city"]
+    assert [s["id"] for s in body["steps"]][:4] == ["who", "vibe", "where", "when"]
     option = body["steps"][0]["fields"][0]["options"][0]
     assert set(option) == {"id", "label", "icon", "short"}
 
