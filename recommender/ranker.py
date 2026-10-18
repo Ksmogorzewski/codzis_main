@@ -83,6 +83,13 @@ def rank_candidates(
         "the concrete fit (topic, time, place, price) instead of generic praise. "
         "Do not omit any candidate."
     )
+    if (user.get("query") or "").strip():
+        # Wpisana fraza to jawny zamiar użytkownika: ważniejsza niż cały profil.
+        system += (
+            " The user's `query` is their explicit current intent and outranks every "
+            "profile preference: rank first by fit to the query, and use the remaining "
+            "preferences only as tie-breakers between events that fit the query equally well."
+        )
     user_msg = (
         "User preferences:\n" + json.dumps(_prefs_payload(user), ensure_ascii=False)
         + "\n\nCandidate events:\n" + json.dumps(_candidate_payload(candidates), ensure_ascii=False)

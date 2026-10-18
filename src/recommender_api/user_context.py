@@ -3,6 +3,10 @@
 Twarde filtry: dzielnica (wg zasięgu dojazdu), koszt, forma (na żywo / online), grupa
 odbiorców, budżet i okno czasowe. Reszta preferencji tylko podbija ranking
 (recommender/retriever/scoring.py), żeby wąski profil nie kończył się pustą listą.
+
+Wpisana fraza (query) odwraca priorytety: szukamy w całej Warszawie, twarde filtry
+z profilu nie obcinają wyników, a preferencje zostają tylko miękkim podbiciem przy remisie
+(okno czasowe zostaje - to jawny wybór użytkownika, nie ustawienie z onboardingu).
 """
 
 from datetime import date, datetime, timedelta
@@ -73,17 +77,20 @@ def build_context(prefs: dict, rag_profile: str | None, span: tuple[date, date],
     else:
         districts = None
 
+    # Wpisana fraza wygrywa z profilem: szukamy w całej Warszawie, bez twardych filtrów
+    # z onboardingu; preferencje zostają tylko miękkimi podbiciami przy remisie.
+    searching = bool(query)
+
     return {
-        # Wyszukiwanie wpisane przez użytkownika wygrywa z ogólnym profilem zainteresowań
         "query": query or None,
-        "interests": [] if query else _unique(prefs.get("themes"), prefs.get("formats"), prefs.get("interests")),
+        "interests": [] if searching else _unique(prefs.get("themes"), prefs.get("formats"), prefs.get("interests")),
         "profile": rag_profile,
-        # twarde filtry
-        "district": districts,
-        "cost": prefs.get("cost") or None,
-        "mode": prefs.get("mode") or None,
-        "audience": prefs.get("audience") or None,
-        "max_price": float(max_price) if max_price else None,  # 0 = "tylko bezpłatne" załatwia cost
+        # twarde filtry (tylko bez frazy)
+        "district": None if searching else districts,
+        "cost": None if searching else (prefs.get("cost") or None),
+        "mode": None if searching else (prefs.get("mode") or None),
+        "audience": None if searching else (prefs.get("audience") or None),
+        "max_price": None if searching else (float(max_price) if max_price else None),  # 0 = "tylko bezpłatne" załatwia cost
         "date_from": date_from.isoformat(),
         "date_to": date_to.isoformat(),
         "now": now.isoformat(timespec="seconds"),

@@ -23,7 +23,9 @@ WARSAW = ZoneInfo("Europe/Warsaw")
 # są pokazywane dalej, ale traktowane jak nieaktualne, więc przy wejściu liczą się od nowa w tle.
 #   2: PR #7 - model paraphrase-multilingual-mpnet-base-v2, rozwijanie frazy przez LLM, próg podobieństwa,
 #      kary za sprzeczne preferencje, ranking LLM z temperaturą 0
-RESULTS_VERSION = 2
+#   3: wpisana fraza szuka w całej Warszawie (bez twardych filtrów z profilu) i dominuje
+#      ranking LLM; preferencje z profilu tylko przy remisie
+RESULTS_VERSION = 3
 # Wersja samego odcisku preferencji - NIE podbijać (inna wartość = żaden zapisany zestaw nie pasuje
 # do profilu i wszyscy czekają na nowe liczenie zamiast widzieć dotychczasowe propozycje).
 PREFS_HASH_VERSION = 1

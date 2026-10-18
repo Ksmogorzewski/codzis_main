@@ -2,6 +2,8 @@
 
     GET /api/recommendations?when=today|tomorrow|weekend|week|date&date=RRRR-MM-DD&q=...&limit=16
         HTTP API + JWT authorizer Cognito; profil z tabeli users (preferences, ragProfile).
+        Bez q zestaw układa profil; z q fraza dominuje (szukamy w całej Warszawie, bez twardych
+        filtrów z onboardingu), a preferencje z profilu rozstrzygają tylko remisy.
         Zawsze odpowiada od razu z zapisanego zestawu (tabela recommendations, results_store.py),
         także nieaktualnego - wtedy z "updating": true i nowym liczonym w tle. 202 {"status":
         "preparing"} = zestawu jeszcze nie ma (albo zmienił się profil) i właśnie się liczy.
