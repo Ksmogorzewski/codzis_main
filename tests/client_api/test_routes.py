@@ -28,6 +28,9 @@ IDS = "Podaj od 1 do 100 identyfikatorów"
 ME = "Niepoprawne dane profilu"
 PHOTO_TYPE = "Zdjęcie musi być w formacie JPG, PNG albo WebP"
 PHOTO_KEY = "Nie znaleźliśmy wgranego zdjęcia, spróbuj ponownie"
+AFTER = "Niepoprawny parametr after"
+TEXT = "Wiadomość musi mieć od 1 do 500 znaków"
+JAZZ = {"id": "jazz"}
 
 
 def _error(message, *fields):
@@ -89,6 +92,17 @@ VALIDATION_CASES = [
     ("PUT /api/me/photo", {"body": {}}, _error(PHOTO_KEY, "key")),
     ("PUT /api/me/photo", {"body": {"key": 5}}, _error(PHOTO_KEY, "key")),
     ("PUT /api/me/photo", {"body": {"key": "photos/avatars/user-2/0123456789abcdef.jpg"}}, _error(PHOTO_KEY, "key")),
+    # czat ekipy: zły cursor i treść -> 400 jeszcze przed imieniem (409) i zapisem na wydarzenie
+    ("GET /api/events/{id}/crew", {"path": JAZZ, "query": {"after": "wczoraj"}}, _error(AFTER, "after")),
+    ("GET /api/events/{id}/crew", {"path": JAZZ, "query": {"after": "2026-10-18T10:00:00"}}, _error(AFTER, "after")),
+    ("POST /api/events/{id}/crew/messages", {"path": JAZZ, "body": {}}, _error(TEXT, "text")),
+    ("POST /api/events/{id}/crew/messages", {"path": JAZZ, "body": {"text": 5}}, _error(TEXT, "text")),
+    ("POST /api/events/{id}/crew/messages", {"path": JAZZ, "body": {"text": ["hej"]}}, _error(TEXT, "text")),
+    (
+        "GET /api/events/{id}/crew",
+        {"path": JAZZ},
+        {"error": "Podaj imię, zanim dołączysz do ekipy", "code": "name_required"},
+    ),
 ]
 
 
@@ -129,5 +143,5 @@ def _app_routes(app) -> set[str]:
 
 def test_routes_registered(client_api):
     infra = _infra_routes()
-    assert len(infra) == 23
+    assert len(infra) == 26
     assert _app_routes(client_api.app) == infra

@@ -29,8 +29,8 @@ select = ["F", "E", "W", "I", "B", "UP"]
 # Moduły Lambd importowane jak w runtime (katalog Lambdy w sys.path)
 # routes/ (routery Powertools per domena) i schemas (modele Pydantic) - client-api i API partnera.
 known-first-party = [
-    "account", "onboarding", "handler", "config", "events", "friends", "payments", "profiles", "store", "routes",
-    "schemas", "codzis_common", "tests",
+    "account", "crews", "onboarding", "handler", "config", "events", "friends", "payments", "profiles", "store",
+    "routes", "schemas", "codzis_common", "tests",
 ]
 
 [tool.ruff.format]

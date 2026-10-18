@@ -10,7 +10,7 @@ i zła wartość kończą się tym samym 400 `{"error", "fields"}`. Nadmiarowe p
 import re
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, BeforeValidator, Field
+from pydantic import AfterValidator, AwareDatetime, BaseModel, BeforeValidator, Field
 
 import account
 
@@ -90,3 +90,16 @@ class InviteBody(BaseModel):
     """POST /api/friends/invite {"code"} - kod wpisany "byle jak" (normalizuje friends.normalize_code)."""
 
     code: str
+
+
+class CrewQuery(BaseModel):
+    """GET /api/events/{id}/crew?after=<cursor> - cursor z poprzedniej odpowiedzi (ISO 8601 ze strefą); brak =
+    najnowsze wiadomości."""
+
+    after: AwareDatetime | None = None
+
+
+class MessageBody(BaseModel):
+    """POST /api/events/{id}/crew/messages {"text"} - długość po oczyszczeniu sprawdza crews.send."""
+
+    text: str

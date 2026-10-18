@@ -190,11 +190,11 @@ def stored_name(user_id: str) -> str | None:
     return _format_name(item.get("displayName"), item.get("familyName"))
 
 
-def require_name(claims: dict) -> str:
-    """Znajomi muszą wiedzieć, kogo dodają: imię z tokenu albo z users, inaczej 409 name_required."""
+def require_name(claims: dict, message: str = "Podaj imię, zanim dodasz znajomych") -> str:
+    """Znajomi i ekipa muszą wiedzieć, kim jestem: imię z tokenu albo z users, inaczej 409 name_required."""
     name = display_name(claims) or stored_name(claims["sub"])
     if not name:
-        raise ApiError(409, "Podaj imię, zanim dodasz znajomych", code="name_required")
+        raise ApiError(409, message, code="name_required")
     return name
 
 

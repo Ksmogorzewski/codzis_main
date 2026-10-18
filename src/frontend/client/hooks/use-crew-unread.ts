@@ -1,13 +1,9 @@
-import { totalUnread, useInbox } from "@/lib/crew-inbox";
-import { useMyEvents } from "./use-my-events.query";
+import { useMyCrews } from "./use-my-crews.query";
 
 /**
- * Suma nieprzeczytanych wiadomości we wszystkich czatach moich wydarzeń (plakietka „Twoje” w nagłówku
- * i dolnym pasku). DEMO: wiadomości to scenariusz z lib/crew-demo.ts, stan przeczytanych lokalnie.
- * Bez listy zapisów (ładuje się albo błąd) - 0, bez komunikatu.
+ * Suma nieprzeczytanych wiadomości we wszystkich czatach moich ekip (plakietka „Twoje” w nagłówku i dolnym
+ * pasku), z GET /api/me/crews. Bez odpowiedzi (ładuje się albo błąd) - 0, bez komunikatu.
  */
 export function useCrewUnreadTotal(): number {
-  const mine = useMyEvents();
-  const inbox = useInbox();
-  return totalUnread(inbox, mine.data?.items.map((c) => c.id) ?? []);
+  return useMyCrews().data?.unread ?? 0;
 }

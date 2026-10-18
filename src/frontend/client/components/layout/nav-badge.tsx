@@ -1,4 +1,4 @@
-import { unreadLabel } from "@/lib/crew-inbox";
+import { unreadLabel } from "@/lib/crew-chat";
 import { badgeText } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +12,7 @@ type Props = {
 };
 
 /**
- * Plakietka z liczbą: nieprzeczytane wiadomości (czaty ekip, DEMO) przy „Twoje” i na liście czatów,
+ * Plakietka z liczbą: nieprzeczytane wiadomości (czaty ekip) przy „Twoje” i na liście czatów,
  * zaproszenia przy „Znajomi”. Liczba jest tylko wizualna; czytnik dostaje pełny podpis („3 nowe wiadomości”).
  */
 export function UnreadBadge({ count, className, label = unreadLabel, max = 99 }: Props) {

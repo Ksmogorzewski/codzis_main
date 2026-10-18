@@ -382,6 +382,63 @@ export const FriendsGoingSchema = z.object({
 });
 export type FriendsGoing = z.infer<typeof FriendsGoingSchema>;
 
+// --- czat ekipy (src/client_api/crews.py + trasy /api/events/{id}/crew i /api/me/crews w handler.py) ---
+
+// kind: "user" = wiadomość osoby; "welcome" | "joined" | "left" | "full" = komunikat Wodzireja (tekst składa
+// lib/crew-chat.ts z danych wydarzenia). Nieznany rodzaj (nowszy backend) front pomija.
+const crewMessageFields = {
+  kind: z.string(),
+  userId: nullableString,
+  name: nullableString,
+  text: nullableString,
+  sentAt: z.string(),
+  isMe: z.boolean().default(false),
+};
+export const CrewMessageSchema = z.object({ id: z.string(), ...crewMessageFields });
+export type CrewMessage = z.infer<typeof CrewMessageSchema>;
+/** Ostatnia wiadomość ekipy w podglądzie (GET /api/me/crews): jak wiadomość, bez id, tekst skrócony. */
+export const CrewLastSchema = z.object(crewMessageFields);
+export type CrewLast = z.infer<typeof CrewLastSchema>;
+
+const CrewMemberSchema = z.object({ userId: z.string(), name: z.string(), isMe: z.boolean().default(false) });
+export type CrewMember = z.infer<typeof CrewMemberSchema>;
+
+// GET /api/events/{id}/crew?after=: moja ekipa (pierwsze wejście dołącza) i wiadomości od najstarszej
+export const CrewSchema = z.object({
+  crew: z.string(),
+  capacity: z.number().int().positive().default(4),
+  members: z.array(CrewMemberSchema).default([]),
+  messageCount: z.number().int().nonnegative().default(0),
+  icebreaker: z.string().default(""),
+  // czy już coś napisałem - do tego czasu czat zasłania lodołamacz
+  answered: z.boolean().default(false),
+  messages: z.array(CrewMessageSchema).default([]),
+  // do następnego ?after= (odpowiedź z after ma też do 15 s starsze wiadomości - łączy je mergeCrew)
+  cursor: nullableString,
+});
+export type Crew = z.infer<typeof CrewSchema>;
+
+// POST /api/events/{id}/crew/messages {text} -> zapisana wiadomość
+export const SentMessageSchema = z.object({ message: CrewMessageSchema });
+
+// GET /api/me/crews: moje ekipy (tylko wydarzenia, na których czat już wszedłem) - plakietki i „Twoje”
+const MyCrewSchema = z.object({
+  eventId: z.string(),
+  title: z.string().default(""),
+  crew: z.string(),
+  capacity: z.number().int().positive().default(4),
+  members: z.array(CrewMemberSchema).default([]),
+  messageCount: z.number().int().nonnegative().default(0),
+  unread: z.number().int().nonnegative().default(0),
+  last: CrewLastSchema.nullable().default(null).catch(null),
+});
+export type MyCrew = z.infer<typeof MyCrewSchema>;
+export const MyCrewsSchema = z.object({
+  items: z.array(MyCrewSchema).default([]),
+  unread: z.number().int().nonnegative().default(0),
+});
+export type MyCrews = z.infer<typeof MyCrewsSchema>;
+
 // --- błąd API: {error: "komunikat PL", fields?, code?} ---
 
 export const ApiErrorBodySchema = z.object({

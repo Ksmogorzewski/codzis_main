@@ -139,6 +139,9 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 | `PUT /api/me/photo` / `DELETE /api/me/photo` | `{"key"}` → wgrane zdjęcie staje się profilowym (stare usuwamy) / profil bez zdjęcia |
 | `GET /api/onboarding` | kafelki z pytaniami (ikony, limity wyborów, wymagane pola) |
 | `PUT /api/profile` | `{"answers": {"who": ["kids"], ...}}` → walidacja, preferencje, zapis |
+| `GET /api/events/{id}/crew` | czat mojej ekipy (tylko zapisani): pierwsze wejście dołącza do ekipy, `?after=<cursor>` = tylko nowe wiadomości, każde wejście oznacza przeczytane |
+| `POST /api/events/{id}/crew/messages` | `{"text"}` (1-500 znaków) → wiadomość do mojej ekipy; `429 too_fast` częściej niż co 1 s |
+| `GET /api/me/crews` | moje ekipy: nieprzeczytane, ostatnia wiadomość, skład (plakietki i „Twoje”) |
 | `GET /api/recommendations` | `?when=today\|tomorrow\|weekend\|week\|date&date=2026-10-30&q=jazz&limit=16` → karty wydarzeń z uzasadnieniem (sekcja Rekomendacje); `202 {"status": "preparing"}` gdy zestaw właśnie się liczy, `409` bez profilu, `503` zanim powstanie indeks |
 
 **Onboarding:** pytania i mapowanie odpowiedzi są w jednym miejscu, `src/client_api/onboarding.py`; frontend tylko je wyświetla. Jest 9 kafelków:
@@ -148,6 +151,8 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 Pola: `single`, `multi` (limit `maxSelect`), `select` i `text`, czyli wolny opis „Kilka zdań o sobie”: do 300 znaków, odpowiedź `["tekst"]`. Backend usuwa znaki sterujące i zbędne odstępy, opis trafia do preferencji jako `about` i na koniec `ragProfile`. Czyta go tylko ranking DeepSeek (`recommender/ranker.py`), wyszukiwanie wektorowe go nie używa.
 
 Wieku nie ma w ankiecie. Przedział (`ageRange`: `under18`, `18-29`, `30-49`, `50-64`, `65+`, w `ragProfile` jako `age=…`) i grupę odbiorców dopisaną do `audience` liczymy z daty urodzenia w danych konta (`with_age` w `onboarding.py`). Dzieje się to przy zapisie ankiety i przy zmianie daty: `PUT /api/me` przelicza wtedy preferencje i `ragProfile`, a gdy zmieni się przedział, zleca nowe rekomendacje. Bez daty urodzenia profil jest bez wieku.
+
+**Czat ekipy** (`src/client_api/crews.py`, tabela `codzis-crews`): zapisani na wydarzenie łączą się w ekipy do 4 osób (pierwsza ekipa z wolnym miejscem, gdy brak - nowa), każda ma własny czat. Komunikaty Wodzireja (powitanie z lodołamaczem, dołączenie, wyjście, komplet) powstają z danych wydarzenia, bez LLM, a treść rozmów nie wychodzi poza AWS. Wypisanie z wydarzenia = wyjście z ekipy (wiadomości zostają), pusta ekipa się zamyka. Bez WebSocketów: otwarty czat pyta API co 3 s o nowe wiadomości, plakietki nieprzeczytanych co 30 s (tylko przy widocznej karcie). Nieprzeczytane to liczniki w rekordach ekipy i członka, aktualizowane w tej samej transakcji co wiadomość. Dane znikają same (TTL) 30 dni po końcu wydarzenia.
 
 **Rekord użytkownika (tabela `codzis-users`, klucz `userId` = `sub` z Cognito, PITR włączone):**
 

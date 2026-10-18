@@ -37,6 +37,24 @@ rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za 
                                            minione - past = true, slot = ostatni termin - od najświeższego;
                                            maks. 100 najnowszych zapisów; bez wydarzeń wygasłych z codzis-events)
 
+Czat ekipy (logika i DynamoDB: crews.py): zapisani na wydarzenie łączą się w ekipy do 4 osób, każda ma
+własny czat; wypisanie z wydarzenia = wyjście z ekipy. Wiadomość = {"id", "kind" ("user" | komunikat
+Wodzireja: "welcome", "joined", "left", "full"), "userId", "name", "text" (tylko "user"), "sentAt", "isMe"}:
+
+    GET    /api/events/{id}/crew?after=<sentAt>  (zapisani, imię) -> {"crew", "capacity", "members": [{"userId",
+                                       "name", "isMe"}], "messageCount", "icebreaker", "answered", "messages",
+                                       "cursor"}; pierwsze wejście dołącza do ekipy z wolnym miejscem (albo
+                                       zakłada nową), każde oznacza wiadomości jako przeczytane; bez after -
+                                       najnowsze 200, z after - nowe (z 15 s zapasu, powtórki pomija front);
+                                       answered = czy już coś napisałem (lodołamacz odblokowuje czat);
+                                       400 fields ["after"] przy złym after
+    POST   /api/events/{id}/crew/messages (zapisani, imię) {"text"} -> {"message"}; 1-500 znaków po
+                                       oczyszczeniu (400 fields ["text"]), 429 {"code": "too_fast"} częściej niż co 1 s
+    GET    /api/me/crews              -> {"items": [{"eventId", "title", "crew", "capacity", "members",
+                                       "messageCount", "unread", "last": Wiadomość bez id | null}], "unread"}
+                                       (plakietki: moje zapisy, w których mam ekipę; wydarzenia od najnowszego zapisu)
+    Błędy: 404 brak wydarzenia, 409 {"code": "not_attending"} bez zapisu na wydarzenie, 409 name_required.
+
 Imię widoczne dla innych (zapisy, zaproszenia, znajomi, podgląd kodu) składa profiles.display_name: imię + inicjał
 nazwiska („Ola K.”, nazwisko opcjonalne przy rejestracji); pełnego nazwiska nie oddajemy nikomu.
 
@@ -70,10 +88,11 @@ Po zapisaniu profilu i przy logowaniu rekomender w tle liczy zestawy na dziś, j
 
 Budowa (AWS Lambda Powertools): ten plik tylko składa aplikację - `create_app` z codzis_common (format błędów,
 404, serializacja JSON, linia logu dostępu) + routery z routes/ (me.py: /api/me, /api/onboarding, /api/profile;
-events.py: Eksploruj i Popularne; saves.py: zapisy „idę” i /api/me/events; friends.py: znajomi). Wejście
-(ścieżka, query, body) przez modele Pydantic w schemas.py; logika i DynamoDB w modułach domeny (profiles.py,
-account.py, onboarding.py, events.py, store.py, friends.py). Nowa trasa: model w schemas.py -> funkcja
-w routes/<domena>.py -> test -> trasa w infra/client_api.tf (test_routes_registered pilnuje zgodności).
+events.py: Eksploruj i Popularne; saves.py: zapisy „idę” i /api/me/events; friends.py: znajomi; crews.py: czat
+ekipy). Wejście (ścieżka, query, body) przez modele Pydantic w schemas.py; logika i DynamoDB w modułach domeny
+(profiles.py, account.py, onboarding.py, events.py, store.py, friends.py, crews.py). Nowa trasa: model
+w schemas.py -> funkcja w routes/<domena>.py -> test -> trasa w infra/client_api.tf (test_routes_registered
+pilnuje zgodności).
 """
 
 from typing import Any
@@ -81,8 +100,10 @@ from typing import Any
 from aws_lambda_powertools.event_handler import APIGatewayHttpResolver
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
+import crews
 import friends
 import profiles
+import routes.crews
 import routes.events
 import routes.friends
 import routes.me
@@ -94,10 +115,27 @@ from schemas import PATH_ID
 
 # Obiekty, do których sięgają testy (client_api.store, client_api.users…) - te same, których używają trasy.
 # Do podmiany w testach bierz moduł (np. client_api.profiles.lambda_client), nie nazwę zaimportowaną tutaj.
-__all__ = ["ONBOARDING_VERSION", "PATH_ID", "app", "friends", "handler", "lambda_client", "profiles", "store", "users"]
+__all__ = [
+    "ONBOARDING_VERSION",
+    "PATH_ID",
+    "app",
+    "crews",
+    "friends",
+    "handler",
+    "lambda_client",
+    "profiles",
+    "store",
+    "users",
+]
 
 app = create_app(APIGatewayHttpResolver)
-for _router in (routes.me.router, routes.events.router, routes.saves.router, routes.friends.router):
+for _router in (
+    routes.me.router,
+    routes.events.router,
+    routes.saves.router,
+    routes.friends.router,
+    routes.crews.router,
+):
     app.include_router(_router)
 
 
