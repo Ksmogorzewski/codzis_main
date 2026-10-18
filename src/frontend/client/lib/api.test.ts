@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   ApiRequestError,
   createApi,
+  isNameRequired,
   isNeedsOnboarding,
   isTransientError,
   pollWhilePreparing,
@@ -182,6 +183,17 @@ describe("ponawianie w TanStack Query", () => {
     expect(() => unwrap(err({ status: 409, code: "needs_onboarding", message: "m", fields: [] }))).toThrow(ApiRequestError);
     expect(isNeedsOnboarding(e(409, "needs_onboarding"))).toBe(true);
     expect(unwrap(ok(5))).toBe(5);
+  });
+
+  it("409 name_required i friend_limit to nie ankieta; name_required = prośba o imię", () => {
+    const named = toApiError(409, { error: "Podaj imię, zanim dodasz znajomych", code: "name_required" });
+    expect(named.code).toBe("name_required");
+    expect(isNeedsOnboarding(new ApiRequestError(named))).toBe(false);
+    expect(isNameRequired(new ApiRequestError(named))).toBe(true);
+    expect(isNeedsOnboarding(e(409, "friend_limit"))).toBe(false);
+    expect(isNameRequired(e(409, "friend_limit"))).toBe(false);
+    // 409 bez kodu (starszy rekomender) nadal oznacza ankietę
+    expect(isNeedsOnboarding(new ApiRequestError(toApiError(409, { error: "Uzupełnij profil" })))).toBe(true);
   });
 });
 

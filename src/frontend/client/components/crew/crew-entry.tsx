@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { useAttendees } from "@/hooks/use-attendees.query";
-import { crewMembers, membersLine } from "@/lib/crew-chat";
+import { crewMembers, memberNames, membersLine } from "@/lib/crew-chat";
 import { DEMO_CREW } from "@/lib/crew-demo";
 import { DemoNote } from "./demo-note";
 import { JoinCrewButton } from "./join-crew-button";
@@ -17,7 +17,7 @@ type Props = { id: string; saved: boolean | undefined };
 export function CrewEntry({ id, saved }: Props) {
   const attendees = useAttendees(id);
   const joined = attendees.data?.saved ?? saved === true;
-  const others = crewMembers(attendees.data?.people, DEMO_CREW.names, DEMO_CREW.capacity - 1);
+  const others = memberNames(crewMembers(attendees.data?.people, DEMO_CREW.names, DEMO_CREW.capacity - 1));
 
   return (
     <Card className="gap-3 p-5">

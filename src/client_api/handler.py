@@ -1,6 +1,7 @@
 """API portalu klienta (HTTP API + JWT authorizer Cognito, payload 2.0).
 
-    GET    /api/me          profil zalogowanego użytkownika (pierwsze wywołanie zakłada rekord i dane konta)
+    GET    /api/me          profil zalogowanego użytkownika (pierwsze wywołanie zakłada rekord i dane konta;
+                            kopiuje z tokenu e-mail, imię -> displayName, nazwisko -> familyName)
     PUT    /api/me          {"lastName", "birthDate"} -> dane konta (account.py); imię zostaje bez zmian
     POST   /api/me/photo    {"contentType"} -> {"key", "upload": {"url", "fields"}} (presigned POST do S3)
     PUT    /api/me/photo    {"key"} -> wgrane zdjęcie staje się zdjęciem profilowym (poprzednie usuwamy)
@@ -21,10 +22,44 @@ rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za 
     GET    /api/events/{id}             -> Card + {"text" (bez HTML), "occurrences", "importedAt"}; 404
     PUT    /api/events/{id}/save        -> {"saved": true, "saves"}  (idempotentnie; 404 gdy brak wydarzenia)
     DELETE /api/events/{id}/save        -> {"saved": false, "saves"} (idempotentnie)
-    GET    /api/events/{id}/attendees   -> {"saves", "saved", "people": [{"name", "isMe"}]}
-                                           (najnowsi najpierw, maks. 100; bez imienia "Ktoś"; nigdy e-maili)
+    GET    /api/events/{id}/attendees   -> {"saves", "saved", "people": [{"userId", "name", "isMe", "isFriend"}]}
+                                           (najpierw ja, potem znajomi, potem reszta - w grupach najnowsi
+                                           najpierw; isFriend tylko dla wydarzeń z nadchodzącym terminem,
+                                           inaczej false; maks. 100 najnowszych; bez imienia "Ktoś"; nigdy e-maili;
+                                           userId = sub z Cognito, dane testowe "seed-<n>" - tożsamość osoby)
     GET    /api/popular                 -> {"window": {"from", "to"}, "items": [Card]}
                                            (dziś + 6 dni, saves > 0, malejąco, maks. 20)
+    GET    /api/me/events               -> {"items": [Card + {"past", "savedAt"}]}  zakładka „Twoje”: moje zapisy
+                                           (saved = true; najpierw nadchodzące od najbliższego terminu, potem
+                                           minione - past = true, slot = ostatni termin - od najświeższego;
+                                           maks. 100 najnowszych zapisów; bez wydarzeń wygasłych z codzis-events)
+
+Imię widoczne dla innych (zapisy, zaproszenia, znajomi, podgląd kodu) składa display_name: imię + inicjał
+nazwiska („Ola K.”, nazwisko opcjonalne przy rejestracji); pełnego nazwiska nie oddajemy nikomu.
+
+Znajomi (logika i DynamoDB: friends.py). Akcje oznaczone (imię) bez imienia w tokenie i w users ->
+409 {"code": "name_required"}. Czasy createdAt/since: ISO 8601 UTC. userId = sub z Cognito (nigdy e-mail):
+
+    GET    /api/friends (imię)             -> {"code": "WAW-XXXXXX", "friends": [{"userId", "name", "since"}],
+                                              "incoming": [{"userId", "name", "createdAt"}], "outgoing": [...]}
+                                              (pierwsze wywołanie zakłada kod; znajomi alfabetycznie,
+                                              zaproszenia najnowsze najpierw, wygasłe po 30 dniach pominięte)
+    POST   /api/friends/code (imię)        -> {"code"}  nowy kod (stary przestaje działać; znajomi
+                                              i oczekujące zaproszenia zostają)
+    GET    /api/friends/code/{code}        -> {"userId", "name"}  do kogo należy kod (wpis "byle jak":
+                                              "waw 7k2p9x" = "WAW-7K2P9X"); 404 zły kod, 400 własny kod
+    POST   /api/friends/invite (imię)      {"code"} -> {"status": "pending" | "friends", "userId", "name"}
+                                              ("friends": już znajomi albo ta osoba już mnie zaprosiła -
+                                              automatyczna akceptacja); 404, 400 jak wyżej
+    PUT    /api/friends/requests/{userId} (imię) -> {"status": "friends"}  akceptacja; 404 brak zaproszenia
+    DELETE /api/friends/requests/{userId}  -> {}  ciche odrzucenie (zapraszający dalej widzi "oczekuje")
+    DELETE /api/friends/{userId}           -> {}  usunięcie znajomości u obu stron; własne id -> 400
+    GET    /api/friends/going              -> {"items": [Card + {"friends": [Friend]}], "byEvent": {eventId: [Friend]}}
+                                              Friend = {"userId", "name"}; nadchodzące zapisy znajomych (od teraz;
+                                              bez zajęć bez terminu); karty od najbliższego startu, maks. 60;
+                                              byEvent - wszystkie; znajomi po imieniu, potem po userId
+    Błędy: 404 zły kod (+1 do limitu), 429 {"code": "too_many_attempts"} po 10 złych kodach w godzinę
+    (także dobre kody do końca okna), 409 {"code": "friend_limit"} przy 50 znajomych.
 
 Token weryfikuje API Gateway; tu korzystamy już tylko z jego claims (ID token Cognito).
 Po zapisaniu profilu i przy logowaniu rekomender w tle liczy zestawy na dziś, jutro i weekend
@@ -40,14 +75,17 @@ import boto3
 
 import account
 import events
+import friends
 import store
 from codzis_common.http import ApiError, now_iso, parse_body, response
 from onboarding import build_steps, compute_preferences, onboarding_version, public_steps, rag_profile, validate_answers
 
 USERS_TABLE = os.environ["USERS_TABLE"]
 POPULAR_LIMIT = 20
+MY_EVENTS_LIMIT = 100
 MAX_STATS_IDS = 100
 MAX_NAME = 60
+GOING_LIMIT = 60
 ANONYMOUS = "Ktoś"
 DISTRICTS = json.loads(os.environ["DISTRICTS"])
 RECOMMENDER_FUNCTION = os.environ.get("RECOMMENDER_FUNCTION")
@@ -94,6 +132,26 @@ def handler(event, context):
                 return response(200, get_attendees(claims, _event_id(event)))
             case "GET /api/popular":
                 return response(200, get_popular(claims))
+            case "GET /api/me/events":
+                return response(200, get_my_events(claims))
+            case "GET /api/friends":
+                return response(200, get_friends(claims))
+            case "POST /api/friends/code":
+                return response(200, {"code": friends.regenerate_code(claims["sub"], _require_name(claims))})
+            case "GET /api/friends/code/{code}":
+                return response(200, friends.preview(claims["sub"], _path(event, "code"), _epoch()))
+            case "POST /api/friends/invite":
+                return response(200, post_invite(claims, parse_body(event)))
+            case "PUT /api/friends/requests/{userId}":
+                return response(200, put_friend_request(claims, _path(event, "userId")))
+            case "DELETE /api/friends/requests/{userId}":
+                friends.decline(claims["sub"], _path(event, "userId"))
+                return response(200, {})
+            case "DELETE /api/friends/{userId}":
+                friends.remove(claims["sub"], _path(event, "userId"))
+                return response(200, {})
+            case "GET /api/friends/going":
+                return response(200, get_friends_going(claims))
         raise ApiError(404, "Nie znaleziono")
     except ApiError as e:
         return response(e.status, e.body)
@@ -109,7 +167,8 @@ def get_me(claims: dict) -> dict:
         "identityProvider = :provider",
         "#account = if_not_exists(#account, :account)",
     ]
-    for attr, claim in (("email", "email"), ("displayName", "name"), ("picture", "picture")):
+    copies = (("email", "email"), ("displayName", "name"), ("familyName", "family_name"), ("picture", "picture"))
+    for attr, claim in copies:
         if claims.get(claim):
             updates.append(f"{attr} = :{attr}")
             values[f":{attr}"] = claims[claim]
@@ -222,11 +281,11 @@ def get_event(claims: dict, event_id: str) -> dict:
 
 
 def put_save(claims: dict, event_id: str) -> dict:
-    """Zapis na wydarzenie (kopiuje imię z tokenu, a bez niego `displayName` z users; nigdy e-mail).
+    """Zapis na wydarzenie (kopiuje display_name z tokenu, a bez niego z users; nigdy e-mail ani pełne nazwisko).
     Ponowny zapis nic nie zmienia."""
     if not store.get_event(event_id):
         raise ApiError(404, "Nie znaleziono wydarzenia")
-    store.save(event_id, claims["sub"], _name(claims) or _stored_name(claims["sub"]), now_iso())
+    store.save(event_id, claims["sub"], display_name(claims) or _stored_name(claims["sub"]), now_iso())
     return {"saved": True, "saves": store.saves_of(event_id)}
 
 
@@ -237,14 +296,23 @@ def delete_save(claims: dict, event_id: str) -> dict:
 
 
 def get_attendees(claims: dict, event_id: str) -> dict:
-    """Lista zapisanych: tylko imiona (nigdy e-maile), najnowsi najpierw."""
+    """Lista zapisanych: userId i imię (nigdy e-maile), najnowsi najpierw."""
     rows = store.attendees(event_id)
     me = claims["sub"]
-    return {
-        "saves": store.saves_of(event_id),
-        "saved": store.is_saved(event_id, me),
-        "people": [{"name": row.get("name") or ANONYMOUS, "isMe": row["userId"] == me} for row in rows],
-    }
+    item = store.all_events().get(event_id) if rows else None
+    # znajomi widzą tylko nadchodzące zapisy - na minionych wydarzeniach nikt nie jest oznaczony
+    mine = friends.friend_ids(me) if item and _upcoming(events.next_slot(item, now=_now())) else {}
+    people = [
+        {
+            "userId": row["userId"],
+            "name": row.get("name") or ANONYMOUS,
+            "isMe": row["userId"] == me,
+            "isFriend": row["userId"] in mine,
+        }
+        for row in rows
+    ]
+    people.sort(key=lambda p: 0 if p["isMe"] else 1 if p["isFriend"] else 2)  # stabilnie: w grupie najnowsi
+    return {"saves": store.saves_of(event_id), "saved": store.is_saved(event_id, me), "people": people}
 
 
 def get_popular(claims: dict) -> dict:
@@ -266,6 +334,58 @@ def get_popular(claims: dict) -> dict:
     return {"window": _window(date_from, date_to), "items": _cards(claims, page)}
 
 
+def get_my_events(claims: dict) -> dict:
+    """Zakładka „Twoje”: wydarzenia, na które jestem zapisany (GSI byUser + pamięć codzis-events)."""
+    found = events.my_events(store.my_saves(claims["sub"]), store.all_events(), _now(), MY_EVENTS_LIMIT)
+    counts = store.saves_for(item["id"] for item, _, _ in found) if found else {}
+    return {
+        "items": [
+            events.card(item, slot, counts[item["id"]], True) | {"past": row["past"], "savedAt": row.get("savedAt")}
+            for item, slot, row in found
+        ]
+    }
+
+
+def get_friends(claims: dict) -> dict:
+    """Moja zakładka Znajomi: kod (pierwszy raz losowany), znajomi i zaproszenia."""
+    friends.get_or_create_code(claims["sub"], _require_name(claims))
+    return friends.overview(claims["sub"], _epoch())
+
+
+def post_invite(claims: dict, body: dict) -> dict:
+    code = body.get("code")
+    if not isinstance(code, str):
+        raise ApiError(400, "Podaj kod znajomego", fields=["code"])
+    return friends.invite(claims["sub"], _require_name(claims), code, _epoch())
+
+
+def put_friend_request(claims: dict, from_id: str) -> dict:
+    return friends.accept(claims["sub"], _require_name(claims), from_id, _epoch())
+
+
+def get_friends_going(claims: dict) -> dict:
+    """„Znajomi idą”: nadchodzące zapisy znajomych (≤ 50 zapytań GSI byUser) + mapa wydarzenie -> znajomi.
+
+    Znajomi jako {"userId", "name"} (po imieniu, potem po userId) - dwie „Ole” to dwie osoby.
+    """
+    now = _now()
+    going: dict[str, list[dict[str, str]]] = {}
+    for friend_id, name in friends.friend_ids(claims["sub"]).items():
+        for row in store.my_saves(friend_id):
+            going.setdefault(row["eventId"], []).append({"userId": friend_id, "name": name})
+    known = store.all_events()
+    upcoming = [(known[i], events.next_slot(known[i], now=now)) for i in going if i in known]
+    page = [(item, slot) for item, slot in upcoming if slot and _upcoming(slot)]
+    page.sort(key=lambda pair: (events.slot_sort_key(pair[1]), events.plain_text(pair[0].get("title"))))
+    by_event = {item["id"]: sorted(going[item["id"]], key=_friend_order) for item, _ in page}
+    cards = _cards(claims, page[:GOING_LIMIT])
+    return {"items": [card | {"friends": by_event[card["id"]]} for card in cards], "byEvent": by_event}
+
+
+def _friend_order(friend: dict[str, str]) -> tuple[str, str]:
+    return (friend["name"].casefold(), friend["userId"])
+
+
 def _cards(claims: dict, page: list[tuple[dict, dict]]) -> list[dict]:
     """Karty z licznikami z bazy (nie z pamięci) i stanem "Zapisano" użytkownika."""
     counts = store.saves_for(item["id"] for item, _ in page) if page else {}
@@ -277,15 +397,38 @@ def _window(date_from: date, date_to: date) -> dict:
     return {"from": date_from.isoformat(), "to": date_to.isoformat()}
 
 
-def _name(claims: dict) -> str | None:
-    """Imię z ID tokenu (atrybut Cognito `name`); puste -> None (na listach "Ktoś")."""
-    return _clean_name(claims.get("name"))
+def display_name(claims: dict) -> str | None:
+    """Imię widoczne dla innych z ID tokenu: `name` + inicjał `family_name` („Ola K.”); bez imienia -> None.
+
+    Jedyne miejsce, które składa imię kopiowane do zapisów i znajomych - pełnego nazwiska nie oddajemy nikomu."""
+    return _format_name(claims.get("name"), claims.get("family_name"))
+
+
+def _format_name(first: object, family: object) -> str | None:
+    name = _clean_name(first)
+    initial = next((c for c in _clean_name(family) or "" if c.isalpha()), None)
+    if not name:
+        return None
+    return f"{name} {initial.upper()}." if initial else name
 
 
 def _stored_name(user_id: str) -> str | None:
-    """Zapas, gdy token nie ma imienia: `displayName` zapisany przez GET /api/me (kopia claimu `name`)."""
-    item = users.get_item(Key={"userId": user_id}, ProjectionExpression="displayName").get("Item") or {}
-    return _clean_name(item.get("displayName"))
+    """Zapas, gdy token nie ma imienia: `displayName` + `familyName` zapisane przez GET /api/me (kopie claimów)."""
+    item = users.get_item(Key={"userId": user_id}, ProjectionExpression="displayName, familyName").get("Item") or {}
+    return _format_name(item.get("displayName"), item.get("familyName"))
+
+
+def _upcoming(slot: dict | None) -> bool:
+    """Termin od teraz, z datą (zajęcia bez harmonogramu nie mają daty - "nie wiadomo kiedy")."""
+    return bool(slot and (slot.get("date") or slot.get("start")))
+
+
+def _require_name(claims: dict) -> str:
+    """Znajomi muszą wiedzieć, kogo dodają: imię z tokenu albo z users, inaczej 409 name_required."""
+    name = display_name(claims) or _stored_name(claims["sub"])
+    if not name:
+        raise ApiError(409, "Podaj imię, zanim dodasz znajomych", code="name_required")
+    return name
 
 
 def _clean_name(value: object) -> str | None:
@@ -297,6 +440,11 @@ def _now() -> datetime:
     return datetime.now(events.WARSAW)
 
 
+def _epoch() -> int:
+    """Teraz w sekundach epoki (czasy i TTL w codzis-friends)."""
+    return int(_now().timestamp())
+
+
 def _query(event: dict) -> dict:
     return event.get("queryStringParameters") or {}
 
@@ -306,6 +454,13 @@ def _event_id(event: dict) -> str:
     if not event_id:
         raise ApiError(404, "Nie znaleziono wydarzenia")
     return event_id
+
+
+def _path(event: dict, name: str) -> str:
+    value = (event.get("pathParameters") or {}).get(name) or ""
+    if not value:
+        raise ApiError(404, "Nie znaleziono")
+    return value
 
 
 def _precompute(user_id: str) -> None:

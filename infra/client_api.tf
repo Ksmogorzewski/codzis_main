@@ -1,5 +1,5 @@
 # API portalu klienta: HTTP API + JWT authorizer (Cognito) -> Lambda -> tabela users
-# (+ odczyt codzis-events, zapisy na wydarzenia i liczniki: infra/community.tf).
+# (+ odczyt codzis-events, zapisy na wydarzenia, liczniki i znajomi: infra/community.tf).
 
 # Profile klientów pod rekomendacje (RAG): odpowiedzi z onboardingu, preferencje, profil tekstowy
 resource "aws_dynamodb_table" "users" {
@@ -67,7 +67,7 @@ resource "aws_iam_role_policy" "client_api" {
         Resource = aws_dynamodb_table.events.arn
       },
       {
-        # Zapisy na wydarzenia (Put/Delete także w TransactWriteItems), lista zapisanych, "moje zapisy"
+        # Zapisy na wydarzenia (Put/Delete także w TransactWriteItems), lista zapisanych, "moje zapisy" (GSI byUser)
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query"]
         Resource = [aws_dynamodb_table.attendance.arn, "${aws_dynamodb_table.attendance.arn}/index/*"]
@@ -77,6 +77,15 @@ resource "aws_iam_role_policy" "client_api" {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:BatchGetItem", "dynamodb:Query"]
         Resource = [aws_dynamodb_table.event_stats.arn, "${aws_dynamodb_table.event_stats.arn}/index/*"]
+      },
+      {
+        # Znajomi: kody, zaproszenia, znajomości, limit złych kodów (Put/Delete/ConditionCheck także w TransactWriteItems)
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem", "dynamodb:Query",
+          "dynamodb:ConditionCheckItem",
+        ]
+        Resource = aws_dynamodb_table.friends.arn
       },
       {
         # Po zapisaniu profilu i przy logowaniu: przeliczenie rekomendacji w tle
@@ -114,6 +123,7 @@ resource "aws_lambda_function" "client_api" {
       EVENTS_TABLE         = aws_dynamodb_table.events.name
       ATTENDANCE_TABLE     = aws_dynamodb_table.attendance.name
       STATS_TABLE          = aws_dynamodb_table.event_stats.name
+      FRIENDS_TABLE        = aws_dynamodb_table.friends.name
       # zdjęcia profilowe w buckecie zdjęć ogłoszeń, serwowane przez CloudFront panelu pod /photos/*
       PHOTOS_BUCKET   = aws_s3_bucket.photos.id
       PHOTOS_BASE_URL = local.website_origin
@@ -172,6 +182,15 @@ resource "aws_apigatewayv2_route" "client" {
     "DELETE /api/events/{id}/save",
     "GET /api/events/{id}/attendees",
     "GET /api/popular",
+    "GET /api/me/events",
+    "GET /api/friends",
+    "POST /api/friends/code",
+    "GET /api/friends/code/{code}",
+    "POST /api/friends/invite",
+    "PUT /api/friends/requests/{userId}",
+    "DELETE /api/friends/requests/{userId}",
+    "DELETE /api/friends/{userId}",
+    "GET /api/friends/going",
   ])
 
   api_id             = aws_apigatewayv2_api.client.id

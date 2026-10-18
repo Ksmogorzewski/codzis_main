@@ -1,4 +1,4 @@
-"""Wydarzenia dla Eksploruj i Popularnych: rekord v1 -> karta, okna czasu, termin, filtry, pamięć scanu.
+"""Wydarzenia (Eksploruj, Popularne, „Twoje”): rekord v1 -> karta, okna czasu, termin, filtry, pamięć scanu.
 
 Czyste funkcje (bez AWS) - DynamoDB obsługuje store.py, HTTP handler.py.
 
@@ -267,6 +267,15 @@ def _schedule_slot(event: dict, from_d: date | None, to_d: date | None, now_dt: 
     return None
 
 
+def last_slot(event: dict) -> dict | None:
+    """Ostatni termin wydarzenia z datami (dla minionych na liście „Twoje”); zajęcia co tydzień -> None."""
+    found = event_occurrences(event)
+    if _is_recurring(event) or not found:
+        return None
+    start, end, all_day = found[-1]
+    return {"start": start.isoformat(), "end": end.isoformat() if end else None, "allDay": all_day}
+
+
 def slot_sort_key(slot: dict) -> float:
     """Start terminu jako znacznik czasu; zajęcia bez harmonogramu na końcu."""
     if slot.get("recurring"):
@@ -368,6 +377,32 @@ def explore(events: list[dict], f: Filters, now: datetime) -> list[tuple[dict, d
             found.append((event, slot))
     found.sort(key=lambda pair: (slot_sort_key(pair[1]), plain_text(pair[0].get("title"))))
     return found
+
+
+def my_events(
+    saves: list[dict], known: dict[str, dict], now: datetime, limit: int
+) -> list[tuple[dict, dict | None, dict]]:
+    """Zakładka „Twoje”: (wydarzenie, termin, zapis) dla moich zapisów (najnowsze najpierw, maks. `limit`).
+
+    Pomija wydarzenia, których nie ma już w codzis-events (zapisy zostają do analityki). Najpierw
+    nadchodzące od najbliższego terminu, potem minione (`zapis["past"] = True`, termin = ostatni)
+    od najświeższego."""
+    upcoming: list[tuple[dict, dict | None, dict]] = []
+    past: list[tuple[dict, dict | None, dict]] = []
+    for row in saves:
+        event = known.get(row["eventId"])
+        if not event:
+            continue
+        slot = next_slot(event, now=now)
+        if slot:
+            upcoming.append((event, slot, row | {"past": False}))
+        else:
+            past.append((event, last_slot(event), row | {"past": True}))
+        if len(upcoming) + len(past) == limit:
+            break
+    upcoming.sort(key=lambda pair: (slot_sort_key(pair[1] or {}), plain_text(pair[0].get("title"))))
+    past.sort(key=lambda pair: (-slot_sort_key(pair[1]) if pair[1] else float("inf"), plain_text(pair[0].get("title"))))
+    return upcoming + past
 
 
 def fold(text: str) -> str:

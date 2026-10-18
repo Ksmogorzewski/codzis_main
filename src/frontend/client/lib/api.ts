@@ -14,6 +14,8 @@ export type ApiError = { status: number; code: string; message: string; fields: 
 export type ApiResult<T> = Result<T, ApiError>;
 
 export const NEEDS_ONBOARDING = "needs_onboarding";
+/** 409 z tras znajomych: konto bez imienia (front pokazuje prośbę o imię). */
+export const NAME_REQUIRED = "name_required";
 
 const MESSAGES = {
   network: "Brak połączenia z serwerem. Spróbuj ponownie.",
@@ -137,9 +139,17 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
   return failureCount < 1 && isTransientError(error);
 }
 
-/** Czy błąd oznacza, że trzeba najpierw wypełnić profil (409 / code "needs_onboarding"). */
+/**
+ * Czy błąd oznacza, że trzeba najpierw wypełnić profil (code "needs_onboarding"; 409 bez kodu dostaje go
+ * w toApiError). Inne 409 z kodem (name_required, friend_limit) to nie ankieta.
+ */
 export function isNeedsOnboarding(error: unknown): boolean {
-  return error instanceof ApiRequestError && (error.code === NEEDS_ONBOARDING || error.status === 409);
+  return error instanceof ApiRequestError && error.code === NEEDS_ONBOARDING;
+}
+
+/** Czy błąd oznacza konto bez imienia (409 / code "name_required" z tras znajomych). */
+export function isNameRequired(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.code === NAME_REQUIRED;
 }
 
 // --- zimny start Lambdy rekomendacji ---

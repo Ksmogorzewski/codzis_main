@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { AI_HOST, type ChatState, chatReducer, crewMembers, initialChat, membersLine, ownLabel, timeline } from "./crew-chat";
+import {
+  AI_HOST,
+  type ChatState,
+  chatReducer,
+  crewMembers,
+  initialChat,
+  memberNames,
+  membersLine,
+  ownLabel,
+  timeline,
+} from "./crew-chat";
 
 const seed = [{ kind: "them" as const, author: "Kamil", text: "Cześć!" }];
 
@@ -68,26 +78,56 @@ describe("timeline", () => {
 
 describe("crewMembers", () => {
   const demo = ["Kamil", "Marta", "Antek"];
+  const demoMembers = [
+    { userId: "demo-1", name: "Kamil" },
+    { userId: "demo-2", name: "Marta" },
+    { userId: "demo-3", name: "Antek" },
+  ];
 
-  it("bez listy zapisanych: same imiona z demo", () => {
-    expect(crewMembers(undefined, demo, 3)).toEqual(demo);
+  it("bez listy zapisanych: osoby z demo ze stałymi id", () => {
+    expect(crewMembers(undefined, demo, 3)).toEqual(demoMembers);
   });
 
-  it("prawdziwi zapisani najpierw, bez mnie, bez pustych/„Ktoś” i powtórzeń; reszta z demo", () => {
+  it("prawdziwi zapisani najpierw, bez mnie, bez pustych/„Ktoś” i powtórzeń osoby; reszta z demo", () => {
     const people = [
-      { name: "Ola", isMe: true },
-      { name: " Piotr ", isMe: false },
-      { name: null, isMe: false },
-      { name: "Ktoś", isMe: false },
-      { name: "Piotr", isMe: false },
-      { name: "Marta", isMe: false },
+      { userId: "u1", name: "Ola", isMe: true },
+      { userId: "u2", name: " Piotr ", isMe: false },
+      { userId: "u3", name: null, isMe: false },
+      { userId: "u4", name: "Ktoś", isMe: false },
+      { userId: "u2", name: "Piotr", isMe: false },
+      { userId: "u5", name: "Marta", isMe: false },
     ];
-    expect(crewMembers(people, demo, 3)).toEqual(["Piotr", "Marta", "Kamil"]);
+    expect(crewMembers(people, demo, 3)).toEqual([
+      { userId: "u2", name: "Piotr" },
+      { userId: "u5", name: "Marta" },
+      { userId: "demo-1", name: "Kamil" },
+    ]);
+  });
+
+  it("dwie zapisane „Ole” to dwie osoby w ekipie", () => {
+    const people = [
+      { userId: "u1", name: "Ola", isMe: false },
+      { userId: "u2", name: "Ola", isMe: false },
+    ];
+    expect(crewMembers(people, demo, 3)).toEqual([
+      { userId: "u1", name: "Ola" },
+      { userId: "u2", name: "Ola" },
+      { userId: "demo-1", name: "Kamil" },
+    ]);
+    expect(memberNames(crewMembers(people, demo, 3))).toEqual(["Ola", "Ola", "Kamil"]);
+  });
+
+  it("stary kontrakt bez userId: powtórzone imię to ta sama osoba", () => {
+    const people = [
+      { name: "Piotr", isMe: false },
+      { name: "Piotr", isMe: false },
+    ];
+    expect(memberNames(crewMembers(people, demo, 3))).toEqual(["Piotr", "Kamil", "Marta"]);
   });
 
   it("więcej zapisanych niż miejsc: tylko pierwsi (najnowsi)", () => {
-    const people = ["A", "B", "C", "D"].map((name) => ({ name, isMe: false }));
-    expect(crewMembers(people, demo, 3)).toEqual(["A", "B", "C"]);
+    const people = ["A", "B", "C", "D"].map((name) => ({ userId: name, name, isMe: false }));
+    expect(memberNames(crewMembers(people, demo, 3))).toEqual(["A", "B", "C"]);
   });
 });
 

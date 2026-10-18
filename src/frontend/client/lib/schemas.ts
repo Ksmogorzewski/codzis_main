@@ -241,12 +241,21 @@ export type EventDetail = z.infer<typeof EventDetailSchema>;
 export const SaveResultSchema = z.object({ saved: z.boolean(), saves: z.number().int().nonnegative() });
 export type SaveResult = z.infer<typeof SaveResultSchema>;
 
-// GET /api/events/{id}/attendees (max 100, najnowsi najpierw; tylko imiona, nigdy e-maile)
+// GET /api/events/{id}/attendees (max 100: ja, znajomi, reszta od najnowszych; userId i imię, nigdy e-maile)
 export const AttendeesSchema = z.object({
   saves: z.number().int().nonnegative().default(0),
   saved: z.boolean().default(false),
   people: z
-    .array(z.object({ name: z.string().nullable().default(null).catch(null), isMe: z.boolean().default(false) }))
+    .array(
+      z.object({
+        // tożsamość osoby (sub z Cognito, dane testowe "seed-<n>"); null = stary kontrakt bez id
+        userId: z.string().nullable().default(null).catch(null),
+        name: z.string().nullable().default(null).catch(null),
+        isMe: z.boolean().default(false),
+        // znajomi są na górze listy (kolejność z API: ja, znajomi, reszta)
+        isFriend: z.boolean().default(false).catch(false),
+      }),
+    )
     .default([]),
 });
 export type Attendees = z.infer<typeof AttendeesSchema>;
@@ -261,6 +270,112 @@ export const EventStatsSchema = z.record(z.string(), z.unknown()).transform((raw
   }
   return out;
 });
+
+// GET /api/me/events (zakładka „Twoje”): moje zapisy, najpierw nadchodzące od najbliższego terminu,
+// potem minione (past = true, slot = ostatni termin) od najświeższego; maks. 100.
+export const MyEventSchema = CardSchema.extend({
+  past: z.boolean().default(false).catch(false),
+  savedAt: nullableString,
+});
+export type MyEvent = z.infer<typeof MyEventSchema>;
+
+export const MyEventsSchema = z.object({
+  // Zepsutą kartę pomijamy, zamiast odrzucać całą odpowiedź.
+  items: z
+    .array(z.unknown())
+    .default([])
+    .transform((xs) =>
+      xs.flatMap((x) => {
+        const r = MyEventSchema.safeParse(x);
+        return r.success ? [r.data] : [];
+      }),
+    ),
+});
+export type MyEvents = z.infer<typeof MyEventsSchema>;
+
+// --- Znajomi (src/client_api/friends.py + trasy /api/friends w handler.py) ---
+
+// Czasy (since, createdAt) tylko do wyświetlenia/sortowania - nie wiemy, czy liczba, czy ISO, więc luźno.
+const timestamp = z.union([z.string(), z.number()]).nullable().default(null).catch(null);
+const friendName = z.string().catch("Ktoś");
+
+/** Zepsuty wpis pomijamy, zamiast odrzucać całą odpowiedź. */
+const listOf = <T extends z.ZodType>(schema: T) =>
+  z
+    .array(z.unknown())
+    .default([])
+    .catch([])
+    .transform((xs) =>
+      xs.flatMap((x) => {
+        const r = schema.safeParse(x);
+        return r.success ? [r.data as z.output<T>] : [];
+      }),
+    );
+
+export const FriendSchema = z.object({ userId: z.string(), name: friendName, since: timestamp });
+export type Friend = z.infer<typeof FriendSchema>;
+
+export const FriendRequestSchema = z.object({ userId: z.string(), name: friendName, createdAt: timestamp });
+export type FriendRequest = z.infer<typeof FriendRequestSchema>;
+
+// GET /api/friends: mój kod, znajomi (obustronni), zaproszenia do mnie (incoming) i ode mnie (outgoing)
+export const FriendsOverviewSchema = z.object({
+  code: z.string(),
+  friends: listOf(FriendSchema),
+  incoming: listOf(FriendRequestSchema),
+  outgoing: listOf(FriendRequestSchema),
+});
+export type FriendsOverview = z.infer<typeof FriendsOverviewSchema>;
+
+// POST /api/friends/code -> nowy kod (stary przestaje działać)
+export const FriendCodeSchema = z.object({ code: z.string() });
+
+// GET /api/friends/code/{code} -> czyj to kod (tylko imię)
+export const FriendPreviewSchema = z.object({ userId: z.string(), name: friendName });
+export type FriendPreview = z.infer<typeof FriendPreviewSchema>;
+
+// POST /api/friends/invite {code}: "pending" = zaproszenie wysłane; "friends" = już znajomi
+// (albo właściciel kodu wcześniej zaprosił mnie - automatyczna akceptacja)
+export const InviteResultSchema = z.object({
+  status: z.enum(["pending", "friends"]).catch("pending"),
+  userId: z.string().optional().catch(undefined),
+  name: z.string().optional().catch(undefined),
+});
+export type InviteResult = z.infer<typeof InviteResultSchema>;
+
+// PUT /api/friends/requests/{userId} -> {status: "friends"}
+export const FriendStatusSchema = z.object({ status: z.string().default("friends") });
+
+// DELETE /api/friends/requests/{userId}, DELETE /api/friends/{userId} -> {}
+export const EmptySchema = z.object({}).catch({});
+
+// GET /api/friends/going: nadchodzące wydarzenia znajomych (po starcie, maks. 60) ze znajomymi {userId, name}
+// (po imieniu, potem po userId) i mapa wydarzenie -> znajomi dla linijki „Ola idzie” na kartach wszystkich list.
+// Tożsamość = userId (dwie „Ole” to dwie osoby); zepsuty wpis pomijamy.
+export const GoingFriendSchema = z.object({ userId: z.string(), name: friendName });
+export type GoingFriend = z.infer<typeof GoingFriendSchema>;
+
+const goingFriends = listOf(GoingFriendSchema);
+
+export const FriendsGoingCardSchema = CardSchema.extend({ friends: goingFriends });
+export type FriendsGoingCard = z.infer<typeof FriendsGoingCardSchema>;
+
+export const FriendsGoingSchema = z.object({
+  items: listOf(FriendsGoingCardSchema),
+  byEvent: z
+    .record(z.string(), z.unknown())
+    .default({})
+    .catch({})
+    .transform((raw) => {
+      const out: Record<string, GoingFriend[]> = {};
+      for (const [id, value] of Object.entries(raw)) {
+        const friends = goingFriends.parse(value);
+        if (friends.length > 0) out[id] = friends;
+      }
+      return out;
+    }),
+});
+export type FriendsGoing = z.infer<typeof FriendsGoingSchema>;
 
 // --- błąd API: {error: "komunikat PL", fields?, code?} ---
 

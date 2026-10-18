@@ -3,7 +3,15 @@ import { z } from "zod";
 
 export type AuthMode = "login" | "register" | "confirm" | "reset" | "resetConfirm";
 
-export type AuthFormValues = { name: string; email: string; password: string; code: string; newPassword: string };
+export type AuthFormValues = {
+  name: string;
+  /** Nazwisko (opcjonalnie): innym pokazujemy tylko inicjał („Ola K.”). */
+  familyName: string;
+  email: string;
+  password: string;
+  code: string;
+  newPassword: string;
+};
 
 export const AUTH_TITLES: Record<AuthMode, string> = {
   login: "Zaloguj się",
@@ -53,7 +61,24 @@ export function nameError(raw: string): string | null {
   return r.success ? null : (r.error.issues[0]?.message ?? "Podaj imię.");
 }
 
-/** Pola widoczne w danym kroku. Imię tylko przy rejestracji (później go nie zmieniamy). */
+/** Nazwisko z rejestracji (opcjonalne): puste = brak, inaczej te same reguły co imię. */
+export const FamilyNameSchema = z
+  .string()
+  .transform(collapseName)
+  .pipe(
+    z
+      .string()
+      .max(MAX_NAME, `Nazwisko może mieć najwyżej ${MAX_NAME} znaków.`)
+      .refine((v) => v === "" || NAME_RE.test(v), "Nazwisko może zawierać tylko litery, spacje i myślnik."),
+  );
+
+/** Komunikat błędu nazwiska albo null (także gdy puste). */
+export function familyNameError(raw: string): string | null {
+  const r = FamilyNameSchema.safeParse(raw);
+  return r.success ? null : (r.error.issues[0]?.message ?? "Popraw nazwisko.");
+}
+
+/** Pola widoczne w danym kroku. Imię i nazwisko tylko przy rejestracji (później ich nie zmieniamy). */
 export const showsName = (mode: AuthMode) => mode === "register";
 export const showsEmail = (mode: AuthMode) => mode === "login" || mode === "register" || mode === "reset";
 export const showsPassword = (mode: AuthMode) => mode === "login" || mode === "register";
@@ -66,6 +91,8 @@ export const normalizeCode = (raw: string) => raw.replace(/\D/g, "").slice(0, 6)
 export function validateAuthForm(mode: AuthMode, v: AuthFormValues): string | null {
   const badName = showsName(mode) ? nameError(v.name) : null;
   if (badName) return badName;
+  const badFamilyName = showsName(mode) ? familyNameError(v.familyName) : null;
+  if (badFamilyName) return badFamilyName;
   if (showsEmail(mode) && !EMAIL_RE.test(v.email.trim())) return "Podaj poprawny adres e-mail.";
   if (mode === "login" && !v.password) return "Podaj hasło.";
   if (mode === "register" && v.password.length < 8) return "Hasło musi mieć min. 8 znaków, w tym małą literę i cyfrę.";

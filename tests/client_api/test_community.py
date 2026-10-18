@@ -172,7 +172,28 @@ def test_save_never_falls_back_to_email(api, attendance_table, users_table):
     item = attendance_table.get_item(Key={"eventId": "today", "userId": "user-3"})["Item"]
     assert "name" not in item
     _, body = call(api, "GET /api/events/{id}/attendees", claims=NONAME, path={"id": "today"})
-    assert body["people"] == [{"name": "Ktoś", "isMe": True}]
+    assert body["people"] == [{"userId": "user-3", "name": "Ktoś", "isMe": True, "isFriend": False}]
+
+
+@pytest.mark.parametrize(
+    ("family_name", "expected"),
+    [("Kowalska", "Ola K."), ("  łukasiewicz ", "Ola Ł."), ("   ", "Ola"), (None, "Ola")],
+)
+def test_save_shows_surname_initial_only(api, attendance_table, family_name, expected):
+    claims = {"sub": "user-9", "email": "ola@example.com", "name": "Ola", "family_name": family_name}
+    save(api, "today", claims)
+    item = attendance_table.get_item(Key={"eventId": "today", "userId": "user-9"})["Item"]
+    assert item["name"] == expected
+    _, body = call(api, "GET /api/events/{id}/attendees", claims=BARTEK, path={"id": "today"})
+    assert body["people"][0]["name"] == expected
+    assert "owalska" not in str(body) and "ukasiewicz" not in str(body)
+
+
+def test_save_without_name_claim_uses_stored_surname_initial(api, attendance_table, users_table):
+    users_table.put_item(Item={"userId": "user-3", "displayName": "Cezary", "familyName": "Nowak"})
+    save(api, "today", NONAME)
+    item = attendance_table.get_item(Key={"eventId": "today", "userId": "user-3"})["Item"]
+    assert item["name"] == "Cezary N."
 
 
 def test_save_name_claim_wins_over_display_name(api, attendance_table, users_table):
@@ -195,7 +216,7 @@ def test_attendees_read_is_consistent(api, monkeypatch):
     monkeypatch.setattr(client, "query", spy)
     save(api, "today")
     _, body = call(api, "GET /api/events/{id}/attendees", claims=ALA, path={"id": "today"})
-    assert body["people"] == [{"name": "Ala", "isMe": True}]
+    assert body["people"] == [{"userId": "user-1", "name": "Ala", "isMe": True, "isFriend": False}]
     assert calls and all(c.get("ConsistentRead") is True for c in calls if "IndexName" not in c)
 
 
@@ -220,13 +241,19 @@ def test_attendees_newest_first_without_emails(api, attendance_table):
         UpdateExpression="SET savedAt = :t",
         ExpressionAttributeValues={":t": "2026-10-01T00:00:00+00:00"},
     )
-    status, body = call(api, "GET /api/events/{id}/attendees", claims=ALA, path={"id": "today"})
+    status, body = call(api, "GET /api/events/{id}/attendees", claims=BARTEK, path={"id": "today"})
     assert status == 200
     assert body == {
         "saves": 2,
-        "saved": True,
-        "people": [{"name": "Ktoś", "isMe": False}, {"name": "Ala", "isMe": True}],
+        "saved": False,
+        "people": [
+            {"userId": "user-3", "name": "Ktoś", "isMe": False, "isFriend": False},
+            {"userId": "user-1", "name": "Ala", "isMe": False, "isFriend": False},
+        ],
     }
+    # własny wpis zawsze na górze
+    _, body = call(api, "GET /api/events/{id}/attendees", claims=ALA, path={"id": "today"})
+    assert [p["name"] for p in body["people"]] == ["Ala", "Ktoś"]
     assert "example.com" not in str(body)
 
 

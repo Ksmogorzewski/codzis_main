@@ -40,6 +40,13 @@ def test_get_me_creates_user_from_claims(client_api, users_table):
     assert item["createdAt"] == item["lastLoginAt"]
     assert item["displayName"] == "Ala"
     assert "picture" not in item
+    assert "familyName" not in item
+
+
+def test_get_me_stores_family_name(client_api, users_table):
+    claims = {"sub": "user-1", "email": "ala@example.com", "name": "Ala", "family_name": "Kowalska"}
+    call(client_api, "GET /api/me", claims=claims)
+    assert users_table.get_item(Key={"userId": "user-1"})["Item"]["familyName"] == "Kowalska"
 
 
 def test_get_me_keeps_created_at_on_second_call(client_api, users_table):

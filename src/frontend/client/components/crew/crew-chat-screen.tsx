@@ -1,5 +1,5 @@
 import { getRouteApi, Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { errorText, RouteError } from "@/components/layout/route-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAttendees } from "@/hooks/use-attendees.query";
 import { useEvent } from "@/hooks/use-event.query";
 import { useEventCard } from "@/hooks/use-event-card.query";
-import { currentName } from "@/lib/auth";
+import { currentDisplayName } from "@/lib/auth";
 import { CATEGORY_LABEL, categoryOf } from "@/lib/categories";
-import { crewMembers, membersLine, ownLabel } from "@/lib/crew-chat";
-import { DEMO_CREW } from "@/lib/crew-demo";
+import { crewMembers, memberNames, membersLine, ownLabel } from "@/lib/crew-chat";
+import { DEMO_CREW, demoInbox } from "@/lib/crew-demo";
+import { inboxStore, useInbox } from "@/lib/crew-inbox";
 import { placeLabel, slotLabel } from "@/lib/events";
 import type { Card } from "@/lib/schemas";
 import { CrewChat } from "./crew-chat";
@@ -36,16 +37,24 @@ export function CrewChatScreen() {
   const joined = attendees.data?.saved ?? card?.saved === true;
   // Skład ustalamy po odpowiedzi listy zapisanych, żeby imiona nie zmieniały się w trakcie rozmowy.
   const membersReady = attendees.data !== undefined || attendees.isError;
-  const members = crewMembers(attendees.data?.people, DEMO_CREW.names, DEMO_CREW.capacity - 1);
+  const members = memberNames(crewMembers(attendees.data?.people, DEMO_CREW.names, DEMO_CREW.capacity - 1));
+  const inbox = useInbox();
+  const chatOpen = Boolean(card && membersReady && joined);
+
+  // Otwarty czat = wszystko przeczytane (plakietki na „Twoje” i w nawigacji znikają). DEMO: lib/crew-inbox.ts.
+  useEffect(() => {
+    if (chatOpen) inboxStore.markRead(id);
+  }, [chatOpen, id]);
 
   let body: ReactNode;
-  if (card && membersReady && joined) {
+  if (card && chatOpen) {
     body = (
       <CrewChat
         // key: inne wydarzenie = nowa ekipa i świeży stan czatu
         key={id}
         members={members}
-        myLabel={ownLabel(currentName())}
+        seed={demoInbox(members, id, inbox[id]?.arrived ?? 0)}
+        myLabel={ownLabel(currentDisplayName())}
         category={CATEGORY_LABEL[categoryOf(card.tags)]}
         place={placeLabel(card)}
         when={slotLabel(card.slot, new Date())}
