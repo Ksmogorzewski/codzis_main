@@ -1,6 +1,6 @@
 import { isRedirect } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
-import { afterLoginTarget, requireSession } from "./login-redirect";
+import { afterLoginTarget, rememberTarget, requireSession, takeTarget } from "./login-redirect";
 
 const auth = (session: boolean) => ({ hasSession: async () => session });
 
@@ -40,5 +40,27 @@ describe("invite route keeps code through login redirect", () => {
     expect(afterLoginTarget({ redirect: "https://zly.example" })).toBe("/");
     expect(afterLoginTarget({ redirect: "//zly.example" })).toBe("/");
     expect(afterLoginTarget({ redirect: "/login" })).toBe("/");
+  });
+});
+
+describe("adres z zaproszenia przetrwa ankietę (nowe konto z QR)", () => {
+  const memory = () => {
+    let value: unknown = null;
+    return { read: () => value, write: (v: unknown) => void (value = v) };
+  };
+
+  it("zapamiętany przed ankietą, odczytany raz po jej zapisie", () => {
+    const store = memory();
+    rememberTarget("/znajomi/dodaj/WAW-7K2P9X", store);
+    expect(takeTarget(store)).toBe("/znajomi/dodaj/WAW-7K2P9X");
+    expect(takeTarget(store)).toBeNull();
+  });
+
+  it("strona główna i obce adresy nie są zapamiętywane", () => {
+    const store = memory();
+    rememberTarget("/", store);
+    expect(takeTarget(store)).toBeNull();
+    store.write("https://zly.example");
+    expect(takeTarget(store)).toBeNull();
   });
 });

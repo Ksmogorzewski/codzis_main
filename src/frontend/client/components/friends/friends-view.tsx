@@ -126,6 +126,8 @@ const Initial = ({ name }: { name: string }) => (
 function Requests({ items }: { items: FriendRequest[] }) {
   const accept = useAcceptFriend();
   const decline = useDeclineFriend();
+  // jedno zapytanie naraz (podwójne stuknięcie nie wysyła drugiego)
+  const busy = accept.isPending || decline.isPending;
   if (items.length === 0) return null;
 
   return (
@@ -142,12 +144,13 @@ function Requests({ items }: { items: FriendRequest[] }) {
               <div className="flex w-full gap-2 sm:w-auto">
                 <Button
                   className="flex-1"
+                  disabled={busy}
                   aria-busy={(accept.isPending && accept.variables === r.userId) || undefined}
                   onClick={() => accept.mutate(r.userId)}
                 >
                   Akceptuj
                 </Button>
-                <Button variant="secondary" className="flex-1" onClick={() => decline.mutate(r.userId)}>
+                <Button variant="secondary" className="flex-1" disabled={busy} onClick={() => decline.mutate(r.userId)}>
                   Odrzuć
                 </Button>
               </div>

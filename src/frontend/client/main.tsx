@@ -16,7 +16,9 @@ const onError = (error: unknown) => {
   if (error instanceof ApiRequestError && error.status === 401) {
     void routerAuth.signOut();
     queryClient.clear();
-    void router.navigate({ to: "/login" });
+    // po ponownym zalogowaniu powrót na bieżący ekran (lib/login-redirect.ts)
+    const href = router.state.location.href;
+    void router.navigate({ to: "/login", search: href && href !== "/" ? { redirect: href } : {} });
   } else if (isNeedsOnboarding(error)) {
     void router.navigate({ to: "/profil" });
   } else if (isNameRequired(error)) {

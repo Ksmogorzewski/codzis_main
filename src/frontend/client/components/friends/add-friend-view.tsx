@@ -49,7 +49,7 @@ function Invite({ code, person, overview }: { code: string; person: FriendPrevie
   return (
     <Message
       icon="person_add"
-      title={`Wysłać zaproszenie do ${person.name}?`}
+      title={`Wysłać zaproszenie do użytkownika ${person.name}?`}
       description={
         pending
           ? "Zaproszenie już wysłane — czeka na akceptację."

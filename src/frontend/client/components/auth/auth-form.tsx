@@ -32,7 +32,7 @@ import {
   validateAuthForm,
 } from "@/lib/auth-form";
 import { config } from "@/lib/config";
-import { afterLoginTarget } from "@/lib/login-redirect";
+import { afterLoginTarget, rememberTarget } from "@/lib/login-redirect";
 import { ok } from "@/lib/result";
 
 const loginRoute = getRouteApi("/login");
@@ -69,6 +69,8 @@ export function AuthForm() {
     queryClient.clear(); // bez danych poprzedniego użytkownika
     try {
       const me = await queryClient.fetchQuery(meQueryOptions);
+      // przy ankiecie adres zaproszenia czeka na jej zapis (survey-view.tsx); bez ankiety - stary czyścimy
+      rememberTarget(me.needsOnboarding || me.onboardingOutdated ? afterLoginTarget(search) : null);
       if (me.needsOnboarding) await navigate({ to: "/profil" });
       else if (me.onboardingOutdated) {
         toast("Dodaliśmy nowe pytania – uzupełnij profil.");

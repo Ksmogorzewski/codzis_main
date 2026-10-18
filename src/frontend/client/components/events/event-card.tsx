@@ -97,6 +97,7 @@ export function EventCard({ card, position, now, rank, saveLabel }: Props) {
             </span>
           </p>
         )}
+        {/* Na 360 px trzy przyciski mieszczą się tylko bez ikony „Szczegóły” i z mniejszym marginesem. */}
         <div className="mt-auto flex gap-2">
           {route && (
             <Button asChild variant="outline" size="icon" className="size-12">
@@ -105,10 +106,19 @@ export function EventCard({ card, position, now, rank, saveLabel }: Props) {
               </a>
             </Button>
           )}
-          <SaveButton id={card.id} saved={card.saved} saves={card.saves} label={saveLabel} className="flex-1 px-3" />
-          <Button asChild className="flex-1 px-3">
+          <SaveButton
+            id={card.id}
+            saved={card.saved}
+            saves={card.saves}
+            label={saveLabel}
+            className="min-w-0 flex-1 px-3 max-[380px]:px-2"
+          />
+          <Button asChild className="min-w-0 flex-1 px-3 max-[380px]:px-2">
             <Link to={to} params={params}>
-              <Icon name="info" />
+              {/* ukrywa opakowanie: arkusz Material Symbols (poza warstwami) wygrywa z „hidden” na samej ikonie */}
+              <span className="flex max-[380px]:hidden">
+                <Icon name="info" />
+              </span>
               Szczegóły
             </Link>
           </Button>
