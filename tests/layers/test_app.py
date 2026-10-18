@@ -250,6 +250,19 @@ def test_access_log_on_errors(call, log_lines):
     assert any(line["level"] == "ERROR" and line.get("status") == 503 for line in lines)
 
 
+def test_unmatched_route_logged_without_path(call, log_lines):
+    """Nieznana ścieżka albo zła metoda: w logu sama metoda - surowy adres może zawierać identyfikatory."""
+    call("GET", "/api/users/sekretne-id-42")
+    call("DELETE", "/api/items/sekretne-id-43")
+    lines = log_lines()
+    access = [line for line in lines if line["message"] == "access"]
+    assert [(line["route"], line["status"]) for line in access] == [
+        ("GET (unmatched)", 404),
+        ("DELETE (unmatched)", 404),
+    ]
+    assert "sekretne-id" not in json.dumps(lines)
+
+
 def test_logs_never_contain_body(call, log_lines):
     for path in ("/api/created", "/api/invite", "/api/input", "/api/nie-ma"):
         call("POST", path, SECRET_BODY)

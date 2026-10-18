@@ -41,8 +41,9 @@ Kontrakt HTTP jak w dawnym `codzis_common.http.handle_request` + `response`:
 
 Logi (Powertools `Logger`, JSON w CloudWatch, `correlation_id` = requestId API Gateway - ten sam, który klient
 widzi w odpowiedzi 500; Logs Insights: `filter correlation_id = "..."`): jedna linia `"message": "access"` na
-żądanie z `route` (szablon trasy, np. "GET /api/events/{id}" - bez identyfikatorów z adresu), `status`,
-`durationMs`. Nigdy body, claims, e-maili, imion, lokalizacji, tokenów. Serwis: `POWERTOOLS_SERVICE_NAME`.
+żądanie z `route` (szablon trasy, np. "GET /api/events/{id}" - bez identyfikatorów z adresu; nieznana trasa:
+"GET (unmatched)"), `status`, `durationMs`. Nigdy body, claims, e-maili, imion, lokalizacji, tokenów. Serwis:
+`POWERTOOLS_SERVICE_NAME`.
 """
 
 import json
@@ -169,7 +170,7 @@ class _App(ApiGatewayResolver):
         return result
 
     def _remember_route(self, app: ApiGatewayResolver, next_middleware: NextMiddleware) -> Response:
-        """Middleware: zapamiętuje szablon dopasowanej trasy ("GET /api/events/{id}"; nieznana trasa - ścieżka)."""
+        """Middleware: zapamiętuje szablon dopasowanej trasy ("GET /api/events/{id}"; nieznaną ustawia `_not_found`)."""
         self._access_route = f"{app.request.method} {app.request.route}"
         return next_middleware(app)
 
@@ -203,6 +204,8 @@ class _App(ApiGatewayResolver):
         return Response(status_code=500, content_type=JSON, body=body)
 
     def _not_found(self, _: NotFoundError) -> Response:
+        # Bez surowej ścieżki: nieznany adres może zawierać identyfikatory.
+        self._access_route = f"{self.current_event.http_method} (unmatched)"
         return self._api_error(ApiError(404, NOT_FOUND))
 
 
