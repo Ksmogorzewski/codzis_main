@@ -168,7 +168,7 @@ output "recommender_function" {
 }
 
 output "google_oauth_secret" {
-  description = "Sekret AWS Secrets Manager z klientem OAuth Google (JSON: client_id, client_secret)"
+  description = "Sekret AWS Secrets Manager z klientem OAuth Google: put-secret-value z JSON-em client_id, client_secret"
   value       = local.google_secret_name
 }
 

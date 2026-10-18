@@ -85,7 +85,7 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 6. **Nowa tabela = Terraform** (`PAY_PER_REQUEST`, `point_in_time_recovery` dla danych, których nie da się odtworzyć, TTL gdy dane wygasają) + jeden właściciel, który do niej zapisuje (dopisz do sekcji „Dane”).
 
 ## Bezpieczeństwo
-- Sekrety (`WARSAW_API_TOKEN`, klucz DeepSeek, klucze AWS) tylko w `.env` (w `.gitignore`) albo w SSM; klient OAuth Google w AWS Secrets Manager (`codzis/google-oauth`, Terraform go tylko czyta). `config.js` frontu zawiera tylko dane publiczne (adres API, id puli i klienta Cognito).
+- Sekrety (`WARSAW_API_TOKEN`, klucz DeepSeek, klucze AWS) tylko w `.env` (w `.gitignore`) albo w SSM; klient OAuth Google w AWS Secrets Manager (`codzis/google-oauth`: Terraform zakłada go z `CHANGE_ME`, wartość ustawiasz poza nim). `config.js` frontu zawiera tylko dane publiczne (adres API, id puli i klienta Cognito).
 - Nigdy sekretów, tokenów ani danych osobowych w kodzie, logach, commitach ani na czacie. W logach Lambd bez treści żądań i lokalizacji użytkownika.
 
 ## Zakres

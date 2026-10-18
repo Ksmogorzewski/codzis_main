@@ -56,10 +56,29 @@ resource "aws_cognito_user_pool_domain" "clients" {
 }
 
 # Klient OAuth "Web application" z Google Cloud Console (redirect URIs: terraform output google_oauth_redirect_uris)
-# w AWS Secrets Manager - poza gitem i plikami; Terraform go tylko czyta, nie tworzy (README, „Logowanie”):
-#   aws secretsmanager create-secret --name codzis/google-oauth \
+# w AWS Secrets Manager - poza gitem i plikami. Terraform zakłada sekret z CHANGE_ME, a prawdziwą wartość ustawiasz
+# poza nim (jak klucz Map w SSM; Terraform jej potem nie rusza), po czym kolejny `terraform apply` włącza Google:
+#   aws secretsmanager put-secret-value --secret-id codzis/google-oauth \
 #     --secret-string '{"client_id":"….apps.googleusercontent.com","client_secret":"…"}'
-# Bez sekretu (albo z client_id = CHANGE_ME, złym JSON-em) logowanie Google jest wyłączone - nic się nie psuje.
+# Do tego czasu (CHANGE_ME, zły JSON, brak sekretu) logowanie Google jest wyłączone - nic się nie psuje.
+resource "aws_secretsmanager_secret" "google_oauth" {
+  name                    = local.google_secret_name
+  description             = "Klient OAuth Google (logowanie w portalu i panelu organizatora): JSON client_id, client_secret"
+  recovery_window_in_days = 7
+}
+
+resource "aws_secretsmanager_secret_version" "google_oauth" {
+  secret_id     = aws_secretsmanager_secret.google_oauth.id
+  secret_string = jsonencode({ client_id = "CHANGE_ME", client_secret = "CHANGE_ME" })
+
+  # Tylko pierwsza wersja: nowsze dodaje put-secret-value i staje się AWSCURRENT, a ta zostaje jak jest.
+  lifecycle {
+    ignore_changes = [secret_string, version_stages]
+  }
+}
+
+# Odczyt po nazwie, nie przez zasób wyżej: od wartości zależy count zasobów Google, więc musi być znana już przy
+# planie - także za pierwszym razem, zanim sekret powstanie (wtedy Google jest po prostu wyłączone).
 data "aws_secretsmanager_secrets" "google_oauth" {
   filter {
     name   = "name"
