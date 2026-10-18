@@ -20,7 +20,6 @@ EMPTY = {"birthDate": None, "photoUrl": None}
 ANSWERS = {
     "who": "kids",
     "vibe": ["active"],
-    "discover": ["history", "guided"],
     "district": "Wola",
     "travel": "local",
     "budget": "up50",
