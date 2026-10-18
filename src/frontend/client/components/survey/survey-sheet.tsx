@@ -3,9 +3,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import type { Answers, OnboardingField, OnboardingOption, OnboardingStep } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
-import { autoApply, isFull, isRequired, pick, stepProblem, values } from "@/lib/wizard";
+import { autoApply, isFull, isRequired, pick, stepProblem, values, withText } from "@/lib/wizard";
 
 type Props = {
   step: OnboardingStep;
@@ -75,7 +76,35 @@ function OptionChip({ field, option, on, onPick }: OptionProps) {
   );
 }
 
-/** Okno kafelka: pola kroku (single / multi z maxSelect / select), „Pomiń” dla opcjonalnych, „Gotowe”. */
+/** Wolny opis (pole „text”): kilka zdań, z podpowiedzią i licznikiem znaków. */
+function TextAnswer({ field, value, onChange }: { field: OnboardingField; value: string; onChange: (text: string) => void }) {
+  const hint = `${field.id}-podpowiedz`;
+  const counter = `${field.id}-licznik`;
+  const described = [field.hint && hint, field.maxLength && counter].filter(Boolean).join(" ");
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Textarea
+        aria-label={field.label}
+        aria-describedby={described || undefined}
+        rows={4}
+        maxLength={field.maxLength}
+        placeholder={field.placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <div className="flex items-start justify-between gap-3 text-meta text-muted-foreground">
+        {field.hint && <p id={hint}>{field.hint}</p>}
+        {field.maxLength && (
+          <p id={counter} className="ml-auto shrink-0">
+            {value.length}/{field.maxLength}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Okno kafelka: pola kroku (single / multi z maxSelect / select / text), „Pomiń” dla opcjonalnych, „Gotowe”. */
 export function SurveySheet({ step, index, total, answers, onApply, onSkip, onClose }: Props) {
   const [draft, setDraft] = useState<Answers>(() =>
     Object.fromEntries(step.fields.map((f) => [f.id, values(answers, f)]).filter(([, v]) => v.length > 0)),
@@ -141,7 +170,13 @@ export function SurveySheet({ step, index, total, answers, onApply, onSkip, onCl
                     <span className="text-meta text-muted-foreground">maks. {field.maxSelect}</span>
                   )}
                 </legend>
-                {asChips(field) ? (
+                {field.type === "text" ? (
+                  <TextAnswer
+                    field={field}
+                    value={chosen[0] ?? ""}
+                    onChange={(text) => setDraft((d) => withText(d, field, text))}
+                  />
+                ) : asChips(field) ? (
                   <div className="flex flex-wrap gap-2">
                     {field.options.map((o) => (
                       <OptionChip key={o.id} field={field} option={o} on={chosen.includes(o.id)} onPick={choose} />

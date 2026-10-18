@@ -14,6 +14,7 @@ import {
   stepProblem,
   stepsWithErrors,
   summary,
+  withText,
 } from "./wizard";
 
 const opt = (id: string) => ({ id, label: id.toUpperCase(), icon: "star", short: `s-${id}` });
@@ -98,5 +99,40 @@ describe("wizard: walidacja okna i błędy serwera", () => {
     expect(initialAnswers(STEPS, { who: ["kids"], old: ["x"] }, { who: ["solo"] })).toEqual({ who: ["kids"] });
     expect(initialAnswers(STEPS, null, { who: ["solo"], vibe: ["a", "b", "c"] })).toEqual({ who: ["solo"], vibe: ["a", "b"] });
     expect(initialAnswers(STEPS, null, undefined)).toEqual({});
+  });
+});
+
+describe("wizard: wolny opis (pole tekstowe)", () => {
+  const about: OnboardingStep = {
+    id: "about", icon: "person", title: "O Tobie", hint: "",
+    fields: [
+      { id: "bio", type: "text", required: false, maxLength: 20, options: [] },
+      { id: "access", type: "multi", required: false, options: [opt("pjm")] },
+    ],
+  };
+  const bio = about.fields[0]!;
+
+  it("tekst jako [tekst], przycięty do maxLength; same spacje usuwają odpowiedź", () => {
+    expect(withText({}, bio, "Lubię jazz").bio).toEqual(["Lubię jazz"]);
+    expect(withText({}, bio, "x".repeat(25)).bio).toEqual(["x".repeat(20)]);
+    expect(withText({ bio: ["stare"] }, bio, "   ")).toEqual({});
+  });
+
+  it("na kafelku początek opisu w jednej linii, obok wybranych opcji", () => {
+    const answers = { bio: ["Lubię jazz,\nspacery z psem i warsztaty ceramiki"], access: ["pjm"] };
+    expect(summary(about, answers)).toEqual(["Lubię jazz, spacery z psem…", "s-pjm"]);
+    expect(summary(about, { bio: ["Krótko"] })).toEqual(["Krótko"]);
+  });
+
+  it("sanitize zostawia tekst (bez opcji do sprawdzania), przycina i pomija puste", () => {
+    expect(sanitize([about], { bio: ["  Lubię jazz  "] })).toEqual({ bio: ["Lubię jazz"] });
+    expect(sanitize([about], { bio: ["y".repeat(30)] }).bio).toEqual(["y".repeat(20)]);
+    expect(sanitize([about], { bio: ["   "] })).toEqual({});
+  });
+
+  it("okno z polem tekstowym: bez automatycznego zamykania, własny komunikat", () => {
+    expect(autoApply({ ...about, fields: [bio] })).toBe(false);
+    expect(stepProblem(about, {})).toBe("Uzupełnij co najmniej jedno pole");
+    expect(stepProblem(about, { bio: ["Lubię jazz"] })).toBeNull();
   });
 });

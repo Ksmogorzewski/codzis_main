@@ -2,12 +2,14 @@
 
     GET    /api/me          profil zalogowanego użytkownika (pierwsze wywołanie zakłada rekord i dane konta;
                             kopiuje z tokenu e-mail, imię -> displayName, nazwisko -> familyName)
-    PUT    /api/me          {"birthDate"} -> dane konta (account.py); imię i nazwisko zostają bez zmian
+    PUT    /api/me          {"birthDate"} -> dane konta (account.py); imię i nazwisko zostają bez zmian. Przy
+                            wypełnionej ankiecie przelicza też preferencje (przedział wieku z daty urodzenia)
     POST   /api/me/photo    {"contentType"} -> {"key", "upload": {"url", "fields"}} (presigned POST do S3)
     PUT    /api/me/photo    {"key"} -> wgrane zdjęcie staje się zdjęciem profilowym (poprzednie usuwamy)
     DELETE /api/me/photo    -> profil bez zdjęcia
     GET    /api/onboarding  pytania onboardingu (onboarding.py)
-    PUT    /api/profile     {"answers": {...}} -> walidacja, preferencje, zapis w tabeli users
+    PUT    /api/profile     {"answers": {...}} -> walidacja, preferencje (+ przedział wieku z account.birthDate),
+                            zapis w tabeli users
 
 Odpowiedź tras /api/me = GET /api/me: m.in. "name" (imię), "familyName" (nazwisko - tylko dla właściciela),
 "account": {"birthDate", "photoUrl"}.
@@ -81,7 +83,15 @@ import friends
 import store
 from codzis_common.aws import AWS_CONFIG
 from codzis_common.http import ApiError, handle_request, now_iso, parse_body, response
-from onboarding import build_steps, compute_preferences, onboarding_version, public_steps, rag_profile, validate_answers
+from onboarding import (
+    build_steps,
+    compute_preferences,
+    onboarding_version,
+    public_steps,
+    rag_profile,
+    validate_answers,
+    with_age,
+)
 
 USERS_TABLE = os.environ["USERS_TABLE"]
 POPULAR_LIMIT = 20
@@ -195,7 +205,7 @@ def put_profile(claims: dict, body: dict) -> dict:
     if errors:
         raise ApiError(400, "Niepoprawne lub brakujące odpowiedzi", fields=errors)
 
-    preferences = compute_preferences(answers, STEPS)
+    preferences = _preferences(answers, _account(claims["sub"]).get("birthDate"))
     now = now_iso()
     item = users.update_item(
         Key={"userId": claims["sub"]},
@@ -216,11 +226,28 @@ def put_profile(claims: dict, body: dict) -> dict:
 
 
 def put_me(claims: dict, body: dict) -> dict:
-    """Nazwisko i data urodzenia w profilu (imię zostaje z rejestracji albo Google)."""
+    """Data urodzenia w profilu (imię i nazwisko zostają z rejestracji albo Google). Z daty liczymy przedział
+    wieku w preferencjach, więc przy wypełnionej ankiecie przeliczamy też preferencje i profil RAG."""
     values, errors = account.validate(body, events.warsaw_today(_now()))
     if errors:
         raise ApiError(400, "Niepoprawne dane profilu", fields=errors)
-    return _save_account(claims["sub"], account.merge(_account(claims["sub"]), values))
+    user = (
+        users.get_item(
+            Key={"userId": claims["sub"]},
+            ProjectionExpression="#account, onboarding, preferences",
+            ExpressionAttributeNames={"#account": "account"},
+        ).get("Item")
+        or {}
+    )
+    value = account.merge(user.get("account") or {}, values)
+    onboarding = user.get("onboarding") or {}
+    preferences = None
+    if onboarding.get("completedAt"):
+        preferences = _preferences(onboarding.get("answers") or {}, value.get("birthDate"))
+    me = _save_account(claims["sub"], value, preferences)
+    if preferences is not None and preferences != user.get("preferences"):
+        _precompute(claims["sub"])  # inny przedział wieku -> nowe zestawy rekomendacji
+    return me
 
 
 def post_photo(claims: dict, body: dict) -> dict:
@@ -495,13 +522,24 @@ def _account(user_id: str) -> dict:
     return (item or {}).get("account") or {}
 
 
-def _save_account(user_id: str, value: dict) -> dict:
+def _preferences(answers: dict, birth_date: str | None) -> dict:
+    """Preferencje z odpowiedzi ankiety + przedział wieku z daty urodzenia (dzień w Warszawie)."""
+    return with_age(compute_preferences(answers, STEPS), birth_date, events.warsaw_today(_now()))
+
+
+def _save_account(user_id: str, value: dict, preferences: dict | None = None) -> dict:
+    """Zapis mapy account; z preferences (nowa data urodzenia) także preferencje i profil RAG."""
     now = now_iso()
+    update = "SET #account = :account, updatedAt = :now, createdAt = if_not_exists(createdAt, :now)"
+    values: dict = {":account": value, ":now": now}
+    if preferences is not None:
+        update += ", preferences = :preferences, ragProfile = :rag"
+        values |= {":preferences": preferences, ":rag": rag_profile(preferences)}
     item = users.update_item(
         Key={"userId": user_id},
-        UpdateExpression="SET #account = :account, updatedAt = :now, createdAt = if_not_exists(createdAt, :now)",
+        UpdateExpression=update,
         ExpressionAttributeNames={"#account": "account"},
-        ExpressionAttributeValues={":account": value, ":now": now},
+        ExpressionAttributeValues=values,
         ReturnValues="ALL_NEW",
     )["Attributes"]
     return _view(item)
