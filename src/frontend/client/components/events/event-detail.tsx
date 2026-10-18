@@ -1,5 +1,5 @@
 import { getRouteApi, Link, useCanGoBack, useRouter } from "@tanstack/react-router";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { AttendeesSection } from "@/components/community/attendees-section";
 import { SaveButton, SavesCount } from "@/components/community/save-button";
 import { CrewEntry } from "@/components/crew/crew-entry";
@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { useEvent } from "@/hooks/use-event.query";
 import { useEventCard } from "@/hooks/use-event-card.query";
 import { useMe } from "@/hooks/use-me.query";
+import { usePhotoReveal } from "@/hooks/use-photo-reveal";
 import { CATEGORY_LABEL, categoryOf } from "@/lib/categories";
 import { config } from "@/lib/config";
 import {
@@ -36,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { DetailSkeleton } from "./detail-skeleton";
 import { EventBadges } from "./event-badges";
 import { EventImage } from "./event-image";
+import { HIDDEN_WHEN_SHOWN, PHOTO_REVEAL } from "./photo-reveal";
 import { POSTER_FIELD, POSTER_SHADE } from "./poster-tone";
 import { RouteMap } from "./route-map";
 
@@ -128,6 +130,12 @@ function Detail({ card, builtAt, detail }: DetailProps) {
   const chips = tagChips(card.tags);
   const category = categoryOf(card.tags);
   const clock = posterTime(card.slot);
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const hasPhoto = safeUrl(card.imageUrl) !== null && !photoFailed;
+  const reveal = usePhotoReveal<HTMLElement>(hasPhoto);
+  // Pasek w kolorze kategorii pod tekstem (jak na karcie): niewidoczny na polu plakatu, czytelny na zdjęciu.
+  // Pole ma o px-2 mniejszy odstęp, więc tekst stoi tam gdzie wcześniej, a paski wchodzą w margines.
+  const onPhoto = cn("box-decoration-clone px-2", POSTER_FIELD[category]);
   const distance = card.online
     ? "Online"
     : (dist ?? (status === "denied" ? "Włącz lokalizację, aby zobaczyć" : card.location ? "—" : "Brak współrzędnych"));
@@ -135,39 +143,67 @@ function Detail({ card, builtAt, detail }: DetailProps) {
   return (
     <article className="flex flex-col gap-4 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4 motion-safe:duration-[250ms]">
       <BackLink />
-      {/* Nagłówek-plakat w kolorze kategorii, jak karta na liście; zdjęcie (jeśli jest) pod nim w naturalnych kolorach. */}
+      {/* Nagłówek-plakat w kolorze kategorii, jak karta na liście; zdjęcie (jeśli jest) jest jego tłem i odsłania się
+          jak na karcie: po najechaniu myszą, na środku ekranu dotykowego albo po stuknięciu w plakat. */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: zdjęcie jest ozdobą */}
       <header
+        ref={reveal.ref}
+        data-active={reveal.active}
+        onClick={reveal.toggle}
         className={cn(
-          "relative flex flex-col gap-3 overflow-hidden border-2 border-input px-5 pt-5 pb-6 md:px-8 md:pt-7 md:pb-9",
+          // overflow-clip, nie hidden: godzina w tle wystaje poza pole (jak na karcie)
+          "group/poster relative flex flex-col gap-3 overflow-clip border-2 border-input px-3 pt-5 pb-6 md:px-6 md:pt-7 md:pb-9",
           POSTER_FIELD[category],
         )}
       >
+        {hasPhoto && (
+          <EventImage
+            imageUrl={card.imageUrl}
+            category={category}
+            onFailed={() => setPhotoFailed(true)}
+            className={PHOTO_REVEAL}
+          />
+        )}
         {clock && (
           <span
             aria-hidden="true"
             className={cn(
               "pointer-events-none absolute -right-3 -bottom-12 font-display text-[180px] leading-none font-black tracking-[-0.02em] select-none [font-stretch:60%] md:-bottom-20 md:text-[300px]",
               POSTER_SHADE[category],
+              hasPhoto && cn("motion-safe:transition-opacity motion-safe:duration-150", HIDDEN_WHEN_SHOWN),
             )}
           >
             {clock}
           </span>
         )}
+        {hasPhoto && (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "absolute right-3 bottom-3 grid size-8 place-items-center bg-card text-foreground motion-safe:transition-opacity motion-safe:duration-150",
+              HIDDEN_WHEN_SHOWN,
+            )}
+          >
+            <Icon name="photo_camera" size={18} />
+          </span>
+        )}
         <div className="relative flex flex-wrap items-center gap-x-2.5 gap-y-2 text-[13px] leading-tight font-bold tracking-[0.1em] uppercase md:text-sm">
-          <span>
+          <span className={cn(onPhoto, "py-1")}>
             {CATEGORY_LABEL[category]}
             {when && ` · ${when}`}
           </span>
           <EventBadges card={card} large />
         </div>
-        <h1 className="relative max-w-[16ch] font-display text-[44px] leading-[0.92] font-black text-pretty uppercase [font-stretch:62%] md:text-[76px]">
-          {card.title}
+        <h1 className="relative max-w-[16ch] font-display text-[44px] leading-[0.98] font-black text-pretty uppercase [font-stretch:62%] md:text-[76px]">
+          <span className={onPhoto}>{card.title}</span>
         </h1>
         {(place || card.district) && (
-          <p className="relative text-[17px] font-semibold">{[place, card.district].filter(Boolean).join(" · ")}</p>
+          <p className="relative text-[17px] font-semibold">
+            <span className={cn(onPhoto, "py-0.5")}>{[place, card.district].filter(Boolean).join(" · ")}</span>
+          </p>
         )}
         {chips.length > 0 && (
-          <div className="relative mt-1 flex flex-wrap gap-1.5" aria-label="Tagi">
+          <div className="relative mt-1 flex flex-wrap gap-1.5 px-2" aria-label="Tagi">
             {chips.map((chip) => (
               <Badge key={chip} variant="surface" size="lg" className="tracking-[0.06em] uppercase">
                 {chip}
@@ -176,13 +212,6 @@ function Detail({ card, builtAt, detail }: DetailProps) {
           </div>
         )}
       </header>
-
-      <EventImage
-        imageUrl={card.imageUrl}
-        category={category}
-        fit="contain"
-        className="h-60 border-2 border-input md:h-[400px]"
-      />
 
       <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-6">

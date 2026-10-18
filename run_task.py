@@ -13,7 +13,7 @@ Control flow:
              new, or title/description/hints/taxonomy changed -> tag
          tag_events(prepare_records(to_tag))  -> LLM tags (tagger / DeepSeek)
          record + tags + facets (from data) + expiresAt (TTL) + photo in the standard
-             (tagger/images.py: WebP 1200x800 in the photos bucket) -> sink.put(sanitize(record))
+             (tagger/images.py: WebP 3:2 up to 1200x800 in the photos bucket) -> sink.put(sanitize(record))
          partner records: mark submission as published (portal status)
          source.delete(receipt_handle)   # ONLY if every record got tags;
                                          # otherwise redelivery re-tags just the rest

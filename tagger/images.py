@@ -1,27 +1,29 @@
 """Standard zdjęć wydarzeń i ich przetwarzanie (tagger to jedyny zapisujący codzis-events).
 
-Standard v1 (VERSION): WebP 1200×800 px (3:2 - jak pole plakatu na karcie i zdjęcie w szczegółach), jakość 82,
+Standard v2 (VERSION): WebP 3:2 (jak pole plakatu na karcie i nagłówek szczegółów), do 1200×800 px, jakość 82,
 sRGB, bez metadanych. Z jednego źródła zawsze ten sam plik:
-  - proporcje od 4:3 do 16:9 i powiększenie najwyżej 2× -> zdjęcie wypełnia kadr (z brzegu znika najwyżej 8%:
-    przy 4:3 z góry i z dołu, przy 16:9 z boków),
-  - inne proporcje (plakat pionowy, kwadrat, 5:4, panorama) albo małe źródło -> całe zdjęcie na środku kadru,
-    powiększone najwyżej 2×, a reszta kadru to jednolite pole w średnim kolorze brzegu zdjęcia (plakat na
-    jednolitym tle przechodzi w nie bez widocznej krawędzi; płaski kolor, bez rozmyć - jak w kierunku „Plakat”)
-    - z kadru nic nie znika, więc tekst na plakatach zostaje czytelny,
+  - proporcje od 4:3 do 16:9 -> zdjęcie wypełnia kadr (z brzegu znika najwyżej 8%: przy 4:3 z góry i z dołu, przy
+    16:9 z boków), w rozdzielczości najwyżej 2× źródła: miniatura UM 360×270 -> 720×480, dalej skaluje przeglądarka,
+  - inne proporcje (plakat pionowy, kwadrat, 5:4, panorama) -> całe zdjęcie, powiększone najwyżej 2×, na jednolitym
+    polu 3:2 w średnim kolorze brzegu zdjęcia (pole najmniejsze, w którym zdjęcie się mieści; plakat na jednolitym
+    tle przechodzi w nie bez widocznej krawędzi; płaski kolor, bez rozmyć - jak w kierunku „Plakat”) - z kadru nic
+    nie znika, więc tekst na plakatach zostaje czytelny,
   - po skalowaniu lekkie wyostrzenie; kolory z profilu ICC źródła (np. Display P3 z telefonu) przeliczone na sRGB;
     przezroczystość na jasnym papierze; animacja = pierwsza klatka; obrót według EXIF.
-Większość zdjęć z API UM to miniatury 360×270 / 400×265 px - stąd limit powiększenia zamiast rozciągania.
+Historia: v1 - małe zdjęcia (większość z API UM to miniatury 360×270 / 400×265) stały na środku pola 1200×800,
+jak w ramce; v2 - wypełniają kadr.
 
-Plik: s3://<PHOTOS_BUCKET>/photos/events/v1/<sha1 adresu źródła>.webp, publicznie pod
-<PHOTOS_BASE_URL>/photos/events/v1/… (CloudFront panelu, jak zdjęcia profilowe). W rekordzie: imageUrl = nasz
+Plik: s3://<PHOTOS_BUCKET>/photos/events/<VERSION>/<sha1 adresu źródła>.webp, publicznie pod
+<PHOTOS_BASE_URL>/photos/events/<VERSION>/… (CloudFront panelu, jak zdjęcia profilowe). W rekordzie: imageUrl = nasz
 plik, sourceImageUrl = źródło. Ten sam adres źródła = ten sam plik (drugi raz go nie liczymy).
 
 Kiedy: tagger przy każdym zapisie wydarzenia (run_task.write); istniejące wydarzenia jednorazowo przebiegiem po
 tabeli: `python -m tagger.images` (scripts/resize-images.sh). Zmiana standardu = nowy VERSION (nowe klucze)
 i ten sam przebieg.
 
-Pobieramy tylko https z publicznych adresów (bez sieci wewnętrznej), do 15 MB i 25 Mpx. Nieudane zdjęcie nie
-zatrzymuje zapisu wydarzenia: zostaje adres źródłowy (front i tak pokaże plakat, gdy zdjęcie nie działa).
+Pobieramy tylko https z publicznych adresów (bez sieci wewnętrznej), do 15 MB i 25 Mpx po dekodowaniu (duże JPEG
+dekodują się od razu zmniejszone). Nieudane zdjęcie nie zatrzymuje zapisu wydarzenia: zostaje adres źródłowy (front
+i tak pokaże plakat, gdy zdjęcie nie działa). Zdjęcie usunięte u źródła (404/410) to nie błąd przebiegu.
 """
 
 from __future__ import annotations
@@ -31,9 +33,11 @@ import hashlib
 import io
 import ipaddress
 import logging
+import math
 import os
 import socket
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
@@ -46,7 +50,7 @@ from PIL import Image, ImageCms, ImageFilter, ImageOps, ImageStat
 
 log = logging.getLogger("tagger.images")
 
-VERSION = "v1"
+VERSION = "v2"
 WIDTH, HEIGHT = 1200, 800
 QUALITY = 82
 FILL_RANGE = (4 / 3, 16 / 9)  # proporcje źródła, przy których zdjęcie wypełnia kadr 3:2
@@ -58,9 +62,9 @@ PAPER = (248, 248, 245)  # --card z portalu: tło pod przezroczystymi PNG
 PREFIX = f"photos/events/{VERSION}/"
 USER_AGENT = "WarsawNow-images/1 (+https://portal.waw-out.pl)"
 
-# Większe obrazy -> DecompressionBombError zamiast wyczerpania pamięci zadania (512 MB w ECS). Pillow rzuca
-# błąd dopiero powyżej 2× MAX_IMAGE_PIXELS (niżej tylko ostrzega), stąd połowa limitu.
-Image.MAX_IMAGE_PIXELS = MAX_PIXELS // 2
+# Limit pikseli (pamięć zadania: 512 MB w ECS) sprawdza _decode po zmniejszeniu JPEG przy dekodowaniu, zamiast
+# ostrzeżeń i DecompressionBombError Pillow już przy otwarciu pliku (odrzucałby zdjęcia z aparatów).
+Image.MAX_IMAGE_PIXELS = None
 _SRGB = ImageCms.createProfile("sRGB")
 
 
@@ -70,14 +74,22 @@ _SRGB = ImageCms.createProfile("sRGB")
 def render(data: bytes) -> bytes:
     """Bajty zdjęcia (JPEG, PNG, WebP, GIF…) -> WebP w standardzie. ValueError, gdy to nie obraz albo za duży."""
     try:
-        with Image.open(io.BytesIO(data)) as source:
-            source.seek(0)  # animacja: pierwsza klatka
-            image = _flatten(_to_srgb(ImageOps.exif_transpose(source)))
-    except (OSError, ValueError, Image.DecompressionBombError) as e:
-        raise ValueError(f"to nie jest obsługiwany obraz: {type(e).__name__}") from e
+        image = _decode(data)
+    except (OSError, ValueError) as e:
+        raise ValueError(f"to nie jest obsługiwany obraz: {e}") from e
     out = io.BytesIO()
     _compose(image).save(out, "WEBP", quality=QUALITY, method=6)
     return out.getvalue()
+
+
+def _decode(data: bytes) -> Image.Image:
+    with Image.open(io.BytesIO(data)) as source:
+        source.seek(0)  # animacja: pierwsza klatka
+        # JPEG dekoduje się od razu w skali 1/2…1/8 (nadal co najmniej 2× kadru): mniej pamięci i czasu
+        source.draft("RGB", (WIDTH * 2, HEIGHT * 2))
+        if source.width * source.height > MAX_PIXELS:
+            raise ValueError(f"za duży: {source.width}×{source.height} px")
+        return _flatten(_to_srgb(ImageOps.exif_transpose(source)))
 
 
 def _to_srgb(image: Image.Image) -> Image.Image:
@@ -107,14 +119,18 @@ def _flatten(image: Image.Image) -> Image.Image:
 
 def _compose(image: Image.Image) -> Image.Image:
     width, height = image.size
-    cover = max(WIDTH / width, HEIGHT / height)
-    if FILL_RANGE[0] - 0.01 <= width / height <= FILL_RANGE[1] + 0.01 and cover <= MAX_UPSCALE:
-        return _sharpen(ImageOps.fit(image, (WIDTH, HEIGHT), Image.Resampling.LANCZOS))
+    if FILL_RANGE[0] - 0.01 <= width / height <= FILL_RANGE[1] + 0.01:
+        # wypełnia kadr: przycięcie do 3:2, najwyżej 2× źródła i najwyżej 1200×800 (szerokość podzielna przez 3)
+        out_width = int(min(WIDTH, min(width, height * 3 / 2) * MAX_UPSCALE)) // 3 * 3
+        return _sharpen(ImageOps.fit(image, (out_width, out_width * 2 // 3), Image.Resampling.LANCZOS))
     scale = min(WIDTH / width, HEIGHT / height, MAX_UPSCALE)
     size = (max(1, round(width * scale)), max(1, round(height * scale)))
-    frame = Image.new("RGB", (WIDTH, HEIGHT), _edge_color(image))
+    # najmniejsze pole 3:2, w którym zdjęcie się mieści (małe źródło nie ląduje na środku wielkiego pola)
+    frame_width = min(WIDTH, math.ceil(max(size[0], math.ceil(size[1] * 3 / 2)) / 3) * 3)
+    frame = Image.new("RGB", (frame_width, frame_width * 2 // 3), _edge_color(image))
     frame.paste(
-        _sharpen(image.resize(size, Image.Resampling.LANCZOS)), ((WIDTH - size[0]) // 2, (HEIGHT - size[1]) // 2)
+        _sharpen(image.resize(size, Image.Resampling.LANCZOS)),
+        ((frame.width - size[0]) // 2, (frame.height - size[1]) // 2),
     )
     return frame
 
@@ -296,6 +312,11 @@ def backfill(
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
                 return "wygasło w trakcie"
+            log.warning("Zdjęcie wydarzenia %s bez zmian: %s", item["id"], e)
+            return "błąd"
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 410):
+                return "brak u źródła"  # zdjęcie usunięte w UM - to nie nasz błąd, front pokaże plakat
             log.warning("Zdjęcie wydarzenia %s bez zmian: %s", item["id"], e)
             return "błąd"
         except Exception as e:
