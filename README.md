@@ -1,11 +1,12 @@
 # WarsawNow
 
+## Wejdź: [portal.waw-out.pl](https://portal.waw-out.pl)
+
+**Konto testowe dla jury:** login `w4r54wn0w@gmail.com`, hasło `1qaz@WSX`
+
 **Warszawa ma setki darmowych wydarzeń i zajęć każdego tygodnia. WarsawNow pomaga wybrać coś dla siebie — i nie iść tam samemu.**
 
 Hackathon Otwarte Dane Warszawa 2026, wyzwanie 3 „Warszawa: Twój ruch!”.
-Działa na żywo: **[portal.waw-out.pl](https://portal.waw-out.pl)**.
-
-**Konto testowe dla jury:** login `w4r54wn0w@gmail.com`, hasło `1qaz@WSX` (konto demonstracyjne).
 
 ---
 
@@ -73,12 +74,6 @@ Szczegóły, endpointy i wdrożenie: **[docs/TECHNICZNE.md](docs/TECHNICZNE.md)*
 - Jeden format błędów i logów z identyfikatorem żądania; brak danych osobowych w logach.
 - Prywatność: na listach tylko imię i inicjał nazwiska, nigdy e-mail; zapisy znajomych widoczne dopiero po zaakceptowaniu zaproszenia i tylko dla nadchodzących wydarzeń; lokalizacja liczona w przeglądarce, nie trafia na serwer.
 
-## Ograniczenia i dalsze kroki
-
-- Zapis dotyczy całego wydarzenia, nie konkretnego terminu zajęć cyklicznych.
-- Pogoda i jakość powietrza (dostępne w API miasta) jeszcze nie wpływają na propozycje.
-- Panel „sygnał popytu” dla miasta i tryb opiekuna seniora — kolejne kroki.
-- Konto e-mail i konto Google z tym samym adresem to dziś dwa osobne konta.
 
 ## Zespół
 
