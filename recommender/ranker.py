@@ -15,6 +15,11 @@ from .llm import DeepSeekClient
 
 _TAG_KEYS = ("theme", "format", "cost", "setting", "registration", "audience", "occasion")
 
+# Latencja wywołania LLM rośnie z rozmiarem promptu: rankujemy tylko najlepszych kandydatów
+# i krótki lead (reszta i tak zostaje w kolejności cosinus, patrz Recommender.rerank).
+MAX_RERANK_CANDIDATES = 10
+LEAD_MAX_CHARS = 120
+
 
 def _candidate_payload(candidates: list) -> list[dict]:
     items = []
@@ -25,7 +30,7 @@ def _candidate_payload(candidates: list) -> list[dict]:
             "rank_seed": i + 1,
             "id": c.event_id,
             "title": plain_text(e.get("title")),
-            "lead": plain_text(e.get("lead"))[:300],
+            "lead": plain_text(e.get("lead"))[:LEAD_MAX_CHARS],
             "score": round(c.score, 4),
             "district": event_district(e),
             "venue": (e.get("venue") or {}).get("name"),
