@@ -15,6 +15,8 @@ seed = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(seed)
 
 EVENTS, ATTENDANCE, STATS = "t-events", "t-attendance", "t-stats"
+FRIENDS = "t-friends"
+DEMO_EMAIL = "demo@example.com"
 WEEK_DAY = date(2026, 10, 19)  # okno 19-25.10.2026
 
 
@@ -51,14 +53,23 @@ def aws():
                 AttributeDefinitions=[{"AttributeName": a, "AttributeType": "S"} for a, _ in keys],
                 BillingMode="PAY_PER_REQUEST",
             )
+        db.create_table(
+            TableName=FRIENDS,
+            KeySchema=[{"AttributeName": "userId", "KeyType": "HASH"}, {"AttributeName": "sk", "KeyType": "RANGE"}],
+            AttributeDefinitions=[
+                {"AttributeName": "userId", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
         for item in ITEMS:
             db.Table(EVENTS).put_item(Item=item)
         yield db, boto3.client("dynamodb", region_name="eu-central-1")
 
 
-def run(*extra):
+def run(*extra, cognito=None):
     args = ["--events-table", EVENTS, "--attendance-table", ATTENDANCE, "--stats-table", STATS]
-    return seed.main([*args, "--week", WEEK_DAY.isoformat(), *extra])
+    return seed.main([*args, "--week", WEEK_DAY.isoformat(), *extra], cognito=cognito)
 
 
 def counts(db):
@@ -121,3 +132,111 @@ def test_delete_only_seed_rows(aws):
     assert stats["in-1"] == 1
     assert before_in1 >= 1
     assert all(v == 0 for k, v in stats.items() if k != "in-1")
+
+
+# --- znajomi testowi (--friends-of) ---------------------------------------------------------------
+
+
+class FakeCognito:
+    """Minimalny klient Cognito: tylko `list_users` z filtrem `email = "..."` (moto wymaga joserfc)."""
+
+    pool_id = "eu-central-1_TEST"
+
+    def __init__(self, attributes):
+        self.attributes = attributes
+        self.calls = []
+
+    def list_users(self, **kwargs):
+        self.calls.append(kwargs)
+        wanted = kwargs["Filter"].removeprefix('email = "').removesuffix('"')
+        attrs = [{"Name": k, "Value": v} for k, v in self.attributes.items()]
+        return {"Users": [{"Attributes": attrs}] if self.attributes.get("email") == wanted else []}
+
+
+@pytest.fixture
+def cognito():
+    return FakeCognito({"sub": "demo-sub-1", "email": DEMO_EMAIL, "name": "Dawid"})
+
+
+def demo_sub(cognito):
+    return seed.lookup_user(cognito, cognito.pool_id, DEMO_EMAIL)[0]
+
+
+def run_friends(cognito, *extra):
+    return run(
+        "--friends-table", FRIENDS, "--friends-of", DEMO_EMAIL, "--user-pool-id", cognito.pool_id, *extra,
+        cognito=cognito,
+    )  # fmt: skip
+
+
+def friend_rows(db):
+    return sorted(seed.scan_all(db.Table(FRIENDS)), key=lambda r: (r["userId"], r["sk"]))
+
+
+def test_friends_of_creates_mutual_seed_friendships(aws, cognito):
+    db, _ = aws
+    sub = demo_sub(cognito)
+    run_friends(cognito, "--apply", "--users", "1")  # plan nie daje znajomym zapisów: muszą zostać dopisane
+    rows = friend_rows(db)
+    assert len(rows) == 6 and all(r["seed"] is True for r in rows)
+    mine = {r["sk"]: r for r in rows if r["userId"] == sub}
+    assert set(mine) == {f"friend#seed-00{n}" for n in (1, 2, 3)}
+    for n in (1, 2, 3):
+        assert mine[f"friend#seed-00{n}"]["name"] == seed.user_name(n)
+        theirs = db.Table(FRIENDS).get_item(Key={"userId": f"seed-00{n}", "sk": f"friend#{sub}"})["Item"]
+        assert theirs["name"] == "Dawid" and theirs["since"] == mine[f"friend#seed-00{n}"]["since"]
+        assert theirs["since"].endswith("Z")
+    att = seed.scan_all(db.Table(ATTENDANCE))
+    window_ids = {"in-1", "in-2", "overlap", "rec-1"}
+    for n in (1, 2, 3):
+        assert any(a["userId"] == f"seed-00{n}" and a["eventId"] in window_ids for a in att)
+
+
+def test_friends_of_name_fallback_ty(aws, cognito):
+    db, _ = aws
+    del cognito.attributes["name"]
+    run_friends(cognito, "--apply")
+    assert {r["name"] for r in friend_rows(db) if r["userId"].startswith("seed-")} == {"Ty"}
+
+
+def test_friends_of_idempotent(aws, cognito):
+    db, _ = aws
+    run_friends(cognito, "--apply")
+    first = friend_rows(db), counts(db)
+    run_friends(cognito, "--apply")
+    assert (friend_rows(db), counts(db)) == first
+
+
+def test_friends_of_dry_run_writes_nothing_and_hides_email(aws, cognito, capsys):
+    db, _ = aws
+    run_friends(cognito, "--dry-run")
+    out = capsys.readouterr().out
+    assert DEMO_EMAIL not in out and seed.user_name(1) in out
+    assert friend_rows(db) == [] and counts(db) == (Counter(), {})
+
+
+def test_lookup_user_is_read_only_and_rejects_unknown(cognito):
+    assert seed.lookup_sub(cognito, cognito.pool_id, DEMO_EMAIL) == "demo-sub-1"
+    assert [set(c) for c in cognito.calls] == [{"UserPoolId", "Filter", "Limit"}]
+    with pytest.raises(SystemExit):
+        seed.lookup_user(cognito, cognito.pool_id, "inny@example.com")
+
+
+def test_friends_of_requires_user_pool(aws):
+    with pytest.raises(SystemExit):
+        run("--friends-of", DEMO_EMAIL, "--friends-table", FRIENDS)
+
+
+def test_delete_removes_only_seed_friendships(aws, cognito):
+    db, _ = aws
+    sub = demo_sub(cognito)
+    run_friends(cognito, "--apply")
+    real = [
+        {"userId": sub, "sk": "friend#real-1", "name": "Ola", "since": "2026-10-01T10:00:00Z"},
+        {"userId": "real-1", "sk": "friend#" + sub, "name": "Dawid", "since": "2026-10-01T10:00:00Z"},
+        {"userId": sub, "sk": "code", "code": "WAW-ABCDEF"},
+    ]
+    for item in real:
+        db.Table(FRIENDS).put_item(Item=item)
+    run("--friends-table", FRIENDS, "--delete")
+    assert friend_rows(db) == sorted(real, key=lambda r: (r["userId"], r["sk"]))
