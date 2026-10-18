@@ -88,7 +88,8 @@ export function CrewChat({ id, crew, info }: Props) {
         <div
           aria-hidden={!locked}
           className={cn(
-            "absolute inset-0 z-10 flex items-center justify-center bg-overlay p-6 transition-opacity duration-250",
+            // backdrop-blur: przed odpowiedzią na lodołamacz treść czatu jest nieczytelna (nie tylko przygaszona)
+            "absolute inset-0 z-10 flex items-center justify-center bg-overlay p-6 backdrop-blur-md transition-opacity duration-250",
             !locked && "pointer-events-none opacity-0",
           )}
         >
