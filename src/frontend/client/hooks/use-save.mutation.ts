@@ -2,7 +2,7 @@ import { type QueryClient, useMutation, useQueryClient } from "@tanstack/react-q
 import { toast } from "sonner";
 import { errorText } from "@/components/layout/route-error";
 import { ApiRequestError, apiDelete, apiPut, unwrap } from "@/lib/api";
-import { currentName } from "@/lib/auth";
+import { currentDisplayName } from "@/lib/auth";
 import {
   type KnownSaveState,
   patchAttendees,
@@ -55,7 +55,7 @@ function patchCaches(qc: QueryClient, id: string, next: (s: SaveState) => KnownS
   qc.setQueryData<FriendsGoing>(friendsGoingKey(), (g) => g && { ...g, items: patchSaveInList(g.items, id, next) });
   qc.setQueryData<EventDetail>(eventKey(id), (d) => d && { ...d, ...next(d) });
   qc.setQueryData<MyEvents>(myEventsKey(), (list) => list && patchMyEvents(list, id, next));
-  qc.setQueryData<Attendees>(attendeesKey(id), (a) => a && patchAttendees(a, next(a), currentName()));
+  qc.setQueryData<Attendees>(attendeesKey(id), (a) => a && patchAttendees(a, next(a), currentDisplayName()));
   qc.setQueriesData<StatsMap>({ queryKey: eventStatsRootKey() }, (m) => {
     const s = m?.[id];
     return m && s ? { ...m, [id]: next(s) } : m;
@@ -95,7 +95,7 @@ export function useSave() {
     },
     onSuccess: (result, { id, save }) => {
       patchCaches(qc, id, () => result);
-      if (save) toast(savedAsText(currentName()));
+      if (save) toast(savedAsText(currentDisplayName()));
       void qc.invalidateQueries({ queryKey: attendeesKey(id) });
       void qc.invalidateQueries({ queryKey: popularKey() });
       void qc.invalidateQueries({ queryKey: eventsRootKey() });

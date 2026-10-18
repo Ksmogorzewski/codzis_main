@@ -46,6 +46,7 @@ export function AuthForm() {
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<AuthMode>("login");
   const [name, setName] = useState("");
+  const [familyName, setFamilyName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -105,7 +106,7 @@ export function AuthForm() {
       case "login":
         return signInAndContinue(password);
       case "register": {
-        const r = await signUp(mail, password, name);
+        const r = await signUp(mail, password, name, familyName);
         if (r.error !== null) return r;
         go("confirm", `Wysłaliśmy 6-cyfrowy kod na ${r.data}.`);
         return ok(undefined);
@@ -131,7 +132,7 @@ export function AuthForm() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const problem = validateAuthForm(mode, { name, email, password, code, newPassword });
+    const problem = validateAuthForm(mode, { name, familyName, email, password, code, newPassword });
     if (problem) {
       setError(problem);
       return;
@@ -177,6 +178,23 @@ export function AuthForm() {
           />
           <p id="auth-name-hint" className="text-meta text-muted-foreground">
             Zobaczą je inni zapisani na to samo wydarzenie. Później go nie zmienisz.
+          </p>
+        </Field>
+      )}
+      {showsName(mode) && (
+        <Field id="auth-family-name" label="Nazwisko (opcjonalnie)">
+          <Input
+            id="auth-family-name"
+            autoComplete="family-name"
+            placeholder="np. Kowalska"
+            maxLength={MAX_NAME}
+            value={familyName}
+            aria-invalid={error ? true : undefined}
+            aria-describedby="auth-family-name-hint"
+            onChange={(e) => setFamilyName(e.target.value)}
+          />
+          <p id="auth-family-name-hint" className="text-meta text-muted-foreground">
+            Inni zobaczą tylko pierwszą literę, np. „Anna K.”. Później go nie zmienisz.
           </p>
         </Field>
       )}

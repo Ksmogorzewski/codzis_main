@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAttendees } from "@/hooks/use-attendees.query";
 import { useEvent } from "@/hooks/use-event.query";
 import { useEventCard } from "@/hooks/use-event-card.query";
-import { currentName } from "@/lib/auth";
+import { currentDisplayName } from "@/lib/auth";
 import { CATEGORY_LABEL, categoryOf } from "@/lib/categories";
 import { crewMembers, memberNames, membersLine, ownLabel } from "@/lib/crew-chat";
 import { DEMO_CREW, demoInbox } from "@/lib/crew-demo";
@@ -54,7 +54,7 @@ export function CrewChatScreen() {
         key={id}
         members={members}
         seed={demoInbox(members, id, inbox[id]?.arrived ?? 0)}
-        myLabel={ownLabel(currentName())}
+        myLabel={ownLabel(currentDisplayName())}
         category={CATEGORY_LABEL[categoryOf(card.tags)]}
         place={placeLabel(card)}
         when={slotLabel(card.slot, new Date())}

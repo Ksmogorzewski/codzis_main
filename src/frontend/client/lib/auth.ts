@@ -1,7 +1,7 @@
 // Logowanie przez Cognito bez SDK: API Cognito wprost z przeglądarki (USER_PASSWORD_AUTH),
 // rejestracja z kodem z e-maila, reset hasła, odświeżanie tokenów (REFRESH_TOKEN_AUTH).
 // Sesja w localStorage pod tym samym kluczem co w poprzedniej wersji portalu (zalogowani zostają zalogowani).
-import { nameError, normalizeName } from "./auth-form";
+import { familyNameError, nameError, normalizeName } from "./auth-form";
 import { config } from "./config";
 import { err, ok, type Result } from "./result";
 import { readJson, writeJson } from "./storage";
@@ -63,32 +63,66 @@ export function cognitoErrorCode(type: unknown): string {
 
 export const authFailure = (code: string): AuthFailure => ({ code, message: authErrorMessage(code) });
 
-/** Atrybuty przy rejestracji: e-mail i imię (pokazywane innym na listach zapisanych). */
-export function signUpAttributes(email: string, name: string): { Name: string; Value: string }[] {
+/**
+ * Atrybuty przy rejestracji: e-mail, imię (pokazywane innym na listach zapisanych) i - tylko gdy podane -
+ * nazwisko (`family_name`; innym backend pokazuje sam inicjał: „Ola K.”).
+ */
+export function signUpAttributes(email: string, name: string, familyName = ""): { Name: string; Value: string }[] {
+  const family = normalizeName(familyName);
   return [
     { Name: "email", Value: email },
     { Name: "name", Value: normalizeName(name) },
+    ...(family ? [{ Name: "family_name", Value: family }] : []),
   ];
 }
 
-/** Body zapytania Cognito SignUp: e-mail jako login, imię jako atrybut `name` (trafia do ID tokenu). */
-export function signUpRequest(clientId: string, email: string, password: string, name: string) {
-  return { ClientId: clientId, Username: email, Password: password, UserAttributes: signUpAttributes(email, name) };
+/** Body zapytania Cognito SignUp: e-mail jako login, imię (`name`) i nazwisko (`family_name`) trafiają do ID tokenu. */
+export function signUpRequest(clientId: string, email: string, password: string, name: string, familyName = "") {
+  return {
+    ClientId: clientId,
+    Username: email,
+    Password: password,
+    UserAttributes: signUpAttributes(email, name, familyName),
+  };
 }
 
-/** Claim "name" z ID tokenu (bez weryfikacji podpisu - to robi API Gateway); null = brak imienia. */
-export function idTokenName(token: string | null): string | null {
+/** Claimy ID tokenu (bez weryfikacji podpisu - to robi API Gateway); zepsuty token - pusty obiekt. */
+function tokenClaims(token: string | null): Record<string, unknown> {
   const payload = token?.split(".")[1];
-  if (!payload) return null;
+  if (!payload) return {};
   try {
     const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const claims: unknown = JSON.parse(new TextDecoder().decode(bytes));
-    const name = typeof claims === "object" && claims !== null && "name" in claims ? claims.name : null;
-    return typeof name === "string" && name.trim() ? name.trim() : null;
+    return typeof claims === "object" && claims !== null ? (claims as Record<string, unknown>) : {};
   } catch {
-    return null;
+    return {};
   }
+}
+
+const textClaim = (value: unknown): string | null => {
+  const text = typeof value === "string" ? value.split(/\s+/).filter(Boolean).join(" ") : "";
+  return text || null;
+};
+
+/** Claim "name" z ID tokenu; null = brak imienia. */
+export const idTokenName = (token: string | null): string | null => textClaim(tokenClaims(token).name);
+
+/**
+ * Imię widoczne dla innych - ta sama reguła co `display_name` w client-api: imię + inicjał nazwiska
+ * („Ola K.”); bez nazwiska (albo same spacje) samo imię; bez imienia null.
+ */
+export function displayName(name: string | null, familyName: string | null): string | null {
+  const first = textClaim(name);
+  if (!first) return null;
+  const initial = [...(textClaim(familyName) ?? "")].find((c) => /\p{L}/u.test(c));
+  return initial ? `${first} ${initial.toLocaleUpperCase("pl")}.` : first;
+}
+
+/** Imię widoczne dla innych z ID tokenu (claimy `name` i `family_name`). */
+export function idTokenDisplayName(token: string | null): string | null {
+  const claims = tokenClaims(token);
+  return displayName(textClaim(claims.name), textClaim(claims.family_name));
 }
 
 /** Co zrobić z zapisaną sesją: użyć tokenu, odświeżyć go albo uznać, że trzeba się zalogować. */
@@ -216,12 +250,17 @@ export async function signIn(email: string, password: string): Promise<AuthResul
 }
 
 /** Rejestracja; data = adres, na który poszedł kod (zamaskowany przez Cognito, np. a***@e***). */
-export async function signUp(email: string, password: string, name: string): Promise<AuthResult<string>> {
-  const badName = nameError(name);
+export async function signUp(
+  email: string,
+  password: string,
+  name: string,
+  familyName = "",
+): Promise<AuthResult<string>> {
+  const badName = nameError(name) ?? familyNameError(familyName);
   if (badName) return err({ code: "InvalidParameterException", message: badName });
   const r = await idp<{ CodeDeliveryDetails?: { Destination?: string } }>(
     "SignUp",
-    signUpRequest(config().clientId, email, password, name),
+    signUpRequest(config().clientId, email, password, name, familyName),
   );
   if (r.error !== null) return r;
   return ok(r.data.CodeDeliveryDetails?.Destination ?? email);
@@ -255,6 +294,9 @@ export const confirmForgotPassword = (email: string, code: string, password: str
 
 /** Imię zalogowanego z aktualnego ID tokenu; null = konto bez imienia (albo brak sesji). */
 export const currentName = (): string | null => idTokenName(loadSession()?.idToken ?? null);
+
+/** Moje imię tak, jak widzą je inni („Ola K.”) - do podpisów „(Ty)” i „Zapisano jako …”. */
+export const currentDisplayName = (): string | null => idTokenDisplayName(loadSession()?.idToken ?? null);
 
 /**
  * Ustawia imię kontu, które go nie ma (UpdateUserAttributes access tokenem), i od razu odświeża
