@@ -44,7 +44,7 @@ from .chunker import EventChunk, chunk_events, build_event_text, event_district,
 from .embedder import EmbeddingModel, VectorIndex, build_index, DEFAULT_MODEL
 from .retriever import Retriever, Candidate, QueryEncoder, DEFAULT_TASTE_WEIGHT, DEFAULT_MIN_SCORE, BOOSTS, PENALTIES
 from .llm import DeepSeekClient, load_env_value, DEEPSEEK_MODEL
-from .ranker import rank_candidates
+from .ranker import MAX_RERANK_CANDIDATES, rank_candidates
 from .expand import expand_query
 
 __version__ = "0.1.0"
@@ -69,10 +69,27 @@ __all__ = [
     "DEFAULT_MODEL",
     "DEFAULT_TASTE_WEIGHT",
     "DEFAULT_MIN_SCORE",
+    "MAX_RERANK_CANDIDATES",
     "BOOSTS",
     "PENALTIES",
     "__version__",
 ]
+
+
+# Rozwijanie frazy pomaga przy krótkich/niejasnych zapytaniach ("coś na randkę"). Konkretna,
+# kilkuwyrazowa fraza ("koncert jazzowy w piątek") już nazywa, czego szuka użytkownik, więc
+# pomijamy tę rundę LLM (o jedno wywołanie szybciej) i rankujemy surową frazę.
+_SPECIFIC_MIN_WORDS = 3
+_VAGUE_MARKERS = ("coś", "co", "jakieś", "jakaś", "jakiś", "cokolwiek", "ciekawe", "ciekawego",
+                  "pomysł", "propozycje", "wydarzenia", "fajne", "fajnego")
+
+
+def _query_is_specific(query: str) -> bool:
+    words = query.split()
+    if len(words) < _SPECIFIC_MIN_WORDS:
+        return False
+    head = [w.lower() for w in words[:2]]
+    return not any(w.startswith(m) for m in _VAGUE_MARKERS for w in head)
 
 
 class Recommender:
@@ -178,6 +195,8 @@ class Recommender:
         query = (user_context.get("query") or "").strip()
         if not expand or self.client is None or not query:
             return user_context
+        if _query_is_specific(query):
+            return user_context  # konkretna fraza: rozwijanie niewiele dodaje, oszczędzamy rundę LLM
         key = json.dumps([query, user_context.get("interests") or []],
                          ensure_ascii=False, sort_keys=True)
         if key not in self._expansion_cache:
@@ -200,8 +219,10 @@ class Recommender:
         """
         if self.client is None or not candidates:
             return None
+        # Mniej kandydatów = mniejszy prompt = szybsze wywołanie LLM; odrzuceni zostają w kolejności cosinus.
+        pool = candidates[:MAX_RERANK_CANDIDATES]
         try:
-            result = rank_candidates(self.client, user_context, candidates)
+            result = rank_candidates(self.client, user_context, pool)
         except Exception as exc:  # the LLM is optional: keep the cosine order
             self.last_error = f"{type(exc).__name__}: {exc}"
             return None
