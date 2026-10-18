@@ -17,7 +17,8 @@ rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za 
     DELETE /api/events/{id}/save        -> {"saved": false, "saves"} (idempotentnie)
     GET    /api/events/{id}/attendees   -> {"saves", "saved", "people": [{"name", "isMe", "isFriend"}]}
                                            (najpierw ja, potem znajomi, potem reszta - w grupach najnowsi
-                                           najpierw; maks. 100 najnowszych; bez imienia "Ktoś"; nigdy e-maili)
+                                           najpierw; isFriend tylko dla wydarzeń z nadchodzącym terminem,
+                                           inaczej false; maks. 100 najnowszych; bez imienia "Ktoś"; nigdy e-maili)
     GET    /api/popular                 -> {"window": {"from", "to"}, "items": [Card]}
                                            (dziś + 6 dni, saves > 0, malejąco, maks. 20)
     GET    /api/me/events               -> {"items": [Card + {"past", "savedAt"}]}  zakładka „Twoje”: moje zapisy
@@ -41,10 +42,11 @@ Znajomi (logika i DynamoDB: friends.py). Akcje oznaczone (imię) bez imienia w t
                                               automatyczna akceptacja); 404, 400 jak wyżej
     PUT    /api/friends/requests/{userId} (imię) -> {"status": "friends"}  akceptacja; 404 brak zaproszenia
     DELETE /api/friends/requests/{userId}  -> {}  ciche odrzucenie (zapraszający dalej widzi "oczekuje")
-    DELETE /api/friends/{userId}           -> {}  usunięcie znajomości u obu stron
+    DELETE /api/friends/{userId}           -> {}  usunięcie znajomości u obu stron; własne id -> 400
     GET    /api/friends/going              -> {"items": [Card + {"friends": [imię]}], "byEvent": {eventId: [imię]}}
-                                              nadchodzące zapisy znajomych (od teraz); karty od najbliższego
-                                              startu, maks. 60; byEvent - wszystkie; imiona alfabetycznie
+                                              nadchodzące zapisy znajomych (od teraz; bez zajęć bez terminu);
+                                              karty od najbliższego startu, maks. 60; byEvent - wszystkie;
+                                              imiona alfabetycznie
     Błędy: 404 zły kod (+1 do limitu), 429 {"code": "too_many_attempts"} po 10 złych kodach w godzinę
     (także dobre kody do końca okna), 409 {"code": "friend_limit"} przy 50 znajomych.
 
@@ -59,9 +61,9 @@ import os
 from datetime import date, datetime
 
 import boto3
-import friends
 
 import events
+import friends
 import store
 from codzis_common.http import ApiError, now_iso, parse_body, response
 from onboarding import build_steps, compute_preferences, onboarding_version, public_steps, rag_profile, validate_answers
@@ -236,7 +238,9 @@ def get_attendees(claims: dict, event_id: str) -> dict:
     """Lista zapisanych: tylko imiona (nigdy e-maile), najnowsi najpierw."""
     rows = store.attendees(event_id)
     me = claims["sub"]
-    mine = friends.friend_ids(me) if rows else {}
+    item = store.all_events().get(event_id) if rows else None
+    # znajomi widzą tylko nadchodzące zapisy - na minionych wydarzeniach nikt nie jest oznaczony
+    mine = friends.friend_ids(me) if item and _upcoming(events.next_slot(item, now=_now())) else {}
     people = [
         {"name": row.get("name") or ANONYMOUS, "isMe": row["userId"] == me, "isFriend": row["userId"] in mine}
         for row in rows
@@ -302,7 +306,7 @@ def get_friends_going(claims: dict) -> dict:
             names.setdefault(row["eventId"], []).append(name)
     known = store.all_events()
     upcoming = [(known[i], events.next_slot(known[i], now=now)) for i in names if i in known]
-    page = [(item, slot) for item, slot in upcoming if slot]
+    page = [(item, slot) for item, slot in upcoming if slot and _upcoming(slot)]
     page.sort(key=lambda pair: (events.slot_sort_key(pair[1]), events.plain_text(pair[0].get("title"))))
     by_event = {item["id"]: sorted(names[item["id"]], key=str.casefold) for item, _ in page}
     cards = _cards(claims, page[:GOING_LIMIT])
@@ -329,6 +333,11 @@ def _stored_name(user_id: str) -> str | None:
     """Zapas, gdy token nie ma imienia: `displayName` zapisany przez GET /api/me (kopia claimu `name`)."""
     item = users.get_item(Key={"userId": user_id}, ProjectionExpression="displayName").get("Item") or {}
     return _clean_name(item.get("displayName"))
+
+
+def _upcoming(slot: dict | None) -> bool:
+    """Termin od teraz, z datą (zajęcia bez harmonogramu nie mają daty - "nie wiadomo kiedy")."""
+    return bool(slot and (slot.get("date") or slot.get("start")))
 
 
 def _require_name(claims: dict) -> str:

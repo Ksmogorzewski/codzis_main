@@ -41,6 +41,7 @@ def api(client_api, monkeypatch, events_table):
         record("e1", "2026-10-15T18:00:00+02:00"),
         record("saturday", "2026-10-17T10:00:00+02:00"),
         record("yesterday", "2026-10-13T10:00:00+02:00", "2026-10-13T12:00:00+02:00"),
+        record("no-schedule", None) | {"kind": "recurring", "occurrences": [], "schedule": []},
     ]:
         events_table.put_item(Item=item)
     return client_api
@@ -192,6 +193,26 @@ def test_attendees_mark_friends_first(api):
         {"name": "Zosia", "isMe": False, "isFriend": False},
         {"name": "Bartek", "isMe": False, "isFriend": False},
     ]
+
+
+def test_attendees_past_event_hides_friends(api):
+    befriend(api, ALA, OLA)
+    save(api, "yesterday", ALA)
+    save(api, "yesterday", OLA)  # znajomi nie widzą historii
+
+    _, body = call(api, "GET /api/events/{id}/attendees", claims=ALA, path={"id": "yesterday"})
+    assert [(p["name"], p["isFriend"]) for p in body["people"]] == [("Ala", False), ("Ola", False)]
+
+
+def test_going_skips_classes_without_schedule(api):
+    befriend(api, ALA, OLA)
+    save(api, "no-schedule", OLA)  # zajęcia bez terminu - nie wiadomo, kiedy idzie
+    assert going(api) == {"items": [], "byEvent": {}}
+
+
+def test_remove_self_400(api):
+    status, body = call(api, "DELETE /api/friends/{userId}", claims=ALA, path={"userId": ALA["sub"]})
+    assert (status, body) == (400, {"error": "Nie możesz usunąć siebie"})
 
 
 def test_unknown_friends_route_404(api):

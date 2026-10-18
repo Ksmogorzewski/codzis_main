@@ -133,6 +133,10 @@ def test_remove_both_sides(friends):
     assert invite(friends, OLA, code_of(friends, ALA))["status"] == "pending"
 
 
+def test_remove_self_400(friends):
+    assert error(friends.remove, ALA, ALA).status == 400
+
+
 def fill_friends(friends_table, user_id, count=50):
     for i in range(count):
         friends_table.put_item(Item={"userId": user_id, "sk": f"friend#seed-{i}", "name": f"Osoba {i}", "since": "x"})

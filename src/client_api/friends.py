@@ -139,11 +139,11 @@ def invite(user_id: str, name: str, code: str, now: int) -> dict:
 def accept(user_id: str, name: str, from_id: str, now: int) -> dict:
     """Akceptacja zaproszenia od `from_id` -> {"status": "friends"} (obustronnie, jedną transakcją)."""
     request = _get(user_id, f"in#{from_id}")
-    if not _active(request, now):
+    if request is None or not _active(request, now):
         if _get(user_id, f"friend#{from_id}"):
             return {"status": "friends"}  # już zaakceptowane (np. podwójne kliknięcie)
         raise ApiError(404, "Nie ma takiego zaproszenia")
-    assert request is not None
+    # Limit sprawdzamy przed transakcją: dwie równoczesne akceptacje mogą dać 51 (akceptowalne w MVP)
     _ensure_room(user_id, f"Masz już {MAX_FRIENDS} znajomych")
     _ensure_room(from_id, f"Ta osoba ma już {MAX_FRIENDS} znajomych")
     since = _iso(now)
@@ -171,6 +171,8 @@ def decline(user_id: str, from_id: str) -> None:
 
 def remove(user_id: str, friend_id: str) -> None:
     """Usunięcie znajomości u obu stron (ponowne nic nie zmienia)."""
+    if friend_id == user_id:  # ten sam klucz dwa razy w transakcji = błąd DynamoDB
+        raise ApiError(400, "Nie możesz usunąć siebie")
     _transact_or_fail(
         [
             {"Delete": {"TableName": FRIENDS_TABLE, "Key": _key(user_id, f"friend#{friend_id}")}},
