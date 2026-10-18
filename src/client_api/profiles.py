@@ -7,12 +7,16 @@ ragProfile, account (account.py). Widok dla właściciela: `view`.
 Imię widoczne dla innych (zapisy, zaproszenia, znajomi, podgląd kodu) składa tylko `display_name`: imię + inicjał
 nazwiska („Ola K.”); pełnego nazwiska nie oddajemy nikomu.
 
+Preferencje = odpowiedzi ankiety + przedział wieku z daty urodzenia (account.birthDate, onboarding.with_age),
+więc liczą się przy zapisie ankiety i przy zmianie daty urodzenia (`update_account`).
+
 Po zapisaniu profilu i przy logowaniu `precompute` zleca rekomenderowi (osobna Lambda) zestawy na dziś, jutro
 i weekend - asynchronicznie, odpowiedź na to nie czeka.
 """
 
 import json
 import os
+from datetime import date
 
 import boto3
 
@@ -20,7 +24,7 @@ import account
 from codzis_common.app import ApiError, logger
 from codzis_common.aws import AWS_CONFIG
 from codzis_common.http import now_iso
-from onboarding import build_steps, compute_preferences, onboarding_version, rag_profile
+from onboarding import build_steps, compute_preferences, onboarding_version, rag_profile, with_age
 
 USERS_TABLE = os.environ["USERS_TABLE"]
 DISTRICTS = json.loads(os.environ["DISTRICTS"])
@@ -62,9 +66,10 @@ def login(claims: dict) -> dict:
     return view(item)
 
 
-def save_answers(user_id: str, answers: dict) -> dict:
-    """Zapis sprawdzonych odpowiedzi ankiety (onboarding.validate_answers) + preferencje -> widok profilu."""
-    preferences = compute_preferences(answers, STEPS)
+def save_answers(user_id: str, answers: dict, today: date) -> dict:
+    """Zapis sprawdzonych odpowiedzi ankiety (onboarding.validate_answers) + preferencje (z wiekiem z daty
+    urodzenia w danych konta; today = dzień w Warszawie) -> widok profilu."""
+    preferences = preferences_for(answers, account_of(user_id).get("birthDate"), today)
     now = now_iso()
     item = users.update_item(
         Key={"userId": user_id},
@@ -92,17 +97,50 @@ def account_of(user_id: str) -> dict:
     return (item or {}).get("account") or {}
 
 
-def save_account(user_id: str, value: dict) -> dict:
-    """Nowa mapa account -> widok profilu."""
+def update_account(user_id: str, values: dict, today: date) -> dict:
+    """Sprawdzone dane konta (account.validate) -> widok profilu. Z daty urodzenia liczymy przedział wieku
+    w preferencjach, więc przy wypełnionej ankiecie przeliczamy też preferencje i profil RAG; inny wynik ->
+    nowe zestawy rekomendacji."""
+    user = (
+        users.get_item(
+            Key={"userId": user_id},
+            ProjectionExpression="#account, onboarding, preferences",
+            ExpressionAttributeNames={"#account": "account"},
+        ).get("Item")
+        or {}
+    )
+    value = account.merge(user.get("account") or {}, values)
+    onboarding = user.get("onboarding") or {}
+    preferences = None
+    if onboarding.get("completedAt"):
+        preferences = preferences_for(onboarding.get("answers") or {}, value.get("birthDate"), today)
+    me = save_account(user_id, value, preferences)
+    if preferences is not None and preferences != user.get("preferences"):
+        precompute(user_id)  # inny przedział wieku -> nowe zestawy rekomendacji
+    return me
+
+
+def save_account(user_id: str, value: dict, preferences: dict | None = None) -> dict:
+    """Nowa mapa account -> widok profilu; z preferences (nowa data urodzenia) także preferencje i profil RAG."""
     now = now_iso()
+    update = "SET #account = :account, updatedAt = :now, createdAt = if_not_exists(createdAt, :now)"
+    values: dict = {":account": value, ":now": now}
+    if preferences is not None:
+        update += ", preferences = :preferences, ragProfile = :rag"
+        values |= {":preferences": preferences, ":rag": rag_profile(preferences)}
     item = users.update_item(
         Key={"userId": user_id},
-        UpdateExpression="SET #account = :account, updatedAt = :now, createdAt = if_not_exists(createdAt, :now)",
+        UpdateExpression=update,
         ExpressionAttributeNames={"#account": "account"},
-        ExpressionAttributeValues={":account": value, ":now": now},
+        ExpressionAttributeValues=values,
         ReturnValues="ALL_NEW",
     )["Attributes"]
     return view(item)
+
+
+def preferences_for(answers: dict, birth_date: str | None, today: date) -> dict:
+    """Preferencje z odpowiedzi ankiety + przedział wieku z daty urodzenia (today = dzień w Warszawie)."""
+    return with_age(compute_preferences(answers, STEPS), birth_date, today)
 
 
 def view(item: dict) -> dict:

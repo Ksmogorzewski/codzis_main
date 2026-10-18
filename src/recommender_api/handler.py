@@ -5,8 +5,10 @@
         Bez q zestaw układa profil; z q fraza dominuje (szukamy w całej Warszawie, bez twardych
         filtrów z onboardingu), a preferencje z profilu rozstrzygają tylko remisy.
         Zawsze odpowiada od razu z zapisanego zestawu (tabela recommendations, results_store.py),
-        także nieaktualnego - wtedy z "updating": true i nowym liczonym w tle. 202 {"status":
-        "preparing"} = zestawu jeszcze nie ma (albo zmienił się profil) i właśnie się liczy.
+        także nieaktualnego - wtedy z "updating": true i nowym liczonym w tle. Gdy model i indeks
+        są już w pamięci (ciepła instancja), faza 1 liczy się od razu w tej samej Lambdzie i pierwsze
+        żądanie zwraca karty zamiast czekać; 202 {"status": "preparing"} = zestawu jeszcze nie ma
+        (albo zmienił się profil, albo instancja jest zimna) i właśnie liczy się w tle.
     {"action": "compute", ...}  jeden zestaw w tle (zlecany przez GET; bez limitu 30 s HTTP API)
     {"action": "precompute", "userId": "..."}  dziś, jutro i weekend dla jednej osoby
         (client-api po zapisaniu profilu i przy logowaniu)
@@ -139,15 +141,27 @@ def get_recommendations(user_id: str, params: dict) -> dict | None:
     fingerprint = prefs_hash(user["preferences"], user.get("ragProfile"))
     body, fresh = _stored(results.get(user_id, key), fingerprint, now)
     if not fresh:
+        job = {"when": when, "from": span[0].isoformat(), "to": span[1].isoformat(),
+               "q": query, "limit": limit}
         try:
             if results.claim(user_id, key, fingerprint, now):
-                _start_compute(user_id, key, fingerprint, {"when": when, "from": span[0].isoformat(),
-                                                           "to": span[1].isoformat(), "q": query, "limit": limit})
-                if body:
-                    body["updating"] = True
+                if _engine is not None:
+                    # Ciepła instancja: faza 1 (filtry + wektory) od razu w tej samej Lambdzie -
+                    # karty w ~100 ms zamiast 202 + 2 s. AI (faza 2) i tak liczy się w tle, jak dotąd.
+                    _compute_inline(user_id, user, key, fingerprint, job, now)
+                    body, _ = _stored(results.get(user_id, key), fingerprint, now)
+                    _start_compute(user_id, key, fingerprint, job)
+                else:
+                    # Zimna instancja: liczenie w tle (jak dotąd), stary zestaw pokazujemy dalej.
+                    _start_compute(user_id, key, fingerprint, job)
+                    if body:
+                        body["updating"] = True
+        except ApiError:
+            raise
         except Exception:
             # Nie udało się zlecić liczenia: zapisany zestaw i tak pokazujemy, bez niego - 503 (strona ponowi)
             log.exception("Nie udało się zlecić liczenia zestawu %s", key)
+            results.release(user_id, key, fingerprint)
             if body is None:
                 raise ApiError(503, "Nie udało się przygotować propozycji – spróbuj za chwilę.")
     return body  # None -> 202, strona zapyta ponownie
@@ -181,6 +195,16 @@ def _start_compute(user_id: str, key: str, fingerprint: str, job: dict) -> None:
     except Exception:
         results.release(user_id, key, fingerprint)
         raise
+
+
+def _compute_inline(user_id: str, user: dict, key: str, fingerprint: str, job: dict, now: datetime) -> None:
+    """Faza 1 (filtry + wektory) policzona od razu w bieżącej, ciepłej Lambdzie i zapisana.
+    Używana tylko, gdy _engine już jest w pamięci (bez ryzyka zimnego startu w ścieżce GET)."""
+    span = (date.fromisoformat(job["from"]), date.fromisoformat(job["to"]))
+    body, _context, found = compute(_engine, user["preferences"], user.get("ragProfile"), span,
+                                    job.get("q", ""), job.get("limit", DEFAULT_LIMIT), now, job["when"])
+    refine_it = LLM_ENABLED and _engine.client is not None and bool(found)
+    results.put(user_id, key, fingerprint, {**body, "refining": refine_it}, expires_at(span))
 
 
 def compute_set(event: dict) -> dict:
@@ -277,11 +301,16 @@ def _compute_sets(user_id, prefs, rag_profile, jobs, query, limit, now) -> int:
 def compute(engine, prefs, rag_profile, span, query, limit, now, when) -> tuple[dict, dict, list]:
     """Faza 1: filtry + podobieństwo wektorowe. -> (zestaw kart, user_context, kandydaci dla AI)"""
     first_area = start_area(prefs)
+    query_vector = None
     for area in AREAS[AREAS.index(first_area):]:
         context = build_context(prefs, rag_profile, span, query, now, area)
-        if len(engine.retriever.retrieve(context, top_k=MIN_RESULTS)) >= MIN_RESULTS:
+        # Wektor zapytania zależy tylko od frazy i zainteresowań, nie od obszaru - liczymy go raz,
+        # a pętla po obszarach (okolica -> sąsiednie -> całe miasto) zmienia tylko twardy filtr dzielnicy.
+        if query_vector is None:
+            query_vector = engine.retriever.encoder.encode(context)
+        if len(engine.retriever.retrieve(context, top_k=MIN_RESULTS, query_vector=query_vector)) >= MIN_RESULTS:
             break
-    found = engine.recommend(context, top_k=limit, explain=False, expand=False)  # LLM dopiero w fazie 2
+    found = engine.recommend(context, top_k=limit, explain=False, expand=False, query_vector=query_vector)
     log.info("Rekomendacje: when=%s area=%s query=%s -> %d", when, area, bool(query), len(found))
     body = {
         "generatedAt": now.isoformat(timespec="seconds"),

@@ -2,12 +2,14 @@
 
     GET    /api/me          profil zalogowanego użytkownika (pierwsze wywołanie zakłada rekord i dane konta;
                             kopiuje z tokenu e-mail, imię -> displayName, nazwisko -> familyName)
-    PUT    /api/me          {"birthDate"} -> dane konta (account.py); imię i nazwisko zostają bez zmian
+    PUT    /api/me          {"birthDate"} -> dane konta (account.py); imię i nazwisko zostają bez zmian. Przy
+                            wypełnionej ankiecie przelicza też preferencje (przedział wieku z daty urodzenia)
     POST   /api/me/photo    {"contentType"} -> {"key", "upload": {"url", "fields"}} (presigned POST do S3)
     PUT    /api/me/photo    {"key"} -> wgrane zdjęcie staje się zdjęciem profilowym (poprzednie usuwamy)
     DELETE /api/me/photo    -> profil bez zdjęcia
     GET    /api/onboarding  pytania onboardingu (onboarding.py)
-    PUT    /api/profile     {"answers": {...}} -> walidacja, preferencje, zapis w tabeli users
+    PUT    /api/profile     {"answers": {...}} -> walidacja, preferencje (+ przedział wieku z account.birthDate),
+                            zapis w tabeli users
 
 Odpowiedź tras /api/me = GET /api/me: m.in. "name" (imię), "familyName" (nazwisko - tylko dla właściciela),
 "account": {"birthDate", "photoUrl"}.

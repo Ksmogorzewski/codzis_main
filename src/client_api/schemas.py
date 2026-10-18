@@ -57,7 +57,7 @@ class StatsQuery(BaseModel):
 
 
 class ProfileBody(BaseModel):
-    """PUT /api/profile {"answers": {pole: opcja | [opcje]}} (opcje: onboarding.validate_answers)."""
+    """PUT /api/profile {"answers": {pole: opcja | [opcje] | tekst}} (wartości: onboarding.validate_answers)."""
 
     answers: dict[str, object]
 

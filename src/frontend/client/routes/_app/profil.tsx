@@ -34,8 +34,9 @@ function ProfilePage() {
   return (
     <>
       <AccountCard key={live.userId} me={live} />
-      {/* key: inny użytkownik albo nowa wersja pytań = świeży stan ankiety */}
-      <SurveyView key={`${me.userId}:${steps.length}`} me={me} steps={steps} />
+      {/* key: inny użytkownik, nowa wersja pytań albo nowo zapisany profil = świeży stan ankiety
+          (po powrocie na Profil router najpierw pokazuje dane loadera z poprzedniej wizyty, potem je odświeża) */}
+      <SurveyView key={`${me.userId}:${steps.length}:${me.profile?.completedAt ?? ""}`} me={me} steps={steps} />
     </>
   );
 }

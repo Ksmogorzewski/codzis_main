@@ -17,11 +17,15 @@ export const OnboardingOptionSchema = z.object({
 
 export const OnboardingFieldSchema = z.object({
   id: z.string(),
-  type: z.enum(["single", "multi", "select"]),
+  // text = wolny opis bez opcji (np. „Kilka zdań o sobie”); odpowiedź to [tekst]
+  type: z.enum(["single", "multi", "select", "text"]),
   label: z.string().optional(),
   required: z.boolean().default(false),
   maxSelect: z.number().int().positive().optional(),
-  options: z.array(OnboardingOptionSchema),
+  maxLength: z.number().int().positive().optional(),
+  placeholder: z.string().optional(),
+  hint: z.string().optional(), // podpowiedź pod polem tekstowym
+  options: z.array(OnboardingOptionSchema).default([]),
 });
 
 export const OnboardingStepSchema = z.object({

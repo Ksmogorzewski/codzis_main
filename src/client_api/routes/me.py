@@ -25,13 +25,15 @@ def get_me() -> dict:
 
 @router.put("/api/me")
 def put_me() -> dict:
-    """Data urodzenia w profilu (imię i nazwisko zostają z rejestracji albo Google)."""
+    """Data urodzenia w profilu (imię i nazwisko zostają z rejestracji albo Google); przy wypełnionej ankiecie
+    przelicza też preferencje (przedział wieku) - profiles.update_account."""
     user_id = common.claims(router)["sub"]
     body = parse_input(MeBody, common.body(router), ME_ERROR)
-    values, errors = account.validate(body.model_dump(), events.warsaw_today(common.now()))
+    today = events.warsaw_today(common.now())
+    values, errors = account.validate(body.model_dump(), today)
     if errors:
         raise ApiError(400, ME_ERROR, fields=errors)
-    return profiles.save_account(user_id, account.merge(profiles.account_of(user_id), values))
+    return profiles.update_account(user_id, values, today)
 
 
 @router.post("/api/me/photo")
@@ -76,4 +78,4 @@ def put_profile() -> dict:
     answers, errors = validate_answers(body.answers, profiles.STEPS)
     if errors:
         raise ApiError(400, ANSWERS_ERROR, fields=errors)
-    return profiles.save_answers(user_id, answers)
+    return profiles.save_answers(user_id, answers, events.warsaw_today(common.now()))

@@ -78,13 +78,18 @@ class Retriever:
         self.last_dropped: int = 0   # candidates the min_score floor removed (pre-dedupe)
 
     # ------------------------------------------------------------------ #
-    def retrieve(self, user: dict, top_k: int = 10, min_score: float | None = DEFAULT_MIN_SCORE) -> list[Candidate]:
+    def retrieve(self, user: dict, top_k: int = 10, min_score: float | None = DEFAULT_MIN_SCORE,
+                 query_vector: object | None = None) -> list[Candidate]:
         """Return up to top_k filtered, relevance-ranked candidate events.
 
         min_score: cosine-similarity floor (0..1) applied to the RAW cosine, before the
         soft-preference boosts. Candidates scoring below it are dropped, so a weak query
         returns fewer than top_k results instead of padding the list with noise.
         Defaults to DEFAULT_MIN_SCORE; pass None (or 0.0) to disable the floor.
+
+        query_vector: a precomputed query vector to reuse instead of re-embedding. The
+        vector depends only on the query text + interests (and past taste), not on the hard
+        filters, so callers that loop over areas can encode once and pass it here.
         """
         predicate = make_event_filter(user)
         allowed = {e.get("id", "") for e in self.events if predicate(e)}
@@ -92,7 +97,7 @@ class Retriever:
             return []
 
         # Every chunk of the filtered events, best first (the index holds all events).
-        qv = self.encoder.encode(user)
+        qv = self.encoder.encode(user) if query_vector is None else query_vector
         hits = self.index.query(qv, k=len(self.index), allow=allowed)
 
         # Dedupe chunks -> best score per event, preserve best-first order.
