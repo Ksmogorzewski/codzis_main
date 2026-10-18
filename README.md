@@ -133,9 +133,9 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 | `PUT /api/profile` | `{"answers": {"who": ["kids"], ...}}` → walidacja, preferencje, zapis |
 | `GET /api/recommendations` | `?when=today\|tomorrow\|weekend\|week\|date&date=2026-10-30&q=jazz&limit=16` → karty wydarzeń z uzasadnieniem (sekcja Rekomendacje); `202 {"status": "preparing"}` gdy zestaw właśnie się liczy, `409` bez profilu, `503` zanim powstanie indeks |
 
-**Onboarding:** pytania i mapowanie odpowiedzi są w jednym miejscu, `src/client_api/onboarding.py`; frontend tylko je wyświetla. Jest 10 kafelków:
+**Onboarding:** pytania i mapowanie odpowiedzi są w jednym miejscu, `src/client_api/onboarding.py`; frontend tylko je wyświetla. Jest 9 kafelków:
 - wymagane: z kim, klimat (maks. 2), co odkryć (maks. 2), gdzie (dzielnica i zasięg);
-- opcjonalne: sprawy miejskie, kiedy, budżet, styl (pod dachem / plener, aktywność), formuła (na żywo / online, zapisy), o Tobie (wiek, dostępność).
+- opcjonalne: sprawy miejskie, kiedy, budżet, formuła (na żywo / online, zapisy), o Tobie (wiek, dostępność).
 
 **Rekord użytkownika (tabela `codzis-users`, klucz `userId` = `sub` z Cognito, PITR włączone):**
 

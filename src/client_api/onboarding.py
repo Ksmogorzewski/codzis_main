@@ -156,24 +156,6 @@ def build_steps(districts: list[str]) -> list[dict]:
             ]}],
         },
         {
-            "id": "style", "icon": "nature_people",
-            "title": "Jak lubisz spędzać czas?", "hint": "Opcjonalne",
-            "fields": [
-                {"id": "setting", "type": "single", "label": "W środku czy na zewnątrz?", "required": False,
-                 "options": [
-                    _opt("indoor", "Pod dachem", "roofing", "Pod dachem", setting=["W pomieszczeniu"]),
-                    _opt("outdoor", "Na świeżym powietrzu", "park", "Plener", setting=["Na zewnątrz"]),
-                    _opt("any", "Bez różnicy", "swap_horiz", "Pod dachem lub plener"),
-                ]},
-                {"id": "activity", "type": "multi", "label": "Jak aktywnie?", "required": False, "options": [
-                    _opt("watch", "Oglądam i słucham", "visibility", "Oglądam", activityLevel=["Widz / słuchacz"]),
-                    _opt("participate", "Biorę udział", "front_hand", "Biorę udział", activityLevel=["Udział aktywny"]),
-                    _opt("exercise", "Chcę się zmęczyć", "fitness_center", "Wysiłek",
-                         activityLevel=["Wysiłek fizyczny"]),
-                ]},
-            ],
-        },
-        {
             "id": "format", "icon": "confirmation_number",
             "title": "Jaka formuła wydarzeń?", "hint": "Opcjonalne",
             "fields": [

@@ -165,7 +165,6 @@ def test_compute_preferences_maps_onto_taxonomy():
             **VALID_ANSWERS,
             "when": ["weekend", "weekday_evening"],
             "budget": "free",
-            "setting": "outdoor",
             "registration": "walk_in",
             "age": "65plus",
         },
@@ -178,7 +177,7 @@ def test_compute_preferences_maps_onto_taxonomy():
     assert prefs["travelRange"] == "nearby"
     assert prefs["cost"] == ["Bezpłatne"]
     assert prefs["maxPrice"] == 0
-    assert prefs["setting"] == ["Na zewnątrz"]
+    assert prefs["setting"] == []  # bez pytania o styl (pod dachem / plener) - zostaje pusta
     assert prefs["registration"] == ["Wstęp wolny"]
     assert prefs["ageRange"] == "65+"
     assert prefs["weekend"] is True
