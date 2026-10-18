@@ -61,8 +61,18 @@ def _routes(app):
 
     @app.post("/api/invite")
     def invite():
-        Invite.model_validate({"count": "dużo"})
+        # ValidationError poza parse_input = nasze dane (np. z bazy) nie pasują do modelu
+        Invite.model_validate({"count": "tajne-dane-z-bazy"})
         return {}
+
+    @app.post("/api/input")
+    def input_():
+        body = parse_input(Invite, parse_body(app.current_event.raw_event), "Podaj kod znajomego")
+        return {"code": body.code}
+
+    @app.get("/api/unserializable")
+    def unserializable():
+        return {"a": {1}}
 
     @app.get("/api/request-id")
     def request_id():
@@ -174,10 +184,44 @@ def test_decimal_and_polish_serialization(call):
     assert result["body"] == json.dumps({"name": "Śródmieście", "price": 12.5, "n": 1}, ensure_ascii=False)
 
 
-def test_validation_error_is_400_with_fields(call):
-    result = call("POST", "/api/invite")
+def test_client_input_validation_is_400_with_fields(call):
+    result = call("POST", "/api/input", '{"count": "x"}')
     assert result["statusCode"] == 400
-    assert _body(result) == {"error": "Niepoprawne dane", "fields": ["code", "count"]}
+    assert _body(result) == {"error": "Podaj kod znajomego", "fields": ["code", "count"]}
+
+
+def test_server_side_validation_error_is_500_without_values(call, log_lines):
+    result = call("POST", "/api/invite")
+    assert result["statusCode"] == 500
+    assert _body(result) == {"error": SERVER_ERROR, "requestId": REQUEST_ID}
+    lines = log_lines()
+    [error] = [line for line in lines if line["level"] == "ERROR"]
+    assert (error["message"], error["route"], error["model"]) == ("invalid_data", "POST /api/invite", "Invite")
+    assert {"loc": ["count"], "type": "int_parsing"} in error["problems"]
+    assert "tajne-dane-z-bazy" not in json.dumps(lines)
+    assert [line["status"] for line in lines if line["message"] == "access"] == [500]
+
+
+def test_unserializable_response_is_500_with_access_line(call, log_lines):
+    result = call("GET", "/api/unserializable")
+    assert result["statusCode"] == 500
+    assert result["headers"] == {"Content-Type": "application/json"}
+    assert result["body"] == json.dumps({"error": SERVER_ERROR, "requestId": REQUEST_ID}, ensure_ascii=False)
+    lines = log_lines()
+    [error] = [line for line in lines if line["level"] == "ERROR"]
+    assert (error["message"], error["route"], error["error"]) == ("unhandled", "GET /api/unserializable", "TypeError")
+    [access] = [line for line in lines if line["message"] == "access"]
+    assert (access["route"], access["status"]) == ("GET /api/unserializable", 500)
+    # następne żądanie w tym samym kontenerze działa normalnie (kontekst wyczyszczony)
+    assert _body(call("GET", "/api/items/x")) == {"id": "x"}
+
+
+def test_missing_request_id_is_null():
+    app = _routes(create_app(APIGatewayHttpResolver))
+    event = http_event("GET", "/api/boom")
+    del event["requestContext"]["requestId"]
+    result = app.resolve(event, CONTEXT)
+    assert _body(result) == {"error": SERVER_ERROR, "requestId": None}
 
 
 def test_current_request_id(call):
@@ -207,7 +251,7 @@ def test_access_log_on_errors(call, log_lines):
 
 
 def test_logs_never_contain_body(call, log_lines):
-    for path in ("/api/created", "/api/invite", "/api/nie-ma"):
+    for path in ("/api/created", "/api/invite", "/api/input", "/api/nie-ma"):
         call("POST", path, SECRET_BODY)
     assert "ala@example.com" not in json.dumps(log_lines())
 
@@ -221,6 +265,7 @@ def test_validation_fields_top_level_in_order():
     with pytest.raises(ValidationError) as caught:
         Body.model_validate({"price": "x", "tags": ["ok", 1]})
     assert validation_fields(caught.value) == ["title", "price", "tags"]
+    assert validation_fields(caught.value, sort=True) == ["price", "tags", "title"]
 
 
 def test_api_error_signature_unchanged():

@@ -28,9 +28,12 @@
 Kontrakt HTTP jak w dawnym `codzis_common.http.handle_request` + `response`:
 - `ApiError(status, message, **extra)` -> status i body `{"error": message, **extra}` (4xx: WARNING ze statusem
   i `code`, 5xx: ERROR).
-- `pydantic.ValidationError` niezłapany w trasie -> `400 {"error": "Niepoprawne dane", "fields": [...]}`;
-  własny komunikat trasy: `parse_input(Model, data, "komunikat")` albo `validation_fields(e)`.
-- Każdy inny wyjątek -> `logger.exception` (pełny traceback) i `500 {"error": SERVER_ERROR, "requestId"}`.
+- Wejście klienta walidujemy tylko na granicy: `parse_input(Model, data, "komunikat")` -> 400
+  `{"error": "komunikat", "fields": [...]}` (albo własne `ApiError` z `validation_fields(e)`).
+- `pydantic.ValidationError` niezłapany w trasie = błąd po naszej stronie (np. dane z bazy) -> 500; w logu tylko
+  model, typy i miejsca błędów - nigdy `str(e)` ani `e.errors()` (zawierają wartości wejścia).
+- Każdy inny wyjątek (także błąd serializacji odpowiedzi) -> `logger.exception` (pełny traceback) i
+  `500 {"error": SERVER_ERROR, "requestId"}` (`requestId: null`, gdy API Gateway go nie podało).
 - Nieznana trasa i zła metoda -> `404 {"error": "Nie znaleziono"}` (zamiast 404 Powertools).
 - Body: `json.dumps(ensure_ascii=False, default=json_default)` - polskie znaki bez escapowania, `Decimal` z DynamoDB
   -> int/float; jedyny nagłówek `Content-Type: application/json` (także w REST API v1: `headers`, nie
@@ -43,8 +46,8 @@ widzi w odpowiedzi 500; Logs Insights: `filter correlation_id = "..."`): jedna l
 """
 
 import json
-import re
 import time
+import traceback
 from collections.abc import Mapping
 from functools import partial
 from typing import Any, overload
@@ -88,14 +91,16 @@ def _json_value(value: object) -> object:
 to_json = partial(json.dumps, ensure_ascii=False, default=_json_value)
 
 
-def validation_fields(error: ValidationError) -> list[str]:
-    """Nazwy błędnych pól najwyższego poziomu (bez powtórzeń, w kolejności błędów Pydantic) - dla `fields`."""
+def validation_fields(error: ValidationError, sort: bool = False) -> list[str]:
+    """Nazwy błędnych pól najwyższego poziomu (bez powtórzeń) - dla `fields`.
+
+    Kolejność błędów Pydantic, a z `sort=True` alfabetycznie (jak dziś ogłoszenia partnera i ankieta)."""
     fields: list[str] = []
     for item in error.errors():
         loc = item["loc"]
         if loc and isinstance(loc[0], str) and loc[0] not in fields:
             fields.append(loc[0])
-    return fields
+    return sorted(fields) if sort else fields
 
 
 def parse_input[M: BaseModel](model: type[M], data: object, message: str = INVALID_INPUT) -> M:
@@ -106,18 +111,19 @@ def parse_input[M: BaseModel](model: type[M], data: object, message: str = INVAL
         raise ApiError(400, message, fields=validation_fields(e)) from None
 
 
-def current_request_id(app: ApiGatewayResolver) -> str:
-    """requestId API Gateway bieżącego żądania (= correlation_id w logach); "" gdy go brak."""
+def current_request_id(app: ApiGatewayResolver) -> str | None:
+    """requestId API Gateway bieżącego żądania (= correlation_id w logach); None, gdy go brak."""
     return _request_id(app.current_event.raw_event)
 
 
-def _request_id(event: Mapping[str, Any]) -> str:
-    return str((event.get("requestContext") or {}).get("requestId") or "")
+def _request_id(event: Mapping[str, Any]) -> str | None:
+    request_id = (event.get("requestContext") or {}).get("requestId")
+    return str(request_id) if request_id else None
 
 
-def _route_template(method: str, path: str) -> str:
-    """Szablon trasy do logu: reguła Powertools "/api/events/<id>" -> "GET /api/events/{id}" (jak routeKey)."""
-    return f"{method} {re.sub(r'<(\w+)>', r'{\1}', path)}"
+def _stack(error: BaseException) -> list[str]:
+    """Ślad stosu jako "plik:linia w funkcji" - bez komunikatu wyjątku i tekstu kodu (mogą zawierać dane)."""
+    return [f"{frame.filename}:{frame.lineno} in {frame.name}" for frame in traceback.extract_tb(error.__traceback__)]
 
 
 def _single_value_headers(result: dict[str, Any]) -> dict[str, Any]:
@@ -137,7 +143,7 @@ class _App(ApiGatewayResolver):
         self._access_route: str | None = None
         self.use([self._remember_route])
         self.exception_handler(ApiError)(self._api_error)
-        self.exception_handler(ValidationError)(self._validation_error)
+        self.exception_handler(ValidationError)(self._server_validation_error)
         self.exception_handler(Exception)(self._unexpected_error)
         self.not_found(self._not_found)
 
@@ -145,8 +151,17 @@ class _App(ApiGatewayResolver):
         """Obsługa żądania + jedna linia logu dostępu (route, status, durationMs; correlation_id = requestId)."""
         started = time.monotonic()
         self._access_route = None
-        logger.set_correlation_id(_request_id(event) or None)
-        result = _single_value_headers(super().resolve(event, context))
+        logger.set_correlation_id(_request_id(event))
+        try:
+            result = _single_value_headers(super().resolve(event, context))
+        except Exception as error:
+            # Powertools serializuje body już po swojej obsłudze wyjątków (np. set albo datetime w odpowiedzi):
+            # bez tego API Gateway oddałby pusty 502, a w logu nie byłoby linii dostępu.
+            self.clear_context()
+            logger.error(
+                "unhandled", extra={"route": self._access_route, "error": type(error).__name__, "stack": _stack(error)}
+            )
+            result = self._fallback_error(event)
         duration_ms = round((time.monotonic() - started) * 1000)
         logger.info(
             "access", extra={"route": self._access_route, "status": result["statusCode"], "durationMs": duration_ms}
@@ -154,11 +169,15 @@ class _App(ApiGatewayResolver):
         return result
 
     def _remember_route(self, app: ApiGatewayResolver, next_middleware: NextMiddleware) -> Response:
-        """Middleware: zapamiętuje szablon dopasowanej trasy (dla nieznanej trasy - ścieżkę) do logów."""
-        route = app.context.get("_route")
-        if route is not None:
-            self._access_route = _route_template(route.method, route.path)
+        """Middleware: zapamiętuje szablon dopasowanej trasy ("GET /api/events/{id}"; nieznana trasa - ścieżka)."""
+        self._access_route = f"{app.request.method} {app.request.route}"
         return next_middleware(app)
+
+    @staticmethod
+    def _fallback_error(event: Mapping[str, Any]) -> dict[str, Any]:
+        """Odpowiedź 500 zbudowana poza Powertools - ten sam kształt i serializacja co reszta."""
+        body = to_json({"error": SERVER_ERROR, "requestId": _request_id(event)})
+        return {"statusCode": 500, "body": body, "isBase64Encoded": False, "headers": {"Content-Type": JSON}}
 
     def _api_error(self, error: ApiError) -> Response:
         extra = {"route": self._access_route, "status": error.status, "code": error.body.get("code")}
@@ -168,11 +187,18 @@ class _App(ApiGatewayResolver):
             logger.error("api_error", extra=extra)
         return Response(status_code=error.status, content_type=JSON, body=error.body)
 
-    def _validation_error(self, error: ValidationError) -> Response:
-        return self._api_error(ApiError(400, INVALID_INPUT, fields=validation_fields(error)))
+    def _server_validation_error(self, error: ValidationError) -> Response:
+        """ValidationError poza `parse_input` = nasze dane nie pasują do modelu -> 500, log bez wartości."""
+        problems = [{"loc": list(item["loc"]), "type": item["type"]} for item in error.errors(include_input=False)]
+        extra = {"route": self._access_route, "model": error.title, "problems": problems, "stack": _stack(error)}
+        logger.error("invalid_data", extra=extra)
+        return self._server_error()
 
     def _unexpected_error(self, error: Exception) -> Response:
         logger.exception("unhandled", extra={"route": self._access_route})
+        return self._server_error()
+
+    def _server_error(self) -> Response:
         body = {"error": SERVER_ERROR, "requestId": current_request_id(self)}
         return Response(status_code=500, content_type=JSON, body=body)
 
