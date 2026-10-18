@@ -306,6 +306,14 @@ export function AuthForm({ initialError = null }: { initialError?: string | null
           </a>
         </p>
       )}
+      <p className="text-center text-meta text-muted-foreground">
+        <a
+          className="rounded-sm underline underline-offset-4 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
+          href="/polityka-prywatnosci.html"
+        >
+          Polityka prywatności
+        </a>
+      </p>
     </form>
   );
 }

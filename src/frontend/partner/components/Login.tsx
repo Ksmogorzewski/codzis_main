@@ -87,7 +87,8 @@ export function Login({ onLogin }: Props) {
         </form>
         {cfg.clientPortal && (
           <span className="muted">
-            Szukasz, co robić w mieście? <a href={cfg.clientPortal}>Przejdź do aplikacji WarsawNow</a>
+            Szukasz, co robić w mieście? <a href={cfg.clientPortal}>Przejdź do aplikacji WarsawNow</a> ·{" "}
+            <a href={`${cfg.clientPortal}/polityka-prywatnosci.html`}>Polityka prywatności</a>
           </span>
         )}
       </div>

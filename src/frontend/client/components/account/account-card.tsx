@@ -145,10 +145,16 @@ export function AccountCard({ me }: { me: Me }) {
             <AlertTitle className="font-semibold">{error}</AlertTitle>
           </Alert>
         )}
-        <div className="md:col-span-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 md:col-span-3">
           <Button type="submit" disabled={!dirty || save.isPending} aria-busy={save.isPending}>
             {save.isPending ? "Zapisuję…" : "Zapisz dane"}
           </Button>
+          <a
+            className="rounded-sm text-meta text-muted-foreground underline underline-offset-4 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
+            href="/polityka-prywatnosci.html"
+          >
+            Jak używamy Twoich danych
+          </a>
         </div>
       </form>
     </Card>
