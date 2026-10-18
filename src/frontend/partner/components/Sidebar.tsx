@@ -1,6 +1,8 @@
 import { Icon } from "../../shared/Icon";
 import { initials } from "../../shared/format";
 import type { Screen } from "../App";
+import { googleLogin } from "../lib/auth";
+import { config } from "../lib/config";
 import type { Profile } from "../lib/types";
 
 type Props = { profile: Profile; active: Screen; eventsCount: number | null; onLogout: () => void };
@@ -47,11 +49,15 @@ export function Sidebar({ profile, active, eventsCount, onLogout }: Props) {
           <a href="#/platnosci">Doładuj</a>
         </div>
       </div>
+      <a className="side-legal" href={`${config().clientPortal ?? ""}/polityka-prywatnosci.html`}>
+        Polityka prywatności
+      </a>
       <div className="side-user">
         <span className="avatar">{initials(profile.partnerName)}</span>
         <span className="who">
           <b>{profile.partnerName}</b>
-          <small>{profile.partnerId}</small>
+          {/* Przy Google partnerId to długi identyfikator Cognito - zamiast niego rodzaj konta */}
+          <small>{googleLogin() ? "Konto Google" : profile.partnerId}</small>
         </span>
         <button className="side-logout" type="button" onClick={onLogout} aria-label="Wyloguj">
           <Icon name="logout" size={18} />

@@ -81,6 +81,47 @@ def test_get_me_unknown_key_uses_key_id_as_name(partner_api):
     assert body["partnerName"] == "key-unknown"
 
 
+# --- logowanie Google (samoobsługa: konto Google = konto organizatora) ---
+
+GOOGLE = {"sub": "5f1c2e7a-google", "name": "  Anna   Nowak ", "email": "anna@example.com", "email_verified": "true"}
+
+
+def test_google_first_login_creates_partner_from_token(partner_api, aws):
+    status, body = call(partner_api, "GET", "me", claims=GOOGLE)
+
+    assert status == 200
+    assert body["partnerId"] == GOOGLE["sub"]
+    assert body["partnerName"] == "Anna Nowak"
+    assert body["credits"] == STARTER_CREDITS
+    assert "email" not in body
+    assert aws.partners.get_item(Key={"partnerId": GOOGLE["sub"]})["Item"] == {
+        "partnerId": GOOGLE["sub"],
+        "partnerName": "Anna Nowak",
+        "credits": STARTER_CREDITS,
+    }
+
+
+def test_google_account_without_name_gets_default_name(partner_api):
+    _, body = call(partner_api, "GET", "me", claims={"sub": "bez-imienia"})
+    assert body["partnerName"] == "Organizator"
+
+
+def test_google_partner_signs_events_with_google_name_only(partner_api, aws):
+    call(partner_api, "GET", "me", claims=GOOGLE)
+
+    status, body = call(partner_api, "POST", "events", valid_event(), claims=GOOGLE)
+
+    assert status == 201
+    assert aws.credits(GOOGLE["sub"]) == STARTER_CREDITS - 1
+    (record,) = aws.messages()[0]
+    assert (record["partnerId"], record["partnerName"]) == (GOOGLE["sub"], "Anna Nowak")
+    assert "anna@example.com" not in str(record)  # e-mail z Google nie trafia do publicznego rekordu
+    _, own = call(partner_api, "GET", "events", claims=GOOGLE)
+    assert [i["id"] for i in own["items"]] == [body["id"]]
+    _, key_partner = call(partner_api, "GET", "events")
+    assert key_partner["items"] == []
+
+
 def test_form_options_are_taxonomy_values(partner_api):
     _, body = call(partner_api, "GET", "me")
     options = taxonomy()

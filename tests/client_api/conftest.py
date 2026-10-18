@@ -13,6 +13,8 @@ ATTENDANCE_TABLE = "test-attendance"
 STATS_TABLE = "test-event-stats"
 FRIENDS_TABLE = "test-friends"
 REQUEST_ID = "req-client-1"
+PHOTOS_BUCKET = "test-photos"
+PHOTOS_BASE_URL = "https://partner.example.com"
 
 
 def _create_tables():
@@ -93,9 +95,14 @@ def client_api(monkeypatch):
     monkeypatch.setenv("STATS_TABLE", STATS_TABLE)
     monkeypatch.setenv("FRIENDS_TABLE", FRIENDS_TABLE)
     monkeypatch.setenv("DISTRICTS", json.dumps(DISTRICTS, ensure_ascii=False))
+    monkeypatch.setenv("PHOTOS_BUCKET", PHOTOS_BUCKET)
+    monkeypatch.setenv("PHOTOS_BASE_URL", PHOTOS_BASE_URL)
     monkeypatch.delenv("RECOMMENDER_FUNCTION", raising=False)
     with mock_aws():
         _create_tables()
+        boto3.client("s3").create_bucket(
+            Bucket=PHOTOS_BUCKET, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"}
+        )
         yield load_lambda(CLIENT_API_DIR)
 
 

@@ -166,23 +166,17 @@ variable "partner_dev_origins" {
 }
 
 variable "cognito_domain_prefix" {
-  description = "Prefiks Hosted UI Cognito: https://<prefix>.auth.<region>.amazoncognito.com (unikalny w regionie)"
+  description = "Prefiks Hosted UI Cognito portalu klienta: https://<prefix>.auth.<region>.amazoncognito.com (unikalny w regionie)"
   type        = string
   default     = "warsawnow"
 }
 
-variable "google_client_id" {
-  description = "OAuth client ID z Google Cloud Console; puste = logowanie tylko e-mailem"
+variable "partner_cognito_domain_prefix" {
+  description = "Prefiks Hosted UI Cognito panelu organizatora (osobna pula partnerów, unikalny w regionie)"
   type        = string
-  default     = ""
+  default     = "warsawnow-partner"
 }
 
-variable "google_client_secret" {
-  description = "OAuth client secret z Google Cloud Console (trafia do state'u Terraforma)"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
 
 # --- rekomendacje (RAG) ---
 
@@ -238,8 +232,10 @@ locals {
   client_domains        = concat([var.client_domain_name], var.client_domain_aliases)
   client_origins        = [for d in local.client_domains : "https://${d}"]
   client_app_urls       = concat([for o in local.client_origins : "${o}/"], [for o in var.client_dev_origins : "${o}/"])
-  google_enabled        = var.google_client_id != ""
   cognito_hosted_domain = "${var.cognito_domain_prefix}.auth.${var.region}.amazoncognito.com"
+  # panel organizatora: adresy powrotu po logowaniu Google (strona główna panelu)
+  partner_app_urls       = concat([for o in local.website_origins : "${o}/"], [for o in var.partner_dev_origins : "${o}/"])
+  partner_cognito_domain = "${var.partner_cognito_domain_prefix}.auth.${var.region}.amazoncognito.com"
 
   # rozszerzenie pliku -> Content-Type (strony na S3)
   content_types = {

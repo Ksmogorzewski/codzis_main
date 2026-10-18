@@ -1,13 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { toast } from "sonner";
+import { AccountCard } from "@/components/account/account-card";
 import { DataRouteError } from "@/components/layout/route-error";
 import { SurveySkeleton } from "@/components/survey/survey-skeleton";
 import { SurveyView } from "@/components/survey/survey-view";
-import { meQueryOptions } from "@/hooks/use-me.query";
+import { meQueryOptions, useMe } from "@/hooks/use-me.query";
 import { onboardingQueryOptions } from "@/hooks/use-onboarding.query";
 
-// Ankieta profilu: pytania (GET /api/onboarding) i zapisane odpowiedzi (GET /api/me) przed renderem.
+// Profil: dane konta (zdjęcie, imię, nazwisko, data urodzenia) i ankieta - pytania (GET /api/onboarding)
+// i zapisane odpowiedzi (GET /api/me) przed renderem.
 export const Route = createFileRoute("/_app/profil")({
   loader: async ({ context }) => {
     const [me, onboarding] = await Promise.all([
@@ -27,6 +29,13 @@ function ProfilePage() {
   useEffect(() => {
     if (me.onboardingOutdated && !me.needsOnboarding) toast("Dodaliśmy nowe pytania – uzupełnij profil.", { id: "onboarding-outdated" });
   }, [me.onboardingOutdated, me.needsOnboarding]);
-  // key: inny użytkownik albo nowa wersja pytań = świeży stan ankiety
-  return <SurveyView key={`${me.userId}:${steps.length}`} me={me} steps={steps} />;
+  // Dane konta z cache (zapis i zdjęcie aktualizują je przez setQueryData), ankieta z danych loadera.
+  const live = useMe().data ?? me;
+  return (
+    <>
+      <AccountCard key={live.userId} me={live} />
+      {/* key: inny użytkownik albo nowa wersja pytań = świeży stan ankiety */}
+      <SurveyView key={`${me.userId}:${steps.length}`} me={me} steps={steps} />
+    </>
+  );
 }

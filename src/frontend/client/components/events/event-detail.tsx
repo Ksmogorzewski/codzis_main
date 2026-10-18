@@ -4,6 +4,7 @@ import { AttendeesSection } from "@/components/community/attendees-section";
 import { SaveButton, SavesCount } from "@/components/community/save-button";
 import { CrewEntry } from "@/components/crew/crew-entry";
 import { errorText, RouteError } from "@/components/layout/route-error";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
@@ -29,6 +30,7 @@ import { startLocation, useLocation } from "@/lib/location";
 import { destinationOf, districtOf, mapsEmbedUrl, originOf } from "@/lib/maps";
 import type { Card as CardData, EventDetail } from "@/lib/schemas";
 import { lastSearch } from "@/lib/search";
+import { tagChips } from "@/lib/tags";
 import { DetailSkeleton } from "./detail-skeleton";
 import { EventBadges } from "./event-badges";
 import { EventImage } from "./event-image";
@@ -118,6 +120,7 @@ function Detail({ card, builtAt, detail }: DetailProps) {
   const readAt = readAtLabel(detail?.importedAt ?? builtAt);
   const description = detail?.text || card.lead;
   const dates = detail ? upcoming(detail.occurrences, now) : [];
+  const chips = tagChips(card.tags);
   const distance = card.online
     ? "Online"
     : (dist ?? (status === "denied" ? "Włącz lokalizację, aby zobaczyć" : card.location ? "—" : "Brak współrzędnych"));
@@ -138,6 +141,15 @@ function Detail({ card, builtAt, detail }: DetailProps) {
         </h1>
         {(place || card.district) && (
           <p className="text-[17px] text-muted-foreground">{[place, card.district].filter(Boolean).join(" · ")}</p>
+        )}
+        {chips.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1.5" aria-label="Tagi">
+            {chips.map((chip) => (
+              <Badge key={chip} variant="secondary" size="lg">
+                {chip}
+              </Badge>
+            ))}
+          </div>
         )}
       </header>
 

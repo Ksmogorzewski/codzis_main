@@ -5,19 +5,19 @@ import { createRoot } from "react-dom/client";
 import { Icon } from "../shared/Icon";
 import { creditsLabel, formatMoney } from "../shared/format";
 import { api } from "./lib/api";
+import { hasLogin } from "./lib/auth";
 import { PAYMENT_STATUS } from "./lib/labels";
-import { session } from "./lib/session";
 import type { Payment } from "./lib/types";
 import "./styles.css";
 
 function MockPay() {
   const id = new URLSearchParams(window.location.search).get("id");
   const [payment, setPayment] = useState<Payment | null>(null);
-  const [error, setError] = useState(!session.get() ? "Zaloguj się w panelu organizatora, żeby dokończyć płatność." : !id ? "Brak identyfikatora płatności." : "");
+  const [error, setError] = useState(!hasLogin() ? "Zaloguj się w panelu organizatora, żeby dokończyć płatność." : !id ? "Brak identyfikatora płatności." : "");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!id || !session.get()) return;
+    if (!id || !hasLogin()) return;
     api<Payment>("GET", `/payments/${encodeURIComponent(id)}`)
       .then(setPayment)
       .catch((e: Error) => setError(e.message));

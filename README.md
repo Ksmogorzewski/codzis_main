@@ -14,7 +14,7 @@ https://portal.<domena>/ ──▶ CloudFront ──▶ S3 (portal klienta, Reac
           GET /api/recommendations ──▶ Lambda recommender (obraz kontenera: model + indeks z S3) ──▶ DeepSeek
 
 https://<domena>/        ──▶ CloudFront ──▶ S3 (panel organizatora, React, prywatny, OAC)
-https://<domena>/api/*   ──▶ CloudFront ──▶ API GW (REST, API key, /{proxy+}) ──▶ Lambda ──▶ submissions + SQS
+https://<domena>/api/*   ──▶ CloudFront ──▶ API GW (REST, token Google z Cognito albo API key, /{proxy+}) ──▶ Lambda ──▶ submissions + SQS
 https://<domena>/photos/* ──▶ CloudFront ──▶ S3 (zdjęcia, prywatny; upload przez presigned POST)
 
 importer ECS (EventBridge co 2 h): API UM Warszawy ──▶ schemat v1 ──▶ diff (S3) ──▶ SQS
@@ -24,7 +24,7 @@ dispatcher (Lambda, EventBridge co 1 min): gdy w kolejce jest ≥ 1 wiadomość 
 recommender (EventBridge co 30 min): events ──▶ embeddingi nowych eventów ──▶ S3 recommender/index.npz
 ```
 
-Panel organizatora: logowanie kluczem API, potem Moje wydarzenia (statusy, tagi AI), Dodaj wydarzenie (formularz z podglądem karty) i Płatności i kredyty. Mock bramka: `mock-pay.html`.
+Panel organizatora: logowanie przez Google (pierwsze logowanie zakłada konto organizatora) albo, bez skonfigurowanego Google, kluczem API; potem Moje wydarzenia (statusy, tagi AI), Dodaj wydarzenie (formularz z podglądem karty) i Płatności i kredyty. Mock bramka: `mock-pay.html`.
 
 | Endpoint | Opis |
 | --- | --- |
@@ -82,7 +82,7 @@ terraform output dns_records                   # home.pl: CNAME, Host "partner" 
 **Zmiana domeny w działającym deployu:** zrób od razu pełny `terraform apply`, bez etapu 1. Przy `-target` Terraform próbuje usunąć stary certyfikat, który jest jeszcze podpięty pod CloudFront, i apply kończy się błędem. Gdy apply czeka na `aws_acm_certificate_validation`, w drugim terminalu uruchom `scripts/acm-records.sh`: pokaże rekordy do wpisania w home.pl. Domena musi już działać w DNS (świeżo zarejestrowana `.pl` potrzebuje na to od kilku minut do kilku godzin).
 
 ```sh
-terraform output -json partner_api_keys        # klucze do przekazania partnerom
+terraform output -json partner_api_keys        # klucze do przekazania partnerom (tylko bez logowania Google)
 aws ssm put-parameter --name "$(terraform output -raw um_api_token_parameter)" \
   --type SecureString --overwrite --value "<token dane.um.warszawa.pl>"
 aws ssm put-parameter --name "$(terraform output -raw deepseek_api_key_parameter)" \
@@ -103,13 +103,18 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 
 **Logowanie (Cognito):**
 - **E-mail + hasło:** własny formularz strony; rejestracja z 6-cyfrowym kodem z e-maila i reset hasła. Domyślna wysyłka Cognito ma limit ~50 e-maili dziennie.
-- **Google (domyślnie wyłączone):** bez `google_client_id` nie powstaje ani dostawca Google, ani domena Hosted UI, a strona nie pokazuje przycisku. Żeby włączyć, w [Google Cloud Console](https://console.cloud.google.com/apis/credentials) utwórz *OAuth client ID → Web application*:
-  - Authorized JavaScript origins: `terraform output cognito_hosted_ui`;
-  - Authorized redirect URIs: `terraform output google_oauth_redirect_uri`.
-
-  Client ID i secret wpisz do `infra/secrets.auto.tfvars` (`google_client_id`, `google_client_secret`; plik jest w `.gitignore`, Terraform wczytuje go sam) i zrób `terraform apply`; przycisk „Kontynuuj przez Google” pojawi się sam. Ekran zgody w trybie *Testing* wpuszcza tylko dodanych testerów.
+- **Google (domyślnie wyłączone):** jeden klient OAuth Google dla portalu klienta i panelu organizatora. Bez sekretu `codzis/google-oauth` w AWS Secrets Manager nie powstają dostawcy Google ani domeny Hosted UI, portal nie pokazuje przycisku, a panel loguje kluczem API. Żeby włączyć, w [Google Cloud Console](https://console.cloud.google.com/auth/overview):
+  1. *Google Auth Platform*: nazwa aplikacji i e-mail pomocy, odbiorcy *External*. W *Branding*: strona główna `https://portal.waw-out.pl/`, polityka prywatności `https://portal.waw-out.pl/polityka-prywatnosci.html` (`src/frontend/client/public/polityka-prywatnosci.html`), *Authorized domains* `amazoncognito.com` i `waw-out.pl`. Potem *Audience → Publish app* (w trybie *Testing* wejdą tylko dodani testerzy, do 100). Zakresy `openid`, `email`, `profile` nie wymagają weryfikacji przez Google.
+  2. *Clients → Create client → Web application*: *Authorized JavaScript origins* = `terraform output cognito_hosted_ui`, *Authorized redirect URIs* = `terraform output google_oauth_redirect_uris` (po dwa adresy: portal i panel).
+  3. `terraform apply` zakłada w AWS Secrets Manager sekret `codzis/google-oauth` z wartością `CHANGE_ME` (ok. 0,40 USD miesięcznie). Wpisz w nim Client ID i secret jako JSON, poleceniem albo w konsoli AWS (Secrets Manager → `codzis/google-oauth` → *Retrieve secret value* → *Edit*). Terraform tej wartości potem nie rusza:
+     ```sh
+     aws secretsmanager put-secret-value --secret-id codzis/google-oauth \
+       --secret-string '{"client_id":"….apps.googleusercontent.com","client_secret":"…"}'
+     ```
+     Potem `scripts/build-frontend.sh` i jeszcze raz `terraform apply`; `terraform output google_login_enabled` pokaże `true`. Przyciski „Kontynuuj z Google” (portal) i „Zaloguj się przez Google” (panel) pojawią się same.
+- **Panel organizatora z Google:** osobna pula Cognito partnerów, tylko Google (`infra/partner_auth.tf`); REST API sprawdza ID token autoryzatorem Cognito w nagłówku `X-Id-Token` (`Authorization` CloudFront zdejmuje z GET-ów). Samoobsługa: pierwsze logowanie zakłada konto organizatora (`partnerId` = `sub`, kredyty startowe = `starter_credits`), ogłoszenia podpisuje imię i nazwisko z Google. Partnerzy z kluczem API (np. `demo`) w tym trybie nie mają dostępu; ich dane zostają pod starym `partnerId`.
 - **E-maile** (kod przy rejestracji, kod resetu hasła) wysyła Cognito z domyślnej skrzynki AWS (`no-reply@verificationemail.com`, temat i treść z `verification_message_template` w `infra/client_auth.tf`). Limit to ~50 e-maili dziennie na konto AWS i nie da się zmienić nadawcy. Docelowo: Amazon SES z domeną `waw-out.pl` (rekordy DKIM w home.pl + wyjście z trybu sandbox), potem w Cognito `email_sending_account = "DEVELOPER"`.
-- Sesja jest trzymana w `localStorage` (refresh token na 30 dni). Konto e-mail i konto Google z tym samym adresem to w Cognito dwa osobne konta.
+- Sesja jest trzymana w `localStorage` (refresh token na 30 dni), w panelu organizatora w `sessionStorage` (do zamknięcia karty). Konto e-mail i konto Google z tym samym adresem to w Cognito dwa osobne konta. Imię klienta z Google to `given_name` (samo imię, jak pole „Imię” przy rejestracji).
 
 **Mapa dojazdu (szczegóły wydarzenia):** osadzona mapa Google z trasą komunikacją miejską (Maps Embed API). Start trasy to lokalizacja z przeglądarki, gdy użytkownik się zgodzi, a bez zgody dzielnica z profilu; do naszego API lokalizacja nie trafia. Bez klucza strona pokazuje sam przycisk do Map Google. Klucz:
 1. W [Google Cloud Console](https://console.cloud.google.com/) utwórz projekt z podpiętym kontem rozliczeniowym (Maps Embed API jest bezpłatne, ale Google Maps Platform wymaga rozliczeń).
@@ -128,7 +133,10 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 
 | Endpoint | Opis |
 | --- | --- |
-| `GET /api/me` | profil (pierwsze wywołanie zakłada rekord), `needsOnboarding`, `onboardingOutdated` |
+| `GET /api/me` | profil (pierwsze wywołanie zakłada rekord i dane konta), `account`, `needsOnboarding`, `onboardingOutdated` |
+| `PUT /api/me` | `{"birthDate"}` → dane konta (imię i nazwisko się nie zmieniają); pusta data = usuń |
+| `POST /api/me/photo` | `{"contentType"}` → `{key, upload}`: presigned POST, przeglądarka wysyła zdjęcie prosto do S3 |
+| `PUT /api/me/photo` / `DELETE /api/me/photo` | `{"key"}` → wgrane zdjęcie staje się profilowym (stare usuwamy) / profil bez zdjęcia |
 | `GET /api/onboarding` | kafelki z pytaniami (ikony, limity wyborów, wymagane pola) |
 | `PUT /api/profile` | `{"answers": {"who": ["kids"], ...}}` → walidacja, preferencje, zapis |
 | `GET /api/recommendations` | `?when=today\|tomorrow\|weekend\|week\|date&date=2026-10-30&q=jazz&limit=16` → karty wydarzeń z uzasadnieniem (sekcja Rekomendacje); `202 {"status": "preparing"}` gdy zestaw właśnie się liczy, `409` bez profilu, `503` zanim powstanie indeks |
@@ -141,7 +149,8 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 
 | Pole | Opis |
 | --- | --- |
-| `email`, `displayName`, `picture`, `identityProvider` | z tokenu (`Google` / `Cognito`) |
+| `email`, `displayName`, `picture`, `identityProvider` | z tokenu (`Google` / `Cognito`); `displayName` = imię (z rejestracji albo `given_name` z Google), niezmienne; `familyName` = nazwisko (opcjonalne przy rejestracji, z Google), innym tylko inicjał („Ola K.”) |
+| `account` | dane konta z profilu: `birthDate` (RRRR-MM-DD, widzi ją tylko właściciel), `photoUrl`, `photoKey`; zakładane przy pierwszym logowaniu (z Google zdjęcie), potem zmienia je tylko użytkownik. Zdjęcia: bucket zdjęć, `photos/avatars/<userId>/…`, zmniejszone w przeglądarce do 512 px |
 | `onboarding` | `{version, completedAt, answers}`: surowe odpowiedzi; zmiana pytań zmienia `version` |
 | `preferences` | odpowiedzi przemapowane na słownik eventów: `themes`, `formats`, `audience`, `occasion`, `activityLevel`, `cost`, `mode`, `setting`, `registration`, `accessibility` (opcje taksonomii taggera), `interests` (kategorie kalendarza UM), `days`/`timeOfDay`/`weekend` (jak `facets` eventów), `district`, `travelRange`, `maxPrice`, `ageRange` |
 | `ragProfile` | tekst pod RAG, np. `interests=[Czas wolny, Kultura] \| district=Śródmieście \| cost=Bezpłatne \| mode=Stacjonarne \| audience=Dorośli (18-64) \| …` |
@@ -299,7 +308,8 @@ W UI wydarzenia demo nie są oznaczone; w polu „Źródło” stoi fikcyjny org
 
 ## Ograniczenia PoC
 
-- Klucz API to jedyny "login". Partner musi go chronić jak hasło, nie ma też resetu ani wygasania (poza usunięciem klucza).
+- Bez logowania Google klucz API to jedyny "login". Partner musi go chronić jak hasło, nie ma też resetu ani wygasania (poza usunięciem klucza).
+- Z Google konto organizatora może założyć każdy (samoobsługa, bez weryfikacji instytucji); ogłoszenia podpisuje imię i nazwisko z konta Google.
 - Klucze trafiają do state'u Terraforma (lokalnie, plaintext).
 - Mock bramka: `confirm` woła sam partner, więc każdy zalogowany może dodać sobie kredyty. Przy prawdziwej bramce (np. Stripe, PayU, Przelewy24) zastąp to webhookiem od operatora, weryfikowanym podpisem.
 - Kredyt jest pobierany przy zapisie ogłoszenia, przed uploadem zdjęcia. Jeśli upload się nie uda, `image.highlighted.path` wskazuje na nieistniejący plik.

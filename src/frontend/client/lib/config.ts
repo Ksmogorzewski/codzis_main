@@ -7,6 +7,9 @@ const ClientConfigSchema = z.object({
   region: z.string().min(1),
   userPoolId: z.string().min(1),
   clientId: z.string().min(1),
+  // Logowanie Google (Hosted UI Cognito); Terraform włącza je razem z google_client_id
+  cognitoDomain: z.string().default(""),
+  googleEnabled: z.boolean().default(false),
   apiUrl: z.string().min(1).transform((url) => url.replace(/\/+$/, "")),
   partnerPortal: z.string().default(""),
   // Klucz Google Maps Embed API (mapa z trasą w szczegółach); pusty = sam link do Map Google

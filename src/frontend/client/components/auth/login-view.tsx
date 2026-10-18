@@ -1,7 +1,11 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { AuthForm } from "./auth-form";
+
+const route = getRouteApi("/login");
 
 /** Ekran logowania z mockupu: granatowe hero z czerwonym kołem Warszawy po lewej, formularz po prawej. */
 export function LoginView() {
+  const { googleError } = route.useLoaderData();
   return (
     <div className="grid min-h-dvh grid-cols-1 md:grid-cols-[1.1fr_1fr]">
       <div className="relative flex flex-col justify-between gap-9 overflow-hidden bg-primary-deep px-6 pt-7 pb-10 text-white md:px-14 md:py-12">
@@ -36,7 +40,7 @@ export function LoginView() {
       </div>
 
       <div className="flex items-center justify-center bg-background px-6 pt-7 pb-10 md:p-12">
-        <AuthForm />
+        <AuthForm initialError={googleError} />
       </div>
     </div>
   );

@@ -21,6 +21,14 @@ describe("config", () => {
     expect(parseConfig({ ...valid, mapsEmbedKey: "AIza-test" }).data?.mapsEmbedKey).toBe("AIza-test");
   });
 
+  it("logowanie Google domyślnie wyłączone (config.js bez tych pól)", () => {
+    const withoutGoogle: Record<string, unknown> = { ...valid };
+    delete withoutGoogle.cognitoDomain;
+    delete withoutGoogle.googleEnabled;
+    expect(parseConfig(withoutGoogle).data).toMatchObject({ cognitoDomain: "", googleEnabled: false });
+    expect(parseConfig({ ...valid, googleEnabled: true }).data?.googleEnabled).toBe(true);
+  });
+
   it("brak config.js albo brak pól: błąd", () => {
     expect(parseConfig(undefined).error).not.toBeNull();
     expect(parseConfig({ ...valid, clientId: "" }).error).not.toBeNull();

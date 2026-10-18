@@ -3,7 +3,7 @@ import { createHashHistory, createRouter, RouterProvider } from "@tanstack/react
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ApiRequestError, isNameRequired, isNeedsOnboarding, shouldRetry } from "./lib/api";
-import { routerAuth } from "./lib/auth";
+import { googleSignInResult, routerAuth } from "./lib/auth";
 import { namePrompt } from "./lib/name-prompt";
 import { routeTree } from "./routeTree.gen";
 import "./styles.css";
@@ -37,6 +37,11 @@ const queryClient = new QueryClient({
 });
 
 // Routing na "#": CloudFront przed S3 nie ma fallbacku SPA dla głębokich linków.
+// Powrót z logowania Google (?code=…): kod wymieniamy na sesję, zanim router odczyta adres. Wymiana czyści
+// adres, więc router zaczyna od razu od strony głównej - bez drugiego, równoległego ładowania tras, które
+// gubiło przekierowanie na zapamiętany ekran (np. zaproszenie z QR).
+await googleSignInResult();
+
 const router = createRouter({
   routeTree,
   history: createHashHistory(),

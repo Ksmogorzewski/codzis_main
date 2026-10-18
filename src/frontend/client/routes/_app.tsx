@@ -1,19 +1,32 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Outlet, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { NameDialog } from "@/components/community/name-dialog";
 import { Header } from "@/components/layout/header";
 import { PageRouteError } from "@/components/layout/route-error";
 import { TabBar } from "@/components/layout/tab-bar";
+import { meQueryOptions } from "@/hooks/use-me.query";
 import { currentName } from "@/lib/auth";
-import { requireSession } from "@/lib/login-redirect";
+import { rememberTarget, requireSession, takeGoogleTarget } from "@/lib/login-redirect";
 import { namePrompt, useNamePrompt } from "@/lib/name-prompt";
 import { friendCodeRootKey, friendsGoingKey, friendsKey } from "@/lib/query-keys";
 import { toggleDark, useDark } from "@/lib/theme";
 
 // Pathless layout: strażnik logowania (bez sesji -> /login z powrotem na ten adres) + nagłówek wokół chronionych tras.
 export const Route = createFileRoute("/_app")({
-  beforeLoad: ({ context, location }) => requireSession(context.auth, location.href),
+  beforeLoad: async ({ context, location }) => {
+    await requireSession(context.auth, location.href);
+    // Powrót z logowania Google: ekran z ?redirect=… (np. zaproszenie z QR) czekał w sessionStorage.
+    // Nowe konto idzie najpierw do ankiety, a adres czeka na jej zapis - jak po logowaniu hasłem (auth-form.tsx).
+    const target = takeGoogleTarget();
+    if (!target) return;
+    const me = await context.queryClient.fetchQuery(meQueryOptions).catch(() => null);
+    if (me && (me.needsOnboarding || me.onboardingOutdated)) {
+      rememberTarget(target);
+      throw redirect({ to: "/profil" });
+    }
+    if (target !== location.href) throw redirect({ href: target });
+  },
   component: AppLayout,
   errorComponent: PageRouteError,
 });
@@ -36,6 +49,14 @@ function AppLayout() {
       {/* Na telefonie miejsce na dolny pasek zakładek (56 px + bezpieczny obszar). */}
       <main className="mx-auto flex w-full max-w-[1160px] flex-col gap-4 px-4 pt-[18px] pb-[calc(96px+env(safe-area-inset-bottom))] md:px-8 md:pt-8 md:pb-16">
         <Outlet />
+        <footer className="mt-4 text-center text-meta text-muted-foreground">
+          <a
+            className="rounded-sm underline underline-offset-4 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
+            href="/polityka-prywatnosci.html"
+          >
+            Polityka prywatności
+          </a>
+        </footer>
       </main>
       <TabBar />
       <RequiredName />

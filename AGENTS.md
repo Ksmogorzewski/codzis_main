@@ -9,7 +9,7 @@ Instrukcje dla agentów AI (Claude, Codex, Cursor, Copilot…) i ludzi. WarsawNo
 |---|---|---|---|
 | Importer: API UM → schemat v1 → SQS | `src/importer/` | Python, ECS | Krzysztof |
 | Tagger: DeepSeek → DynamoDB `codzis-events` | `run_task.py`, `tagger/` | Python, ECS | Krzysztof / Jeremi |
-| API klienta: `/api/me`, `/api/onboarding`, `/api/profile`, Eksploruj i społeczność: `/api/events` (+ `/stats`, `/{id}`, `/{id}/save`, `/{id}/attendees`), `/api/popular` | `src/client_api/` | Python, Lambda (zip) | Krzysztof |
+| API klienta: `/api/me` (+ `/api/me/photo`), `/api/onboarding`, `/api/profile`, Eksploruj i społeczność: `/api/events` (+ `/stats`, `/{id}`, `/{id}/save`, `/{id}/attendees`), `/api/popular` | `src/client_api/` | Python, Lambda (zip) | Krzysztof |
 | Rekomender RAG: `/api/recommendations` | `src/recommender_api/`, `recommender/` | Python, Lambda (kontener) | Jeremi |
 | API panelu partnera | `src/api/`, `src/dispatcher/` | Python, Lambda | Krzysztof |
 | **Front** (portal klienta + panel partnera) | `src/frontend/` | React + TS (Vite) | Dawid (klient) — **`src/frontend/AGENTS.md`** |
@@ -26,6 +26,7 @@ portal.waw-out.pl ─ CloudFront ─ S3 (src/frontend/dist/client + config.js z 
 importer (ECS) ─ SQS ─ tagger (ECS) ─ DynamoDB codzis-events
 ```
 - API Gateway sprawdza token Cognito **zanim** uruchomi Lambdę; kod dostaje gotowe `claims` (`claims["sub"]` = id użytkownika).
+- Logowanie Google (włącza je sekret `codzis/google-oauth` w AWS Secrets Manager, `infra/client_auth.tf`): klienci w puli klientów (Hosted UI + PKCE, `src/frontend/shared/oauth.ts`), organizatorzy w osobnej puli partnerów (`infra/partner_auth.tf`, samoobsługa: konto Google = konto organizatora); REST API partnera sprawdza wtedy ID token w nagłówku `X-Id-Token` zamiast klucza API, a `_partner` w `src/api/handler.py` bierze `partnerId` = `sub`.
 - Rekomender ma zimny start (model mpnet: kilkadziesiąt s): rozgrzewanie co 5 min, indeks przebudowywany co 30 min; front ponawia zapytanie przy 0/502/503/504.
 - Rekomendacje liczą się w tle i są zapisywane per użytkownik (`codzis-recommendations`): dziś / jutro / weekend z góry (w nocy, po zapisie profilu, przy logowaniu), inny dzień i fraza przy pierwszym zapytaniu. GET odpowiada od razu z zapisu; `202 {"status": "preparing"}` = zestaw się liczy (front pyta ponownie), `"updating": true` = w tle liczy się nowsza wersja (front odświeża co 3 s).
 
@@ -80,7 +81,7 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 
 ## Dane
 - **Kontrakt:** rekord wydarzenia „schemat v1” (`src/importer/schema.py`), taksonomia tagów (`tagger/prompt.py`), kroki ankiety (`src/client_api/onboarding.py` — dodanie pytania nie wymaga zmian we froncie), karta rekomendacji (`src/recommender_api/present.py`). Front odwzorowuje je w `src/frontend/client/lib/schemas.ts`.
-- **Tabele (DynamoDB) i jedyny zapisujący:** `codzis-events` — tagger (TTL `expiresAt` sam usuwa zakończone); `codzis-users` (klucz `userId` = `sub`) — client-api; `codzis-recommendations` (`userId` + `setKey`, TTL `expiresAt`) — rekomender; `codzis-attendance` (zapisy „idę”: `eventId` + `userId`, `name` = imię z tokenu, `savedAt`; GSI `byUser`; PITR) i `codzis-event-stats` (licznik `saves` per `eventId`, `kind = "event"`; GSI `bySaves`) — client-api, zawsze razem w jednej transakcji; dane testowe (`scripts/seed_demo.py`) tylko z `seed: true` (`userId` = `seed-<n>`), usuwalne w całości; zapisy na wygasłe wydarzenia zostają (analityka), przy odczycie je pomijamy; `submissions`, `partners`, `payments` — API partnera.
+- **Tabele (DynamoDB) i jedyny zapisujący:** `codzis-events` — tagger (TTL `expiresAt` sam usuwa zakończone); `codzis-users` (klucz `userId` = `sub`; dane konta w mapie `account`: data urodzenia, zdjęcie; imię i nazwisko z tokenu, niezmienne — `src/client_api/account.py`, zdjęcia w buckecie zdjęć pod `photos/avatars/`) — client-api; `codzis-recommendations` (`userId` + `setKey`, TTL `expiresAt`) — rekomender; `codzis-attendance` (zapisy „idę”: `eventId` + `userId`, `name` = imię z tokenu, `savedAt`; GSI `byUser`; PITR) i `codzis-event-stats` (licznik `saves` per `eventId`, `kind = "event"`; GSI `bySaves`) — client-api, zawsze razem w jednej transakcji; dane testowe (`scripts/seed_demo.py`) tylko z `seed: true` (`userId` = `seed-<n>`), usuwalne w całości; zapisy na wygasłe wydarzenia zostają (analityka), przy odczycie je pomijamy; `submissions`, `partners` (`partnerId` = `sub` z puli partnerów przy Google, inaczej `apiKeyId`), `payments` — API partnera.
 - **API UM** (`POST https://dane.um.warszawa.pl/api/action/<akcja>`) nie ma historii ani stronicowania i **blokuje adresy IP AWS** — import uruchamiamy z laptopa (`scripts/import-local.sh`).
 
 ## Nowe dane w DynamoDB (decyzja zespołu: zostajemy przy DynamoDB, bez Postgresa)
@@ -92,7 +93,7 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 6. **Nowa tabela = Terraform** (`PAY_PER_REQUEST`, `point_in_time_recovery` dla danych, których nie da się odtworzyć, TTL gdy dane wygasają) + jeden właściciel, który do niej zapisuje (dopisz do sekcji „Dane”).
 
 ## Bezpieczeństwo
-- Sekrety (`WARSAW_API_TOKEN`, klucz DeepSeek, klucze AWS) tylko w `.env` (w `.gitignore`) albo w SSM. `config.js` frontu zawiera tylko dane publiczne (adres API, id puli i klienta Cognito).
+- Sekrety (`WARSAW_API_TOKEN`, klucz DeepSeek, klucze AWS) tylko w `.env` (w `.gitignore`) albo w SSM; klient OAuth Google w AWS Secrets Manager (`codzis/google-oauth`: Terraform zakłada go z `CHANGE_ME`, wartość ustawiasz poza nim). `config.js` frontu zawiera tylko dane publiczne (adres API, id puli i klienta Cognito).
 - Nigdy sekretów, tokenów ani danych osobowych w kodzie, logach, commitach ani na czacie. W logach Lambd bez treści żądań i lokalizacji użytkownika.
 
 ## Zakres

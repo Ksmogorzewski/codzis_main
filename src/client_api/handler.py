@@ -1,9 +1,16 @@
 """API portalu klienta (HTTP API + JWT authorizer Cognito, payload 2.0).
 
-    GET /api/me          profil zalogowanego użytkownika (pierwsze wywołanie zakłada rekord; kopiuje z tokenu
-                         e-mail, imię -> displayName, nazwisko -> familyName)
-    GET /api/onboarding  pytania onboardingu (onboarding.py)
-    PUT /api/profile     {"answers": {...}} -> walidacja, preferencje, zapis w tabeli users
+    GET    /api/me          profil zalogowanego użytkownika (pierwsze wywołanie zakłada rekord i dane konta;
+                            kopiuje z tokenu e-mail, imię -> displayName, nazwisko -> familyName)
+    PUT    /api/me          {"birthDate"} -> dane konta (account.py); imię i nazwisko zostają bez zmian
+    POST   /api/me/photo    {"contentType"} -> {"key", "upload": {"url", "fields"}} (presigned POST do S3)
+    PUT    /api/me/photo    {"key"} -> wgrane zdjęcie staje się zdjęciem profilowym (poprzednie usuwamy)
+    DELETE /api/me/photo    -> profil bez zdjęcia
+    GET    /api/onboarding  pytania onboardingu (onboarding.py)
+    PUT    /api/profile     {"answers": {...}} -> walidacja, preferencje, zapis w tabeli users
+
+Odpowiedź tras /api/me = GET /api/me: m.in. "name" (imię), "familyName" (nazwisko - tylko dla właściciela),
+"account": {"birthDate", "photoUrl"}.
 
 Eksploruj, zapisy i Popularne (logika: events.py, DynamoDB: store.py). Karta (`Card`) = karta
 rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za to z
@@ -68,6 +75,7 @@ from datetime import date, datetime
 
 import boto3
 
+import account
 import events
 import friends
 import store
@@ -105,6 +113,14 @@ def route(event: dict) -> dict:
     match event.get("routeKey"):
         case "GET /api/me":
             return response(200, get_me(claims))
+        case "PUT /api/me":
+            return response(200, put_me(claims, parse_body(event)))
+        case "POST /api/me/photo":
+            return response(200, post_photo(claims, parse_body(event)))
+        case "PUT /api/me/photo":
+            return response(200, put_photo(claims, parse_body(event)))
+        case "DELETE /api/me/photo":
+            return response(200, delete_photo(claims))
         case "GET /api/onboarding":
             return response(200, {"version": ONBOARDING_VERSION, "steps": public_steps(STEPS)})
         case "PUT /api/profile":
@@ -147,10 +163,15 @@ def route(event: dict) -> dict:
 
 
 def get_me(claims: dict) -> dict:
-    """Upsert danych z tokenu (e-mail, imię, dostawca) + ostatnie logowanie."""
+    """Upsert danych z tokenu (e-mail, imię, dostawca) + ostatnie logowanie; dane konta tylko za pierwszym razem."""
     now = now_iso()
-    values = {":now": now, ":provider": _provider(claims)}
-    updates = ["lastLoginAt = :now", "createdAt = if_not_exists(createdAt, :now)", "identityProvider = :provider"]
+    values = {":now": now, ":provider": _provider(claims), ":account": account.prefill(claims)}
+    updates = [
+        "lastLoginAt = :now",
+        "createdAt = if_not_exists(createdAt, :now)",
+        "identityProvider = :provider",
+        "#account = if_not_exists(#account, :account)",
+    ]
     copies = (("email", "email"), ("displayName", "name"), ("familyName", "family_name"), ("picture", "picture"))
     for attr, claim in copies:
         if claims.get(claim):
@@ -160,6 +181,7 @@ def get_me(claims: dict) -> dict:
     item = users.update_item(
         Key={"userId": claims["sub"]},
         UpdateExpression="SET " + ", ".join(updates),
+        ExpressionAttributeNames={"#account": "account"},
         ExpressionAttributeValues=values,
         ReturnValues="ALL_NEW",
     )["Attributes"]
@@ -191,6 +213,40 @@ def put_profile(claims: dict, body: dict) -> dict:
     )["Attributes"]
     _precompute(claims["sub"])  # nowe preferencje -> od razu nowe zestawy na dziś, jutro i weekend
     return _view(item)
+
+
+def put_me(claims: dict, body: dict) -> dict:
+    """Nazwisko i data urodzenia w profilu (imię zostaje z rejestracji albo Google)."""
+    values, errors = account.validate(body, events.warsaw_today(_now()))
+    if errors:
+        raise ApiError(400, "Niepoprawne dane profilu", fields=errors)
+    return _save_account(claims["sub"], account.merge(_account(claims["sub"]), values))
+
+
+def post_photo(claims: dict, body: dict) -> dict:
+    """Formularz uploadu zdjęcia prosto do S3; profil zmienia dopiero PUT /api/me/photo."""
+    content_type = body.get("contentType")
+    if content_type not in account.PHOTO_TYPES:
+        raise ApiError(400, "Zdjęcie musi być w formacie JPG, PNG albo WebP", fields=["contentType"])
+    return account.upload_form(claims["sub"], content_type)
+
+
+def put_photo(claims: dict, body: dict) -> dict:
+    key = body.get("key")
+    if not (account.own_photo_key(key, claims["sub"]) and account.uploaded(key)):
+        raise ApiError(400, "Nie znaleźliśmy wgranego zdjęcia, spróbuj ponownie", fields=["key"])
+    current = _account(claims["sub"])
+    me = _save_account(claims["sub"], account.with_photo(current, key))
+    if current.get("photoKey") != key:
+        account.delete_file(current.get("photoKey"))
+    return me
+
+
+def delete_photo(claims: dict) -> dict:
+    current = _account(claims["sub"])
+    me = _save_account(claims["sub"], account.with_photo(current, None))
+    account.delete_file(current.get("photoKey"))
+    return me
 
 
 def get_events(claims: dict, params: dict) -> dict:
@@ -432,6 +488,25 @@ def _precompute(user_id: str) -> None:
         log.exception("Nie udało się zlecić przeliczenia rekomendacji")
 
 
+def _account(user_id: str) -> dict:
+    item = users.get_item(
+        Key={"userId": user_id}, ProjectionExpression="#account", ExpressionAttributeNames={"#account": "account"}
+    ).get("Item")
+    return (item or {}).get("account") or {}
+
+
+def _save_account(user_id: str, value: dict) -> dict:
+    now = now_iso()
+    item = users.update_item(
+        Key={"userId": user_id},
+        UpdateExpression="SET #account = :account, updatedAt = :now, createdAt = if_not_exists(createdAt, :now)",
+        ExpressionAttributeNames={"#account": "account"},
+        ExpressionAttributeValues={":account": value, ":now": now},
+        ReturnValues="ALL_NEW",
+    )["Attributes"]
+    return _view(item)
+
+
 def _view(item: dict) -> dict:
     onboarding = item.get("onboarding") or {}
     completed = bool(onboarding.get("completedAt"))
@@ -439,7 +514,9 @@ def _view(item: dict) -> dict:
         "userId": item["userId"],
         "email": item.get("email"),
         "name": item.get("displayName"),
+        "familyName": item.get("familyName"),
         "picture": item.get("picture"),
+        "account": account.view(item.get("account")),
         "identityProvider": item.get("identityProvider"),
         "needsOnboarding": not completed,
         # pytania zmieniły się od ostatniego wypełnienia - warto poprosić o uzupełnienie

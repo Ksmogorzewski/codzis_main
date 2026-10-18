@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { meQueryOptions } from "@/hooks/use-me.query";
 import {
   type AuthFailure,
@@ -14,8 +15,10 @@ import {
   confirmForgotPassword,
   confirmSignUp,
   forgotPassword,
+  googleAvailable,
   resendCode,
   signIn,
+  signInWithGoogle,
   signUp,
 } from "@/lib/auth";
 import {
@@ -32,15 +35,18 @@ import {
   validateAuthForm,
 } from "@/lib/auth-form";
 import { config } from "@/lib/config";
-import { afterLoginTarget, rememberTarget } from "@/lib/login-redirect";
+import { afterLoginTarget, rememberGoogleTarget, rememberTarget } from "@/lib/login-redirect";
 import { ok } from "@/lib/result";
 
 const loginRoute = getRouteApi("/login");
 
 const safeHref = (url: string) => (/^https?:\/\//.test(url) ? url : null);
 
-/** Formularz logowania: logowanie, rejestracja z kodem z e-maila, reset hasła (Cognito przez fetch). */
-export function AuthForm() {
+/**
+ * Formularz logowania: logowanie, rejestracja z kodem z e-maila, reset hasła (Cognito przez fetch)
+ * i „Kontynuuj z Google” (Hosted UI). initialError = komunikat nieudanego powrotu z Google.
+ */
+export function AuthForm({ initialError = null }: { initialError?: string | null }) {
   const navigate = useNavigate();
   const search = loginRoute.useSearch();
   const queryClient = useQueryClient();
@@ -53,6 +59,8 @@ export function AuthForm() {
   const [newPassword, setNewPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Błąd logowania Google: w tym samym alercie, ale bez oznaczania pól formularza jako błędnych
+  const [googleError, setGoogleError] = useState<string | null>(initialError);
   const [info, setInfo] = useState<string | null>(null);
 
   const mail = email.trim();
@@ -60,6 +68,7 @@ export function AuthForm() {
   function go(next: AuthMode, message: string | null = null) {
     setMode(next);
     setError(null);
+    setGoogleError(null);
     setInfo(message);
     setCode("");
   }
@@ -139,9 +148,25 @@ export function AuthForm() {
     }
     setBusy(true);
     setError(null);
+    setGoogleError(null);
     const r = await submitStep();
     if (r.error !== null) await handleFailure(r.error);
     setBusy(false);
+  }
+
+  // Przekierowanie do Google; po powrocie sesję zapisuje strażnik tras (lib/auth.ts: googleSignInResult),
+  // a ekran z ?redirect=… (np. zaproszenie z QR) czeka w sessionStorage (lib/login-redirect.ts).
+  async function onGoogle() {
+    setBusy(true);
+    setError(null);
+    setGoogleError(null);
+    rememberGoogleTarget(search);
+    try {
+      await signInWithGoogle();
+    } catch {
+      setGoogleError("Nie udało się rozpocząć logowania przez Google. Spróbuj ponownie.");
+      setBusy(false);
+    }
   }
 
   async function onResend() {
@@ -254,10 +279,10 @@ export function AuthForm() {
         <p className="-mt-2 text-meta text-muted-foreground">{PASSWORD_HINT}</p>
       )}
 
-      {error && (
+      {(error ?? googleError) && (
         <Alert variant="destructive">
           <Icon name="error" size={22} className="mt-px" />
-          <AlertTitle className="font-semibold">{error}</AlertTitle>
+          <AlertTitle className="font-semibold">{error ?? googleError}</AlertTitle>
         </Alert>
       )}
 
@@ -277,6 +302,20 @@ export function AuthForm() {
         )}
       </div>
 
+      {(mode === "login" || mode === "register") && googleAvailable() && (
+        <>
+          <div className="flex items-center gap-3 text-meta text-muted-foreground">
+            <Separator className="w-auto flex-1" />
+            lub
+            <Separator className="w-auto flex-1" />
+          </div>
+          <Button type="button" variant="outline" size="lg" className="h-[58px] text-lg" disabled={busy} onClick={onGoogle}>
+            <img src="/assets/google.svg" alt="" width={22} height={22} className="size-[22px]" />
+            Kontynuuj z Google
+          </Button>
+        </>
+      )}
+
       {(mode === "login" || mode === "register") && (
         <p className="mt-1 text-center text-base text-muted-foreground">
           {mode === "login" ? "Nie masz konta?" : "Masz już konto?"}{" "}
@@ -294,6 +333,14 @@ export function AuthForm() {
           </a>
         </p>
       )}
+      <p className="text-center text-meta text-muted-foreground">
+        <a
+          className="rounded-sm underline underline-offset-4 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
+          href="/polityka-prywatnosci.html"
+        >
+          Polityka prywatności
+        </a>
+      </p>
     </form>
   );
 }

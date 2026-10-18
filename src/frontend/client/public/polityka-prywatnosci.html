@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polityka prywatności – WarsawNow</title>
+  <meta name="description" content="Jakie dane zbiera WarsawNow (portal.waw-out.pl i panel organizatora), po co, komu je przekazujemy i jakie masz prawa." />
+  <link rel="icon" href="/icons/icon-192.png" />
+  <!-- Strona statyczna bez zewnętrznych zasobów (bez czcionek i skryptów z innych serwerów). -->
+  <style>
+    :root { --bg: #f6f5f1; --card: #ffffff; --ink: #141a3c; --muted: #555b73; --line: #e2e1db; --brand: #b3122f; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0f1226; --card: #171b36; --ink: #eef0f8; --muted: #b3b8cc; --line: #2a2f52; --brand: #ff7a8f; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+    header { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+    header img { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; background: #fff; }
+    header a { color: inherit; font-weight: 800; font-size: 20px; text-decoration: none; }
+    header a span { color: var(--brand); }
+    h1 { font-size: 34px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.02em; }
+    h2 { font-size: 21px; margin: 32px 0 8px; }
+    p, li { color: var(--ink); }
+    .meta { color: var(--muted); margin: 0 0 24px; }
+    .note { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+    ul { padding-left: 22px; }
+    li { margin: 4px 0; }
+    a { color: var(--brand); }
+    a:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+    footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="/assets/logo.jpg" alt="" width="40" height="40" />
+    <a href="/">Warsaw<span>Now</span></a>
+  </header>
+
+  <h1>Polityka prywatności</h1>
+  <p class="meta">Obowiązuje od 18 października 2026 r.</p>
+
+  <p class="note">
+    WarsawNow to projekt przygotowany na Warsaw Open Data Hackathon (wersja demonstracyjna). Podpowiada, co robić
+    w Warszawie: wydarzenia z otwartych danych miasta i od organizatorów, dobrane do Twojego profilu. Ta polityka
+    dotyczy portalu dla mieszkańców <a href="https://portal.waw-out.pl/">portal.waw-out.pl</a> i panelu
+    organizatorów <a href="https://partner.waw-out.pl/">partner.waw-out.pl</a>.
+  </p>
+
+  <h2>1. Kto jest administratorem danych</h2>
+  <p>
+    Administratorem Twoich danych osobowych jest <strong>Krzysztof Smogorzewski</strong>. We wszystkich sprawach
+    dotyczących danych napisz na <a href="mailto:krzysztofsmogorzewski50@gmail.com">krzysztofsmogorzewski50@gmail.com</a>.
+  </p>
+
+  <h2>2. Jakie dane zbieramy i po co</h2>
+  <ul>
+    <li>
+      <strong>Konto.</strong> Adres e-mail, imię i (opcjonalnie) nazwisko. Innym pokazujemy tylko imię i pierwszą
+      literę nazwiska, np. „Anna K.”. Hasło przechowuje w zabezpieczonej postaci usługa logowania Amazon
+      Cognito, my go nie znamy. Jeśli logujesz się przez Google, dostajemy z konta Google wyłącznie identyfikator
+      konta, adres e-mail, imię, nazwisko i zdjęcie profilowe (zakresy <em>openid</em>, <em>email</em>,
+      <em>profile</em>). Nie dostajemy hasła do Google ani innych danych z Twojego konta Google.
+    </li>
+    <li>
+      <strong>Dane w profilu.</strong> Data urodzenia i zdjęcie profilowe (przy koncie Google na start zdjęcie
+      z Google). Są dobrowolne i w każdej chwili zmienisz je albo usuniesz w profilu; datę urodzenia widzisz tylko Ty.
+    </li>
+    <li>
+      <strong>Ankieta preferencji.</strong> Z kim wychodzisz, na co masz ochotę, zainteresowania, dzielnica i zasięg
+      dojazdu, budżet, pory dnia, forma wydarzeń. Opcjonalnie wiek i potrzeby dostępności. Potrzeby dostępności mogą
+      mówić coś o zdrowiu: podajesz je dobrowolnie i używamy ich wyłącznie do doboru wydarzeń. Na podstawie ankiety
+      automatycznie dobieramy propozycje (profilowanie). Nie wywołuje to wobec Ciebie żadnych skutków prawnych.
+    </li>
+    <li>
+      <strong>Zapisy na wydarzenia.</strong> Które wydarzenia zapisujesz („Zapisz”). Twoje imię z inicjałem nazwiska
+      widzą inni zalogowani zapisani na to samo wydarzenie, bez pełnego nazwiska, e-maila i zdjęcia.
+    </li>
+    <li>
+      <strong>Znajomi.</strong> Masz kod i link z kodem QR, którym ktoś może wysłać Ci zaproszenie. Zaproszenie
+      pokazuje mu tylko Twoje imię z inicjałem. Po akceptacji znajomość jest obustronna: znajomi widzą, na które
+      nadchodzące wydarzenia się zapisujesz (bez historii), a Ty widzisz ich zapisy. Znajomego usuniesz w każdej chwili,
+      a kod możesz wygenerować na nowo. Czat ekipy na wydarzenie to na razie pokaz: wiadomości nie trafiają na serwer.
+    </li>
+    <li>
+      <strong>Propozycje i wyszukiwanie.</strong> Przygotowane dla Ciebie zestawy propozycji zapisujemy, żeby szybciej
+      je pokazywać. Zestawy wygasają same, najpóźniej dzień po końcu okresu, którego dotyczą. Nie wpisuj w wyszukiwarkę
+      danych osobowych.
+    </li>
+    <li>
+      <strong>Lokalizacja.</strong> Tylko jeśli zgodzisz się na nią w przeglądarce. Odległość do wydarzeń liczymy na
+      Twoim urządzeniu i lokalizacji nie wysyłamy na nasze serwery. Gdy otworzysz mapę dojazdu, Twoje współrzędne
+      trafiają do Google Maps jako początek trasy. Bez zgody trasa zaczyna się w dzielnicy z profilu.
+    </li>
+    <li>
+      <strong>Panel organizatora.</strong> Dane z konta Google: identyfikator, e-mail, imię i nazwisko. Imię i nazwisko
+      podpisują publikowane ogłoszenia, a ogłoszenia razem ze zdjęciami są publiczne. Przechowujemy też historię
+      kredytów i płatności. W wersji demonstracyjnej płatności są symulowane, więc nie przetwarzamy danych kart.
+    </li>
+    <li>
+      <strong>Dane techniczne.</strong> Logi serwerów bez treści zapytań, przechowywane 7 dni. Dane logowania trzymamy
+      w pamięci Twojej przeglądarki (localStorage, a w panelu organizatora sessionStorage). Nie używamy plików cookie do
+      śledzenia ani reklam i nie korzystamy z narzędzi analitycznych firm zewnętrznych. Przy logowaniu przez Google
+      usługa Amazon Cognito zapisuje własne ciasteczko sesji w domenie amazoncognito.com.
+    </li>
+  </ul>
+
+  <h2>3. Podstawy prawne</h2>
+  <ul>
+    <li>Konto, profil, propozycje, zapisy na wydarzenia i znajomi: świadczenie usługi, o którą prosisz (art. 6 ust. 1 lit. b RODO).</li>
+    <li>
+      Dane dobrowolne, czyli data urodzenia, zdjęcie, wiek, potrzeby dostępności i lokalizacja: Twoja zgoda (art. 6
+      ust. 1 lit. a RODO, a dla potrzeb dostępności art. 9 ust. 2 lit. a RODO). Zgodę cofasz, usuwając te dane
+      z profilu albo pisząc do nas. Nie wpływa to na zgodność z prawem wcześniejszego przetwarzania.
+    </li>
+    <li>
+      Bezpieczeństwo serwisu i zbiorcze statystyki zapisów: nasz uzasadniony interes (art. 6 ust. 1 lit. f RODO).
+    </li>
+  </ul>
+
+  <h2>4. Komu przekazujemy dane</h2>
+  <ul>
+    <li>
+      <strong>Amazon Web Services</strong> (AWS EMEA SARL) przechowuje dane i obsługuje serwis: logowanie (Amazon
+      Cognito), bazę danych, pliki i serwery w regionie Frankfurt (UE). Stronę dostarcza sieć Amazon CloudFront, która
+      ma serwery także poza UE.
+    </li>
+    <li>
+      <strong>Google</strong> (Google Ireland Ltd.) obsługuje logowanie przez Google (jeśli je wybierzesz), mapę
+      dojazdu (Google Maps) i czcionki (Google Fonts). Przy wczytaniu strony Google otrzymuje Twój adres IP.
+    </li>
+    <li>
+      <strong>DeepSeek</strong> układa kolejność propozycji, pisze ich uzasadnienia i rozwija wpisaną frazę. Wysyłamy
+      mu tylko dane, które nie pozwalają Cię zidentyfikować: preferencje z ankiety i wpisaną frazę. Nie wysyłamy imienia,
+      nazwiska, e-maila, zdjęcia, identyfikatora konta ani lokalizacji. Serwery DeepSeek znajdują się poza Europejskim
+      Obszarem Gospodarczym (w Chinach).
+    </li>
+    <li>
+      <strong>Unsplash</strong>: zdjęcia części wydarzeń ładujemy z serwerów Unsplash, które przy tym otrzymują Twój
+      adres IP.
+    </li>
+    <li>
+      <strong>Inni użytkownicy</strong> widzą Twoje imię z inicjałem nazwiska na liście zapisanych na to samo
+      wydarzenie, a Twoi znajomi także Twoje nadchodzące zapisy. Organizatorzy nie dostają danych osób zapisanych.
+    </li>
+  </ul>
+  <p>Nie sprzedajemy danych i nie wyświetlamy reklam.</p>
+
+  <h2>5. Jak długo przechowujemy dane</h2>
+  <ul>
+    <li>Konto, profil, ankieta i zapisy na wydarzenia: do usunięcia konta. Na prośbę wysłaną e-mailem usuniemy je w ciągu 30 dni.</li>
+    <li>Znajomości: do usunięcia znajomego albo konta. Niezaakceptowane zaproszenia wygasają po 30 dniach.</li>
+    <li>Zdjęcie profilowe usuwamy, gdy je zmienisz albo usuniesz.</li>
+    <li>Zestawy propozycji wygasają automatycznie.</li>
+    <li>Logi serwerów są przechowywane 7 dni.</li>
+  </ul>
+
+  <h2>6. Twoje prawa</h2>
+  <p>
+    Masz prawo dostępu do swoich danych, ich sprostowania (część poprawisz sam w profilu), usunięcia, ograniczenia
+    przetwarzania i przeniesienia. Możesz też wnieść sprzeciw i w każdej chwili cofnąć zgodę. Żeby skorzystać z tych
+    praw, napisz na <a href="mailto:krzysztofsmogorzewski50@gmail.com">krzysztofsmogorzewski50@gmail.com</a>. Masz też
+    prawo złożyć skargę do Prezesa Urzędu Ochrony Danych Osobowych (ul. Stawki 2, 00-193 Warszawa,
+    <a href="https://uodo.gov.pl/">uodo.gov.pl</a>).
+  </p>
+
+  <h2>7. Wiek</h2>
+  <p>Konto mogą założyć osoby, które ukończyły 16 lat.</p>
+
+  <h2>8. Bezpieczeństwo</h2>
+  <p>
+    Połączenia są szyfrowane (HTTPS). Hasła i sesje obsługuje Amazon Cognito. Dostęp do danych ma tylko administrator.
+  </p>
+
+  <h2>9. Zmiany polityki</h2>
+  <p>Gdy zmienimy tę politykę, zaktualizujemy datę na górze strony. O ważnych zmianach poinformujemy w serwisie.</p>
+
+  <footer><a href="/">← Wróć do WarsawNow</a></footer>
+</main>
+</body>
+</html>

@@ -93,6 +93,12 @@ resource "aws_iam_role_policy" "client_api" {
         Action   = ["lambda:InvokeFunction"]
         Resource = aws_lambda_function.recommender.arn
       },
+      {
+        # Zdjęcia profilowe (src/client_api/account.py): presigned POST, sprawdzenie uploadu, usunięcie starego
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
+        Resource = "${aws_s3_bucket.photos.arn}/photos/avatars/*"
+      },
     ]
   })
 }
@@ -118,6 +124,9 @@ resource "aws_lambda_function" "client_api" {
       ATTENDANCE_TABLE     = aws_dynamodb_table.attendance.name
       STATS_TABLE          = aws_dynamodb_table.event_stats.name
       FRIENDS_TABLE        = aws_dynamodb_table.friends.name
+      # zdjęcia profilowe w buckecie zdjęć ogłoszeń, serwowane przez CloudFront panelu pod /photos/*
+      PHOTOS_BUCKET   = aws_s3_bucket.photos.id
+      PHOTOS_BASE_URL = local.website_origin
     }
   }
 
@@ -160,6 +169,10 @@ resource "aws_apigatewayv2_integration" "client_api" {
 resource "aws_apigatewayv2_route" "client" {
   for_each = toset([
     "GET /api/me",
+    "PUT /api/me",
+    "POST /api/me/photo",
+    "PUT /api/me/photo",
+    "DELETE /api/me/photo",
     "GET /api/onboarding",
     "PUT /api/profile",
     "GET /api/events",

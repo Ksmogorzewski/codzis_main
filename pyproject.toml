@@ -27,7 +27,9 @@ select = ["F", "E", "W", "I", "B", "UP"]
 
 [tool.ruff.lint.isort]
 # Moduły Lambd importowane jak w runtime (katalog Lambdy w sys.path)
-known-first-party = ["onboarding", "handler", "config", "events", "friends", "payments", "store", "codzis_common", "tests"]
+known-first-party = [
+    "account", "onboarding", "handler", "config", "events", "friends", "payments", "store", "codzis_common", "tests",
+]
 
 [tool.ruff.format]
 # Ręcznie ułożona tabela pytań ankiety jest czytelniejsza niż po automatycznym formatowaniu (lint nadal działa).

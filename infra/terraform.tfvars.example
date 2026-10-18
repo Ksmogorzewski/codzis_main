@@ -6,6 +6,4 @@ partners       = ["demo"]
 client_domain_name    = "portal.waw-out.pl"
 client_domain_aliases = []
 
-# logowanie Google (opcjonalne): Google Cloud Console -> OAuth client "Web application"
-# google_client_id     = "....apps.googleusercontent.com"
-# google_client_secret = "..."
+# Logowanie Google: klient OAuth w AWS Secrets Manager (codzis/google-oauth), nie tutaj - patrz README.

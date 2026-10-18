@@ -1,6 +1,13 @@
 import { isRedirect } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
-import { afterLoginTarget, rememberTarget, requireSession, takeTarget } from "./login-redirect";
+import {
+  afterLoginTarget,
+  rememberGoogleTarget,
+  rememberTarget,
+  requireSession,
+  takeGoogleTarget,
+  takeTarget,
+} from "./login-redirect";
 
 const auth = (session: boolean) => ({ hasSession: async () => session });
 
@@ -62,5 +69,29 @@ describe("adres z zaproszenia przetrwa ankietę (nowe konto z QR)", () => {
     expect(takeTarget(store)).toBeNull();
     store.write("https://zly.example");
     expect(takeTarget(store)).toBeNull();
+  });
+});
+
+describe("adres z zaproszenia przetrwa logowanie przez Google (wyjście do Hosted UI i powrót)", () => {
+  const memory = () => {
+    let value: unknown = null;
+    return { read: () => value, write: (v: unknown) => void (value = v) };
+  };
+
+  it("ekran z ?redirect=… zapamiętany przed wyjściem, odczytany raz po powrocie", () => {
+    const store = memory();
+    rememberGoogleTarget({ redirect: "/znajomi/dodaj/WAW-7K2P9X" }, store);
+    expect(takeGoogleTarget(store)).toBe("/znajomi/dodaj/WAW-7K2P9X");
+    expect(takeGoogleTarget(store)).toBeNull();
+  });
+
+  it("bez redirect, ze stroną główną albo obcym adresem: nic do zapamiętania", () => {
+    const store = memory();
+    rememberGoogleTarget({}, store);
+    expect(takeGoogleTarget(store)).toBeNull();
+    rememberGoogleTarget({ redirect: "//zly.example/x" }, store);
+    expect(takeGoogleTarget(store)).toBeNull();
+    rememberGoogleTarget({ redirect: "/" }, store);
+    expect(takeGoogleTarget(store)).toBeNull();
   });
 });

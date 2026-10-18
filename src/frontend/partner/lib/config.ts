@@ -10,6 +10,9 @@ export type PartnerConfig = {
   categories: string[];
   districts: string[];
   clientPortal?: string;
+  // Logowanie Google: Hosted UI puli Cognito partnerów (infra/partner_auth.tf); puste = logowanie kluczem API
+  cognitoDomain?: string;
+  clientId?: string;
 };
 
 export const config = (): PartnerConfig => window.APP_CONFIG as PartnerConfig;

@@ -1,4 +1,8 @@
-"""API panelu partnera (REST API v1, proxy /{proxy+}, klucz API partnera).
+"""API panelu partnera (REST API v1, proxy /{proxy+}).
+
+Logowanie (infra/api.tf): z Google - token puli Cognito partnerów (nagłówek X-Id-Token, sprawdza go
+API Gateway), samoobsługa: konto Google = konto organizatora (partnerId = sub, nazwa = imię i nazwisko
+z Google); bez Google - klucz API partnera z Terraforma (partnerId = apiKeyId).
 
     GET  /me                       profil partnera: saldo kredytów, koszt ogłoszenia, opcje formularza
                                    (pierwsze wywołanie zakłada rekord z kredytami startowymi)
@@ -22,6 +26,9 @@ from events import DECLARED_FIELDS, create_event, list_events
 from payments import cancel_payment, confirm_payment, create_payment, get_payment, list_payments
 from store import partners_table
 
+GOOGLE_PARTNER_NAME = "Organizator"  # konto Google bez imienia i nazwiska
+MAX_PARTNER_NAME = 100
+
 
 def handler(event, context):
     """Punkt wejścia: każdy błąd kończy się odpowiedzią JSON (inny niż ApiError -> 500 z requestId)."""
@@ -29,7 +36,7 @@ def handler(event, context):
 
 
 def route(event):
-    # API GW wpuszcza tu tylko żądania z poprawnym kluczem, więc apiKeyId identyfikuje partnera.
+    # API GW wpuszcza tu tylko żądania z ważnym tokenem albo kluczem, więc oba identyfikują partnera.
     partner = _partner(event)
     match (event.get("httpMethod"), *_path(event)):
         case ("GET", "me"):
@@ -64,6 +71,11 @@ def get_profile(partner):
 
 
 def _partner(event):
+    claims = (event["requestContext"].get("authorizer") or {}).get("claims")
+    if claims:
+        # Nazwa podpisuje ogłoszenia w portalu klienta; e-maila z tokenu nigdzie nie kopiujemy.
+        name = " ".join(str(claims.get("name") or "").split())[:MAX_PARTNER_NAME]
+        return {"partnerId": claims["sub"], "partnerName": name or GOOGLE_PARTNER_NAME}
     key_id = event["requestContext"]["identity"]["apiKeyId"]
     return {"partnerId": key_id, "partnerName": PARTNERS.get(key_id, key_id)}
 
