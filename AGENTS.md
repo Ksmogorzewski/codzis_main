@@ -15,7 +15,7 @@ Instrukcje dla agentów AI (Claude, Codex, Cursor, Copilot…) i ludzi. WarsawNo
 | **Front** (portal klienta + panel partnera) | `src/frontend/` | React + TS (Vite) | Dawid (klient) — **`src/frontend/AGENTS.md`** |
 | Infrastruktura | `infra/` | Terraform | Krzysztof |
 
-Szczegóły uruchamiania i wdrożenia: `README.md`, `recommender/README.md`, `tagger/README.md`.
+Opis produktu dla jury: `README.md`. Szczegóły uruchamiania i wdrożenia: `docs/TECHNICZNE.md`, `recommender/README.md`, `tagger/README.md`.
 
 ## Jak to działa
 ```
