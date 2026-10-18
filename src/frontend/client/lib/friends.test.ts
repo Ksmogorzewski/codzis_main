@@ -151,8 +151,9 @@ describe("schematy znajomych (kontrakt client-api)", () => {
     expect(InviteResultSchema.parse({ status: "pending" }).status).toBe("pending");
   });
 
-  it("lista zapisanych: isFriend domyślnie false", () => {
-    const data = AttendeesSchema.parse({ people: [{ name: "Ola", isFriend: true }, { name: "Ktoś" }] });
+  it("lista zapisanych: isFriend domyślnie false, userId (brak - null)", () => {
+    const data = AttendeesSchema.parse({ people: [{ userId: "u1", name: "Ola", isFriend: true }, { name: "Ktoś" }] });
     expect(data.people.map((p) => p.isFriend)).toEqual([true, false]);
+    expect(data.people.map((p) => p.userId)).toEqual(["u1", null]);
   });
 });

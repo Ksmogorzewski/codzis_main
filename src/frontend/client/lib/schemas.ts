@@ -227,13 +227,15 @@ export type EventDetail = z.infer<typeof EventDetailSchema>;
 export const SaveResultSchema = z.object({ saved: z.boolean(), saves: z.number().int().nonnegative() });
 export type SaveResult = z.infer<typeof SaveResultSchema>;
 
-// GET /api/events/{id}/attendees (max 100: ja, znajomi, reszta od najnowszych; tylko imiona, nigdy e-maile)
+// GET /api/events/{id}/attendees (max 100: ja, znajomi, reszta od najnowszych; userId i imię, nigdy e-maile)
 export const AttendeesSchema = z.object({
   saves: z.number().int().nonnegative().default(0),
   saved: z.boolean().default(false),
   people: z
     .array(
       z.object({
+        // tożsamość osoby (sub z Cognito, dane testowe "seed-<n>"); null = stary kontrakt bez id
+        userId: z.string().nullable().default(null).catch(null),
         name: z.string().nullable().default(null).catch(null),
         isMe: z.boolean().default(false),
         // znajomi są na górze listy (kolejność z API: ja, znajomi, reszta)

@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { UnreadBadge } from "@/components/layout/nav-badge";
 import { Icon } from "@/components/ui/icon";
 import { attendeesQueryOptions } from "@/hooks/use-attendees.query";
-import { authorOf, crewMembers } from "@/lib/crew-chat";
+import { authorOf, crewMembers, memberNames } from "@/lib/crew-chat";
 import { DEMO_CREW, demoInbox } from "@/lib/crew-demo";
 import { unreadCount, useInbox } from "@/lib/crew-inbox";
 import { cn } from "@/lib/utils";
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 export function CrewChatRow({ id }: { id: string }) {
   const inbox = useInbox();
   const attendees = useQuery({ ...attendeesQueryOptions(id), enabled: false });
-  const members = crewMembers(attendees.data?.people, DEMO_CREW.names, DEMO_CREW.capacity - 1);
+  const members = memberNames(crewMembers(attendees.data?.people, DEMO_CREW.names, DEMO_CREW.capacity - 1));
   const last = demoInbox(members, id, inbox[id]?.arrived ?? 0).at(-1);
   const unread = unreadCount(inbox, id);
 

@@ -10,7 +10,7 @@ import { useEvent } from "@/hooks/use-event.query";
 import { useEventCard } from "@/hooks/use-event-card.query";
 import { currentName } from "@/lib/auth";
 import { CATEGORY_LABEL, categoryOf } from "@/lib/categories";
-import { crewMembers, membersLine, ownLabel } from "@/lib/crew-chat";
+import { crewMembers, memberNames, membersLine, ownLabel } from "@/lib/crew-chat";
 import { DEMO_CREW, demoInbox } from "@/lib/crew-demo";
 import { inboxStore, useInbox } from "@/lib/crew-inbox";
 import { placeLabel, slotLabel } from "@/lib/events";
@@ -37,7 +37,7 @@ export function CrewChatScreen() {
   const joined = attendees.data?.saved ?? card?.saved === true;
   // Skład ustalamy po odpowiedzi listy zapisanych, żeby imiona nie zmieniały się w trakcie rozmowy.
   const membersReady = attendees.data !== undefined || attendees.isError;
-  const members = crewMembers(attendees.data?.people, DEMO_CREW.names, DEMO_CREW.capacity - 1);
+  const members = memberNames(crewMembers(attendees.data?.people, DEMO_CREW.names, DEMO_CREW.capacity - 1));
   const inbox = useInbox();
   const chatOpen = Boolean(card && membersReady && joined);
 

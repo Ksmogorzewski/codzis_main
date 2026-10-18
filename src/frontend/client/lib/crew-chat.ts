@@ -78,21 +78,34 @@ export function timeline(script: ScriptStep[], typingMs = 1000): TimedAction[] {
   });
 }
 
-type Person = { name: string | null; isMe: boolean };
+type Person = { userId?: string | null; name: string | null; isMe: boolean };
+
+/** Członek ekipy: tożsamość = userId (dwie „Ole” to dwie osoby); z demo - stałe id „demo-<n>”. */
+export type CrewMember = { userId: string; name: string };
 
 /**
- * Pozostali członkowie ekipy (bez mnie): najpierw imiona prawdziwych zapisanych (bez pustych i bez
- * powtórzeń), brakujące miejsca uzupełniamy imionami z demo, aż będzie `size` osób.
+ * Pozostali członkowie ekipy (bez mnie): najpierw prawdziwi zapisani (bez pustych imion i „Ktoś”, bez
+ * powtórzeń tej samej osoby - po userId), brakujące miejsca uzupełniamy osobami z demo (bez imion, które
+ * już są w ekipie), aż będzie `size` osób.
  */
-export function crewMembers(people: readonly Person[] | undefined, fallback: readonly string[], size: number): string[] {
+export function crewMembers(people: readonly Person[] | undefined, fallback: readonly string[], size: number): CrewMember[] {
+  const seen = new Set<string>();
   const real = (people ?? []).flatMap((p) => {
     const name = p.name?.trim();
-    return !p.isMe && name && name !== "Ktoś" ? [name] : [];
+    // stary kontrakt bez userId: osobę rozpoznajemy po imieniu
+    const userId = p.userId ?? `name:${name}`;
+    if (p.isMe || !name || name === "Ktoś" || seen.has(userId)) return [];
+    seen.add(userId);
+    return [{ userId, name }];
   });
-  const unique = [...new Set(real)];
-  const extra = fallback.filter((n) => !unique.includes(n));
-  return [...unique, ...extra].slice(0, Math.max(0, size));
+  const extra = fallback.flatMap((name, i) =>
+    real.some((m) => m.name === name) ? [] : [{ userId: `demo-${i + 1}`, name }],
+  );
+  return [...real, ...extra].slice(0, Math.max(0, size));
 }
+
+/** Imiona członków (scenariusz demo i linijka składu piszą po imieniu). */
+export const memberNames = (members: readonly CrewMember[]): string[] => members.map((m) => m.name);
 
 /** Podpis moich wiadomości: imię z ID tokenu z dopiskiem „(Ty)”, bez imienia samo „Ty”. */
 export const ownLabel = (name: string | null): string => attendeeLabel({ name, isMe: true });

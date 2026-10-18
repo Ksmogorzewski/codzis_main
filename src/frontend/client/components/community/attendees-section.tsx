@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAttendees } from "@/hooks/use-attendees.query";
-import { attendeeLabel, savesLabel } from "@/lib/community";
+import { attendeeLabel, personKey, savesLabel } from "@/lib/community";
 import { cn } from "@/lib/utils";
 
 /**
@@ -34,8 +34,8 @@ export function AttendeesSection({ id }: { id: string }) {
             <ul className="flex flex-wrap gap-2">
               {data.people.map((p, i) => (
                 <li
-                  // imiona się powtarzają, a lista nie ma id osób - pozycja wystarcza (lista tylko do odczytu)
-                  key={`${i}-${p.name ?? ""}`}
+                  // osoba = userId (imiona się powtarzają); mój wpis dodany optymistycznie nie ma jeszcze id
+                  key={personKey(p, i)}
                   className={cn(
                     "flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-base font-semibold",
                     (p.isMe || p.isFriend) && "bg-primary-soft text-primary-ink",
