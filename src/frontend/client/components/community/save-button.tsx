@@ -13,13 +13,15 @@ type Props = {
   saves: number | undefined;
   size?: "default" | "lg";
   className?: string;
+  /** Podpis przed zapisem (domyślnie „Zapisz”; na „Znajomi idą” - „Idę też”). */
+  label?: string;
 };
 
 /**
  * „Zapisz” / „Zapisano”: przełącza zapis na wydarzenie (optymistycznie, useSave). Konto bez imienia
  * przed pierwszym zapisem dostaje jednorazową prośbę o imię.
  */
-export function SaveButton({ id, saved, saves, size = "default", className }: Props) {
+export function SaveButton({ id, saved, saves, size = "default", className, label = "Zapisz" }: Props) {
   const save = useSave();
   const [askName, setAskName] = useState(false);
   const isSaved = saved === true;
@@ -47,7 +49,7 @@ export function SaveButton({ id, saved, saves, size = "default", className }: Pr
         className={cn(isSaved && "border-primary bg-primary-soft text-primary-ink hover:border-primary", className)}
       >
         <Icon name="bookmark" size={size === "lg" ? 22 : 20} filled={isSaved} />
-        {isSaved ? "Zapisano" : "Zapisz"}
+        {isSaved ? "Zapisano" : label}
       </Button>
       <NameDialog
         open={askName}

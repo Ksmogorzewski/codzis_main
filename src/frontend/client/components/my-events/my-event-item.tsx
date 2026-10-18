@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { SaveButton } from "@/components/community/save-button";
 import { CrewChatRow } from "@/components/crew/crew-chat-row";
+import { FriendsLine } from "@/components/friends/friends-line";
 import { EventImage } from "@/components/events/event-image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ export function MyEventItem({ card, now }: Props) {
               <span className="truncate">{place}</span>
             </span>
           )}
+          {!card.past && <FriendsLine eventId={card.id} className="text-meta" />}
           {card.past && (
             <Badge variant="secondary" className="mt-1">
               Minione

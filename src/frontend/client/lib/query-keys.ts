@@ -36,3 +36,15 @@ export const eventStatsKey = (ids: readonly string[]) => ["event-stats", [...ids
 
 /** Zakładka „Twoje”: moje zapisy (GET /api/me/events); też plakietka nieprzeczytanych w nawigacji. */
 export const myEventsKey = () => ["my-events"] as const;
+
+// --- Znajomi ---
+
+/** GET /api/friends: mój kod, znajomi, zaproszenia (unieważniany po każdej akcji znajomych). */
+export const friendsKey = () => ["friends"] as const;
+
+/** GET /api/friends/going: wydarzenia znajomych i mapa wydarzenie -> imiona (linijka „Ola idzie” na kartach). */
+export const friendsGoingKey = () => ["friends-going"] as const;
+
+/** GET /api/friends/code/{code}: czyj to kod (ekran zaproszenia). */
+export const friendCodeRootKey = () => ["friend-code"] as const;
+export const friendCodeKey = (code: string) => ["friend-code", code] as const;

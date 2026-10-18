@@ -1,14 +1,19 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Outlet, useRouter } from "@tanstack/react-router";
+import { useState } from "react";
+import { NameDialog } from "@/components/community/name-dialog";
 import { Header } from "@/components/layout/header";
 import { PageRouteError } from "@/components/layout/route-error";
 import { TabBar } from "@/components/layout/tab-bar";
+import { currentName } from "@/lib/auth";
+import { requireSession } from "@/lib/login-redirect";
+import { namePrompt, useNamePrompt } from "@/lib/name-prompt";
+import { friendCodeRootKey, friendsGoingKey, friendsKey } from "@/lib/query-keys";
 import { toggleDark, useDark } from "@/lib/theme";
 
-// Pathless layout: strażnik logowania + nagłówek wokół chronionych tras.
+// Pathless layout: strażnik logowania (bez sesji -> /login z powrotem na ten adres) + nagłówek wokół chronionych tras.
 export const Route = createFileRoute("/_app")({
-  beforeLoad: async ({ context }) => {
-    if (!(await context.auth.hasSession())) throw redirect({ to: "/login" });
-  },
+  beforeLoad: ({ context, location }) => requireSession(context.auth, location.href),
   component: AppLayout,
   errorComponent: PageRouteError,
 });
@@ -33,6 +38,35 @@ function AppLayout() {
         <Outlet />
       </main>
       <TabBar />
+      <RequiredName />
     </>
+  );
+}
+
+/**
+ * Konto bez imienia (sprzed 18.10) podaje je raz, zaraz po zalogowaniu - bez zamykania, bo znajomi muszą
+ * wiedzieć, kogo dodają. To samo okno otwiera 409 name_required z tras znajomych (namePrompt).
+ */
+function RequiredName() {
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const [missing, setMissing] = useState(() => currentName() === null);
+  const asked = useNamePrompt();
+
+  return (
+    <NameDialog
+      required
+      open={missing || asked}
+      onOpenChange={() => {}}
+      onDone={() => {
+        setMissing(false);
+        namePrompt.close();
+        // nowy token ma imię: trasy znajomych przestają odpowiadać 409
+        void queryClient.invalidateQueries({ queryKey: friendsKey() });
+        void queryClient.invalidateQueries({ queryKey: friendsGoingKey() });
+        void queryClient.invalidateQueries({ queryKey: friendCodeRootKey() });
+        void router.invalidate();
+      }}
+    />
   );
 }

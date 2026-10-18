@@ -115,6 +115,21 @@ function EmptyState({ search }: { search: HomeSearch }) {
   );
 }
 
+/** Eksploruj nie ma pozycji w menu: na końcu propozycji (i w pustym stanie) link do wszystkich wydarzeń. */
+function AllEventsLink() {
+  return (
+    <p className="flex justify-center">
+      <Link
+        to="/eksploruj"
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-sm px-1 text-base font-bold text-brand-ink underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring"
+      >
+        Nie pasuje? Zobacz wszystkie wydarzenia
+        <Icon name="arrow_forward" size={20} />
+      </Link>
+    </p>
+  );
+}
+
 function Loading({ coldStart }: { coldStart: boolean }) {
   return (
     <>
@@ -208,6 +223,7 @@ export function HomeView() {
           ) : (
             <EmptyState search={search} />
           )}
+          <AllEventsLink />
 
           <p className="text-sm text-muted-foreground">
             Dopasowane do Twojego profilu. Wydarzenia z kalendarza miasta, zajęć sportowych i od organizatorów

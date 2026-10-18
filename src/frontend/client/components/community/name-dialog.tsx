@@ -9,14 +9,33 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { setMissingName } from "@/lib/auth";
 import { MAX_NAME, nameError } from "@/lib/auth-form";
 import { meKey } from "@/lib/query-keys";
+import { cn } from "@/lib/utils";
 
-type Props = { open: boolean; onOpenChange: (open: boolean) => void; onDone: () => void };
+type Props = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onDone: () => void;
+  /** Po zalogowaniu (konto bez imienia): bez zamykania, dopóki nie poda imienia (znajomi muszą wiedzieć, kogo dodają). */
+  required?: boolean;
+};
+
+const TEXT = {
+  save: {
+    description: "Imię zobaczą inni zapisani na to wydarzenie. Podajesz je raz – później go nie zmienisz.",
+    submit: "Zapisz się",
+  },
+  required: {
+    description: "Imię zobaczą Twoi znajomi i inni zapisani na wydarzenia. Podajesz je raz – później go nie zmienisz.",
+    submit: "Zapisz imię",
+  },
+} as const;
 
 /**
- * Jednorazowa prośba o imię dla kont założonych przed polem „Imię” (przed pierwszym zapisem).
- * Imię trafia do Cognito; później nie da się go zmienić.
+ * Jednorazowa prośba o imię dla kont założonych przed polem „Imię”: zaraz po zalogowaniu (required)
+ * albo przed pierwszym zapisem. Imię trafia do Cognito; później nie da się go zmienić.
  */
-export function NameDialog({ open, onOpenChange, onDone }: Props) {
+export function NameDialog({ open, onOpenChange, onDone, required = false }: Props) {
+  const text = required ? TEXT.required : TEXT.save;
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -42,13 +61,16 @@ export function NameDialog({ open, onOpenChange, onDone }: Props) {
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="gap-4 p-6 pb-[calc(24px+env(safe-area-inset-bottom))]">
-        <div className="flex flex-col gap-1.5 pr-14">
+    <Sheet open={open} onOpenChange={required ? undefined : onOpenChange}>
+      <SheetContent
+        showClose={!required}
+        onEscapeKeyDown={required ? (e) => e.preventDefault() : undefined}
+        onInteractOutside={required ? (e) => e.preventDefault() : undefined}
+        className="gap-4 p-6 pb-[calc(24px+env(safe-area-inset-bottom))]"
+      >
+        <div className={cn("flex flex-col gap-1.5", !required && "pr-14")}>
           <SheetTitle>Jak masz na imię?</SheetTitle>
-          <SheetDescription>
-            Imię zobaczą inni zapisani na to wydarzenie. Podajesz je raz – później go nie zmienisz.
-          </SheetDescription>
+          <SheetDescription>{text.description}</SheetDescription>
         </div>
         <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
           <div className="flex flex-col gap-1.5">
@@ -70,7 +92,7 @@ export function NameDialog({ open, onOpenChange, onDone }: Props) {
             </Alert>
           )}
           <Button type="submit" size="lg" disabled={busy}>
-            {busy ? "Chwileczkę…" : "Zapisz się"}
+            {busy ? "Chwileczkę…" : text.submit}
           </Button>
         </form>
       </SheetContent>

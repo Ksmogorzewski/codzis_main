@@ -16,8 +16,10 @@ import { Route as AppEksplorujRouteImport } from './routes/_app/eksploruj'
 import { Route as AppPopularneRouteImport } from './routes/_app/popularne'
 import { Route as AppProfilRouteImport } from './routes/_app/profil'
 import { Route as AppTwojeRouteImport } from './routes/_app/twoje'
+import { Route as AppZnajomiRouteImport } from './routes/_app/znajomi'
 import { Route as AppWydarzenieIdRouteImport } from './routes/_app/wydarzenie.$id'
 import { Route as AppWydarzenieIdEkipaRouteImport } from './routes/_app/wydarzenie.$id_.ekipa'
+import { Route as AppZnajomiDodajCodeRouteImport } from './routes/_app/znajomi_.dodaj.$code'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -53,6 +55,11 @@ const AppTwojeRoute = AppTwojeRouteImport.update({
   path: '/twoje',
   getParentRoute: () => AppRoute,
 } as any)
+const AppZnajomiRoute = AppZnajomiRouteImport.update({
+  id: '/znajomi',
+  path: '/znajomi',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppWydarzenieIdRoute = AppWydarzenieIdRouteImport.update({
   id: '/wydarzenie/$id',
   path: '/wydarzenie/$id',
@@ -63,6 +70,11 @@ const AppWydarzenieIdEkipaRoute = AppWydarzenieIdEkipaRouteImport.update({
   path: '/wydarzenie/$id/ekipa',
   getParentRoute: () => AppRoute,
 } as any)
+const AppZnajomiDodajCodeRoute = AppZnajomiDodajCodeRouteImport.update({
+  id: '/znajomi_/dodaj/$code',
+  path: '/znajomi/dodaj/$code',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -71,8 +83,10 @@ export interface FileRoutesByFullPath {
   '/popularne': typeof AppPopularneRoute
   '/profil': typeof AppProfilRoute
   '/twoje': typeof AppTwojeRoute
+  '/znajomi': typeof AppZnajomiRoute
   '/wydarzenie/$id': typeof AppWydarzenieIdRoute
   '/wydarzenie/$id/ekipa': typeof AppWydarzenieIdEkipaRoute
+  '/znajomi/dodaj/$code': typeof AppZnajomiDodajCodeRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -80,9 +94,11 @@ export interface FileRoutesByTo {
   '/popularne': typeof AppPopularneRoute
   '/profil': typeof AppProfilRoute
   '/twoje': typeof AppTwojeRoute
+  '/znajomi': typeof AppZnajomiRoute
   '/': typeof AppIndexRoute
   '/wydarzenie/$id': typeof AppWydarzenieIdRoute
   '/wydarzenie/$id/ekipa': typeof AppWydarzenieIdEkipaRoute
+  '/znajomi/dodaj/$code': typeof AppZnajomiDodajCodeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -92,9 +108,11 @@ export interface FileRoutesById {
   '/_app/popularne': typeof AppPopularneRoute
   '/_app/profil': typeof AppProfilRoute
   '/_app/twoje': typeof AppTwojeRoute
+  '/_app/znajomi': typeof AppZnajomiRoute
   '/_app/': typeof AppIndexRoute
   '/_app/wydarzenie/$id': typeof AppWydarzenieIdRoute
   '/_app/wydarzenie/$id_/ekipa': typeof AppWydarzenieIdEkipaRoute
+  '/_app/znajomi_/dodaj/$code': typeof AppZnajomiDodajCodeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -105,8 +123,10 @@ export interface FileRouteTypes {
     | '/popularne'
     | '/profil'
     | '/twoje'
+    | '/znajomi'
     | '/wydarzenie/$id'
     | '/wydarzenie/$id/ekipa'
+    | '/znajomi/dodaj/$code'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -114,9 +134,11 @@ export interface FileRouteTypes {
     | '/popularne'
     | '/profil'
     | '/twoje'
+    | '/znajomi'
     | '/'
     | '/wydarzenie/$id'
     | '/wydarzenie/$id/ekipa'
+    | '/znajomi/dodaj/$code'
   id:
     | '__root__'
     | '/_app'
@@ -125,9 +147,11 @@ export interface FileRouteTypes {
     | '/_app/popularne'
     | '/_app/profil'
     | '/_app/twoje'
+    | '/_app/znajomi'
     | '/_app/'
     | '/_app/wydarzenie/$id'
     | '/_app/wydarzenie/$id_/ekipa'
+    | '/_app/znajomi_/dodaj/$code'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -186,6 +210,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTwojeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/znajomi': {
+      id: '/_app/znajomi'
+      path: '/znajomi'
+      fullPath: '/znajomi'
+      preLoaderRoute: typeof AppZnajomiRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/wydarzenie/$id': {
       id: '/_app/wydarzenie/$id'
       path: '/wydarzenie/$id'
@@ -200,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWydarzenieIdEkipaRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/znajomi_/dodaj/$code': {
+      id: '/_app/znajomi_/dodaj/$code'
+      path: '/znajomi/dodaj/$code'
+      fullPath: '/znajomi/dodaj/$code'
+      preLoaderRoute: typeof AppZnajomiDodajCodeRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -208,9 +246,11 @@ interface AppRouteChildren {
   AppPopularneRoute: typeof AppPopularneRoute
   AppProfilRoute: typeof AppProfilRoute
   AppTwojeRoute: typeof AppTwojeRoute
+  AppZnajomiRoute: typeof AppZnajomiRoute
   AppIndexRoute: typeof AppIndexRoute
   AppWydarzenieIdRoute: typeof AppWydarzenieIdRoute
   AppWydarzenieIdEkipaRoute: typeof AppWydarzenieIdEkipaRoute
+  AppZnajomiDodajCodeRoute: typeof AppZnajomiDodajCodeRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -218,9 +258,11 @@ const AppRouteChildren: AppRouteChildren = {
   AppPopularneRoute: AppPopularneRoute,
   AppProfilRoute: AppProfilRoute,
   AppTwojeRoute: AppTwojeRoute,
+  AppZnajomiRoute: AppZnajomiRoute,
   AppIndexRoute: AppIndexRoute,
   AppWydarzenieIdRoute: AppWydarzenieIdRoute,
   AppWydarzenieIdEkipaRoute: AppWydarzenieIdEkipaRoute,
+  AppZnajomiDodajCodeRoute: AppZnajomiDodajCodeRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
