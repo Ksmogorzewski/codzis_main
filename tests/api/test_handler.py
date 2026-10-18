@@ -1,46 +1,21 @@
 """Handler API panelu partnera (src/api/handler.py) na atrapach DynamoDB i SQS."""
 
-import json
 import sys
-from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 
-from tests.api.conftest import PARTNER_KEY, PARTNER_NAME, REQUEST_ID, STARTER_CREDITS, call
+from tests.api.conftest import (
+    GOOGLE,
+    PARTNER_KEY,
+    PARTNER_NAME,
+    REQUEST_ID,
+    STARTER_CREDITS,
+    call,
+    future,
+    valid_event,
+)
 from tests.support import taxonomy
-
-WARSAW = "+02:00"
-
-
-def future(days=7, hour=19):
-    day = datetime.now(UTC) + timedelta(days=days)
-    return f"{day:%Y-%m-%d}T{hour:02d}:00:00{WARSAW}"
-
-
-def valid_event(**overrides):
-    body = {
-        "title": "  Koncert w parku ",
-        "lead": "Muzyka na żywo",
-        "text": "Pierwszy akapit\nz nową linią\n\nDrugi <b>akapit</b>",
-        "venue": "Park Skaryszewski",
-        "street": "al. Zieleniecka",
-        "streetNumber": "1",
-        "url": "https://example.com/koncert",
-        "cost": "Płatne",
-        "registration": "Wymagany bilet",
-        "setting": "Na zewnątrz",
-        "audience": ["Rodziny / wszystkie grupy", "Dorośli (18-64)", "Dorośli (18-64)"],
-        "priceMin": "20",
-        "priceMax": 35.5,
-        "category": "Kultura",
-        "district": "Wola",
-        "startsAt": future(hour=19),
-        "endsAt": future(hour=21),
-        "photoContentType": "image/jpeg",
-    }
-    body.update(overrides)
-    return body
 
 
 def post_event(partner_api, **overrides):
@@ -82,8 +57,6 @@ def test_get_me_unknown_key_uses_key_id_as_name(partner_api):
 
 
 # --- logowanie Google (samoobsługa: konto Google = konto organizatora) ---
-
-GOOGLE = {"sub": "5f1c2e7a-google", "name": "  Anna   Nowak ", "email": "anna@example.com", "email_verified": "true"}
 
 
 def test_google_first_login_creates_partner_from_token(partner_api, aws):
@@ -442,7 +415,7 @@ def test_unexpected_error_returns_500_with_request_id(partner_api, monkeypatch):
     def boom(partner):
         raise RuntimeError("awaria DynamoDB")
 
-    monkeypatch.setattr(partner_api, "get_profile", boom)
+    monkeypatch.setattr(sys.modules["routes.me"], "ensure_partner", boom)
     status, body = call(partner_api, "GET", "me")
     assert status == 500
     assert body == {"error": "Coś poszło nie tak. Spróbuj ponownie.", "requestId": REQUEST_ID}
@@ -454,17 +427,16 @@ def test_api_error_unchanged(partner_api):
     assert body == {"error": "Nie znaleziono"}
 
 
-def test_access_log_route_without_ids(partner_api, caplog):
-    caplog.set_level("INFO", logger="codzis.http")
+def test_access_log_route_without_ids(partner_api, access_logs):
     call(partner_api, "POST", "payments/abc-123/confirm")
-    access = json.loads(caplog.records[-1].getMessage())
+    access = access_logs()[-1]
     assert access["route"] == "POST /payments/{id}/confirm"
     assert access["status"] == 404
-    assert access["requestId"] == REQUEST_ID
+    assert access["correlation_id"] == REQUEST_ID  # Powertools: requestId API Gateway jako correlation_id
 
 
 def test_aws_clients_use_shared_timeouts(partner_api):
-    store = partner_api.partners_table.meta.client
+    store = sys.modules["store"].partners_table.meta.client
     assert store.meta.config.read_timeout == 3
     s3 = sys.modules["store"].s3
     assert s3.meta.config.connect_timeout == 1

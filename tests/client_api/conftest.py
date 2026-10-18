@@ -1,5 +1,7 @@
 import json
+import re
 import sys
+from urllib.parse import quote
 
 import boto3
 import pytest
@@ -138,12 +140,22 @@ def friends(client_api):
 
 
 def api_event(route_key, body=None, claims=None, path=None, query=None):
-    """Zdarzenie HTTP API (payload 2.0) po autoryzacji JWT, jak z API Gateway."""
+    """Zdarzenie HTTP API (payload 2.0) po autoryzacji JWT, jak z API Gateway.
+
+    `route_key` jak w infra/client_api.tf ("GET /api/events/{id}"). rawPath to szablon z wartościami z `path`
+    zakodowanymi jak w adresie URL (każda w jednym segmencie) - po nim trasę wybiera router Powertools."""
+    method, template = route_key.split(" ", 1)
+    raw_path = re.sub(r"\{(\w+)\}", lambda m: quote((path or {}).get(m.group(1), ""), safe=""), template)
     event = {
+        "version": "2.0",
         "routeKey": route_key,
+        "rawPath": raw_path,
+        "headers": {},
         "requestContext": {
             "authorizer": {"jwt": {"claims": claims or {"sub": "user-1", "email": "ala@example.com"}}},
+            "http": {"method": method, "path": raw_path},
             "requestId": REQUEST_ID,
+            "stage": "$default",
         },
     }
     if path is not None:

@@ -209,8 +209,10 @@ def test_profile_takes_age_from_birth_date(client_api):
 
 def test_birth_date_change_recomputes_age_in_saved_profile(client_api, users_table, monkeypatch):
     calls: list[dict] = []
-    monkeypatch.setattr(client_api, "RECOMMENDER_FUNCTION", "recommender")
-    monkeypatch.setattr(client_api, "lambda_client", SimpleNamespace(invoke=lambda **kwargs: calls.append(kwargs)))
+    monkeypatch.setattr(client_api.profiles, "RECOMMENDER_FUNCTION", "recommender")
+    monkeypatch.setattr(
+        client_api.profiles, "lambda_client", SimpleNamespace(invoke=lambda **kwargs: calls.append(kwargs))
+    )
     me(client_api, EMAIL)
     call(client_api, "PUT /api/profile", {"answers": ANSWERS}, claims=EMAIL)
     calls.clear()

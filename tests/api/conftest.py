@@ -1,4 +1,6 @@
+import io
 import json
+from datetime import UTC, datetime, timedelta
 
 import boto3
 import pytest
@@ -19,6 +21,42 @@ CREDIT_PACKAGES = {
     "starter": {"name": "Start", "credits": 1, "price": 19},
     "standard": {"name": "Standard", "credits": 5, "price": 79.99},
 }
+
+
+# Dane testowe wspólne dla test_handler.py i test_contract.py.
+GOOGLE = {"sub": "5f1c2e7a-google", "name": "  Anna   Nowak ", "email": "anna@example.com", "email_verified": "true"}
+
+WARSAW = "+02:00"
+
+
+def future(days=7, hour=19):
+    day = datetime.now(UTC) + timedelta(days=days)
+    return f"{day:%Y-%m-%d}T{hour:02d}:00:00{WARSAW}"
+
+
+def valid_event(**overrides):
+    body = {
+        "title": "  Koncert w parku ",
+        "lead": "Muzyka na żywo",
+        "text": "Pierwszy akapit\nz nową linią\n\nDrugi <b>akapit</b>",
+        "venue": "Park Skaryszewski",
+        "street": "al. Zieleniecka",
+        "streetNumber": "1",
+        "url": "https://example.com/koncert",
+        "cost": "Płatne",
+        "registration": "Wymagany bilet",
+        "setting": "Na zewnątrz",
+        "audience": ["Rodziny / wszystkie grupy", "Dorośli (18-64)", "Dorośli (18-64)"],
+        "priceMin": "20",
+        "priceMax": 35.5,
+        "category": "Kultura",
+        "district": "Wola",
+        "startsAt": future(hour=19),
+        "endsAt": future(hour=21),
+        "photoContentType": "image/jpeg",
+    }
+    body.update(overrides)
+    return body
 
 
 def _table(name, key, with_partner_index):
@@ -81,6 +119,17 @@ def partner_api(monkeypatch):
 
 
 @pytest.fixture
+def access_logs(partner_api):
+    """Linie logu JSON z Powertools Logger (nie przechodzi przez caplog) jako lista słowników."""
+    from codzis_common.app import logger
+
+    stream = io.StringIO()
+    previous = logger.registered_handler.setStream(stream)  # type: ignore[attr-defined]
+    yield lambda: [json.loads(line) for line in stream.getvalue().splitlines()]
+    logger.registered_handler.setStream(previous)  # type: ignore[attr-defined]
+
+
+@pytest.fixture
 def aws(partner_api):
     """Dostęp do atrap: tabele i kolejka (do sprawdzania efektów ubocznych)."""
     dynamodb = boto3.resource("dynamodb")
@@ -103,17 +152,34 @@ def aws(partner_api):
 
 
 def rest_event(method, path, body=None, api_key=PARTNER_KEY, claims=None):
-    """Zdarzenie REST API (v1, proxy {proxy+}) z kluczem API partnera albo - z `claims` - z tokenem Google
-    (autoryzator Cognito: claimy w requestContext.authorizer.claims, bez klucza API)."""
-    context = (
-        {"identity": {"apiKeyId": None}, "authorizer": {"claims": claims}}
-        if claims
-        else {"identity": {"apiKeyId": api_key}}
-    )
-    event = {
+    """Zdarzenie REST API v1 jak z API Gateway za CloudFrontem (zasób /{proxy+}, stage "api") z kluczem API
+    partnera albo - z `claims` - z tokenem Google (autoryzator Cognito: claimy w requestContext.authorizer.claims,
+    bez klucza API). `path` to adres względem stage'a ("/me"), `requestContext.path` - z prefiksem stage'a."""
+    identity = {"apiKeyId": None if claims else api_key, "sourceIp": "203.0.113.10", "userAgent": "Amazon CloudFront"}
+    context = {
+        "resourcePath": "/{proxy+}",
         "httpMethod": method,
+        "path": f"/api/{path}",
+        "stage": "api",
+        "requestId": REQUEST_ID,
+        "identity": identity,
+    }
+    if claims:
+        context["authorizer"] = {"claims": claims}
+    headers = {"Content-Type": "application/json", "Host": "abc123.execute-api.eu-central-1.amazonaws.com"}
+    event = {
+        "resource": "/{proxy+}",
+        "path": f"/{path}",
+        "httpMethod": method,
+        "headers": headers,
+        "multiValueHeaders": {name: [value] for name, value in headers.items()},
+        "queryStringParameters": None,
+        "multiValueQueryStringParameters": None,
         "pathParameters": {"proxy": path} if path else None,
-        "requestContext": {**context, "requestId": REQUEST_ID},
+        "stageVariables": None,
+        "requestContext": context,
+        "body": None,
+        "isBase64Encoded": False,
     }
     if body is not None:
         event["body"] = body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)

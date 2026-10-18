@@ -22,7 +22,7 @@ data "archive_file" "client_api" {
   type        = "zip"
   source_dir  = "${path.module}/../src/client_api"
   output_path = "${path.module}/build/client_api.zip"
-  excludes    = ["__pycache__"]
+  excludes    = ["__pycache__", "**/__pycache__"]
 }
 
 resource "aws_cloudwatch_log_group" "client_api" {
@@ -111,7 +111,7 @@ resource "aws_lambda_function" "client_api" {
   handler          = "handler.handler"
   filename         = data.archive_file.client_api.output_path
   source_code_hash = data.archive_file.client_api.output_base64sha256
-  layers           = [aws_lambda_layer_version.common.arn]
+  layers           = [aws_lambda_layer_version.common.arn, local.powertools_layer_arn]
   memory_size      = 512 # pamięć podręczna wydarzeń (scan codzis-events) dla Eksploruj i Popularnych
   timeout          = 10
 
@@ -127,6 +127,8 @@ resource "aws_lambda_function" "client_api" {
       # zdjęcia profilowe w buckecie zdjęć ogłoszeń, serwowane przez CloudFront panelu pod /photos/*
       PHOTOS_BUCKET   = aws_s3_bucket.photos.id
       PHOTOS_BASE_URL = local.website_origin
+      # pole "service" w logach JSON (Powertools Logger)
+      POWERTOOLS_SERVICE_NAME = "${local.name}-client-api"
     }
   }
 

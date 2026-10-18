@@ -2,7 +2,8 @@
 
 Każda Lambda ma własny katalog i własny moduł `handler`, importowany tak jak w Lambdzie
 (`import handler`, `from onboarding import ...`). Dlatego handler ładujemy funkcją `load_lambda`:
-czyści wcześniej załadowane moduły Lambd z `sys.modules` i importuje z właściwego katalogu.
+czyści wcześniej załadowane moduły Lambd z `sys.modules` (także pakiety, np. `routes` i `routes.*`, które
+client-api i API partnera mają pod tą samą nazwą) i importuje z właściwego katalogu.
 Import musi nastąpić wewnątrz `mock_aws()`, bo klienty boto3 powstają na poziomie modułu.
 """
 
@@ -30,16 +31,24 @@ DISTRICTS = ["Mokotów", "Śródmieście", "Wola"]
 
 
 def _lambda_module_names() -> set[str]:
+    """Moduły (`schemas`, `profiles`…) i pakiety (`routes`) z katalogów Lambd API."""
     names: set[str] = set()
     for directory in (CLIENT_API_DIR, API_DIR):
         names.update(p.stem for p in directory.glob("*.py"))
+        names.update(p.parent.name for p in directory.glob("*/__init__.py"))
     return names
+
+
+def forget_lambda_modules() -> None:
+    """Usuwa z `sys.modules` moduły Lambd API razem z modułami pakietów (`routes.me`…)."""
+    names = _lambda_module_names()
+    for name in [n for n in sys.modules if n.split(".", 1)[0] in names]:
+        del sys.modules[name]
 
 
 def load_lambda(directory: Path, module: str = "handler") -> ModuleType:
     """Importuje świeży moduł Lambdy z `directory` (jak w runtime: katalog w sys.path)."""
-    for name in _lambda_module_names():
-        sys.modules.pop(name, None)
+    forget_lambda_modules()
     path = str(directory)
     sys.path.insert(0, path)
     try:

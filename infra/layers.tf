@@ -16,3 +16,10 @@ resource "aws_lambda_layer_version" "common" {
   compatible_runtimes      = ["python3.13"]
   compatible_architectures = ["arm64"]
 }
+
+# AWS Lambda Powertools (router, Logger, obsługa wyjątków w codzis_common.app) - publiczna warstwa AWS.
+# Wersja 39 = Powertools 3.36.0 dla Python 3.13 / arm64, z Pydantic 2.14.1 (+ pydantic_core dla aarch64),
+# więc osobna warstwa z Pydantic nie jest potrzebna. Te same wersje w requirements-dev.txt (testy).
+locals {
+  powertools_layer_arn = "arn:aws:lambda:eu-central-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python313-arm64:39"
+}
