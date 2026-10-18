@@ -73,6 +73,44 @@ def test_rerank_is_deterministic_by_default():
     assert inspect.signature(rank_candidates).parameters["temperature"].default == 0.0
 
 
+def _capturing_client(captured: list):
+    class Client:
+        def chat(self, messages, **kwargs):
+            captured.extend(messages)
+
+            class M:
+                content = '{"ranking": [], "notes": ""}'
+
+            class C:
+                message = M()
+
+            class R:
+                choices = [C()]
+                usage = None
+
+            return R()
+
+    return Client()
+
+
+def test_query_dominates_profile_in_prompt():
+    """Z wpisaną frazą ranking LLM ma traktować ją jako nadrzędną wobec profilu."""
+    from recommender.ranker import rank_candidates
+
+    captured: list = []
+    rank_candidates(_capturing_client(captured), {"query": "jazz", "themes": ["Sport"]},
+                    [_cand("e1", matched={})])
+    assert "outranks every profile preference" in captured[0]["content"]
+
+
+def test_prompt_bez_frazy_zostaje_profilowy():
+    from recommender.ranker import rank_candidates
+
+    captured: list = []
+    rank_candidates(_capturing_client(captured), {"themes": ["Sport"]}, [_cand("e1", matched={})])
+    assert "outranks every profile preference" not in captured[0]["content"]
+
+
 def test_expansion_stays_creative():
     """Expansion deliberately keeps a non-zero temperature (unlike ranking)."""
     from recommender.expand import EXPANSION_TEMPERATURE
