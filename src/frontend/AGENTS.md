@@ -42,7 +42,7 @@ routes/                  trasy plikowe; routeTree.gen.ts jest GENEROWANY — nie
   _app/wydarzenie.$id_.ekipa.tsx czat ekipy (tylko dla zapisanych; bez loadera - pierwsze zapytanie dołącza do ekipy)
 components/<obszar>/     auth, account (dane konta w profilu: zdjęcie, imię i nazwisko do odczytu, data urodzenia), events, explore, popular, my-events (Twoje), community (zapis, imię, zapisani), friends (Znajomi, QR,
                          linijka „Ola idzie”), crew (czat ekipy,
-                         wiersz czatu na liście, toast o nowej wiadomości), survey, layout (nagłówek, tab-bar, plakietka nieprzeczytanych) — pliki kebab-case
+                         wiersz czatu na liście, toast o nowej wiadomości), survey, layout (nagłówek, tab-bar, plakietka nieprzeczytanych, nagłówek ekranu PageHeader) — pliki kebab-case
 components/ui/           prymitywy shadcn — wyłącznie przez tokeny motywu
 hooks/                   use-<x>.query.ts / use-<x>.mutation.ts (jeden hook na endpoint, queryOptions):
                          me, onboarding, recommendations, events, event, event-stats, popular, attendees,
@@ -84,6 +84,8 @@ Testy obok kodu: `lib/*.test.ts`. Import: alias `@/` = `client/`.
 - Tylko klasy Tailwind i tokeny z `styles.css` (`bg-primary`, `text-muted-foreground`, `bg-brand`, `text-brand-ink`, `bg-poster-kultura`…). **Bez kolorów hex w komponentach, bez inline `style`, bez nowych plików CSS.**
 - Kierunek „Plakat”: tekst w Familjen Grotesk (`font-sans`), nagłówki-plakaty, ceny i godziny w Anybody (`font-display` + szerokość `[font-stretch:55%…130%]`, wersaliki). Kolory kategorii na kartach i w nagłówku szczegółów z `components/events/poster-tone.ts` (kultura czerwień, sport błękit, rekreacja ochra). Ramki kart i pól: `border-2 border-input` (atrament); cienkie podziały: `border`. Ostre rogi wszędzie (`--radius` = 0), `rounded-full` tylko dla kółek-znaczników.
 - Kolory przygaszone jak farba drukarska na szarym papierze (nie czyste RGB), znak wodny godziny tylko o krok ciemniejszy od pola. Nowy kolor = token w `styles.css`, nie mocniejsze nasycenie.
+- Nagłówek ekranu: `components/layout/page-header.tsx` (`PageHeader`: tytuł-plakat w Anybody, wersaliki, opcjonalny napis nad nim i zdanie pod nim) — ten sam na Twoje, Znajomi, Popularne, Eksploruj i w ankiecie; ekran główny i szczegóły mają własne pole plakatu. Nowy ekran = `PageHeader`, nie własny `<h1>`.
+- Statyczna `public/polityka-prywatnosci.html` ma te same kolory i formy (czerwone pole plakatu, ramki atramentem), ale bez zewnętrznych zasobów: zwężone kroje systemowe zamiast fontów Google.
 - Zdjęcie na karcie (`event-card.tsx`): wysuwa się na pole plakatu po najechaniu myszą, przy fokusie, na dotyku gdy karta jest na środku ekranu albo po stuknięciu w plakat (`hooks/use-photo-reveal.ts`); bez zdjęcia karta zostaje plakatem.
 - tailwind-merge usuwa `leading-*` stojące przed klasą rozmiaru tekstu w tym samym `cn(...)` – rozmiar podawaj przed `leading-*`.
 - Nowy prymityw: `npx shadcn@latest add <komponent>`, potem dostosuj do tokenów (nie zostawiaj domyślnego szarego).

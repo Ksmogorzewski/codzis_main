@@ -2,6 +2,7 @@ import { getRouteApi, Link } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { GRID } from "@/components/events/card-skeleton";
 import { EventCard } from "@/components/events/event-card";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { usePopular } from "@/hooks/use-popular.query";
@@ -37,12 +38,9 @@ export function PopularView() {
 
   return (
     <>
-      <header className="flex flex-col gap-1">
-        <h1 className="text-[32px] leading-[1.05] font-extrabold tracking-[-0.03em] md:text-[40px]">Popularne w najbliższym tygodniu</h1>
-        <p className="text-lg text-muted-foreground">
-          Na co zapisuje się najwięcej osób{week ? ` · ${week}` : ""}.
-        </p>
-      </header>
+      <PageHeader title="Popularne w najbliższym tygodniu">
+        Na co zapisuje się najwięcej osób{week ? ` · ${week}` : ""}.
+      </PageHeader>
       {data.items.length > 0 ? (
         <ol className={GRID} aria-label="Najpopularniejsze wydarzenia">
           {data.items.map((c, i) => (

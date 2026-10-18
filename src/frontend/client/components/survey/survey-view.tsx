@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -106,17 +107,11 @@ export function SurveyView({ me, steps }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <p className="text-meta font-bold tracking-[0.04em] text-brand-ink uppercase">Twój profil</p>
-        <h1 className="max-w-[18ch] font-display text-[44px] leading-[0.92] font-black text-balance uppercase [font-stretch:62%] md:text-[72px]">
-          Dopasujmy Warszawę do Ciebie
-        </h1>
-        <p className="text-[17px] leading-[1.45] text-muted-foreground">
-          {firstTime
-            ? `Odpowiedz na ${plural(required.length, "pytanie", "pytania", "pytań")} – resztę możesz pominąć. Zmienisz je w każdej chwili.`
-            : "Zmień odpowiedzi, a dopasujemy propozycje do nowego profilu."}
-        </p>
-      </header>
+      <PageHeader eyebrow="Twój profil" title="Dopasujmy Warszawę do Ciebie">
+        {firstTime
+          ? `Odpowiedz na ${plural(required.length, "pytanie", "pytania", "pytań")} – resztę możesz pominąć. Zmienisz je w każdej chwili.`
+          : "Zmień odpowiedzi, a dopasujemy propozycje do nowego profilu."}
+      </PageHeader>
 
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-base font-bold">

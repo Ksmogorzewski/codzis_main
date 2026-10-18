@@ -1,5 +1,6 @@
 import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,10 +24,7 @@ export function MyEventsView() {
 
   return (
     <>
-      <header className="flex flex-col gap-1">
-        <h1 className="text-[32px] leading-[1.05] font-extrabold tracking-[-0.03em] md:text-[40px]">Twoje wydarzenia</h1>
-        <p className="text-lg text-muted-foreground">Na co się zapisujesz i czaty ekip, z którymi idziesz.</p>
-      </header>
+      <PageHeader title="Twoje wydarzenia">Na co się zapisujesz i czaty ekip, z którymi idziesz.</PageHeader>
       {upcoming.length + past.length === 0 ? (
         <EmptyState />
       ) : (

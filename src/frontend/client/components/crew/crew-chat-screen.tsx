@@ -93,7 +93,7 @@ function TopBar({ id, card, crew }: { id: string; card: Card | null; crew: Crew 
         </Link>
       </Button>
       <div className="flex min-w-0 flex-1 flex-col">
-        <h1 id="crew-title" className="truncate text-title font-bold">
+        <h1 id="crew-title" className="truncate font-display text-[22px] leading-tight font-black uppercase [font-stretch:62%]">
           {card ? `Ekipa: ${card.title}` : "Ekipa"}
         </h1>
         {crew && <p className="truncate text-sm text-muted-foreground">{membersLine(otherNames(crew.members))}</p>}

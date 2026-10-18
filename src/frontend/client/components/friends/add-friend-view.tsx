@@ -116,7 +116,7 @@ function Message({ icon, title, description, children }: MessageProps) {
       <span className="grid size-16 place-items-center bg-foreground text-background">
         <Icon name={icon} size={32} />
       </span>
-      <h1 className="text-[25px] leading-tight font-extrabold tracking-[-0.02em] text-balance">{title}</h1>
+      <h1 className="font-display text-[30px] leading-[0.95] font-black text-balance uppercase [font-stretch:66%]">{title}</h1>
       {description && <p className="text-base text-muted-foreground text-pretty">{description}</p>}
       <div className="flex w-full flex-col gap-2">{children}</div>
     </Card>

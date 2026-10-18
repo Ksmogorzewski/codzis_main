@@ -5,6 +5,7 @@ import { CategoryFilter } from "@/components/events/category-filter";
 import { EventCard } from "@/components/events/event-card";
 import { SearchBox } from "@/components/events/search-box";
 import { WhenFilter } from "@/components/events/when-filter";
+import { PageHeader } from "@/components/layout/page-header";
 import { errorText, RouteError } from "@/components/layout/route-error";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -146,10 +147,7 @@ export function ExploreView() {
 
   return (
     <>
-      <header className="flex flex-col gap-1">
-        <h1 className="text-[32px] leading-[1.05] font-extrabold tracking-[-0.03em] md:text-[40px]">Eksploruj</h1>
-        <p className="text-lg text-muted-foreground">Wszystko, co dzieje się w Warszawie – bez filtra profilu.</p>
-      </header>
+      <PageHeader title="Eksploruj">Wszystko, co dzieje się w Warszawie – bez filtra profilu.</PageHeader>
       <Filters search={search} params={params} districts={districts} go={go} />
 
       {events.isError && !data ? (

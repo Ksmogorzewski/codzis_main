@@ -2,6 +2,7 @@ import { type ErrorComponentProps, getRouteApi, Link } from "@tanstack/react-rou
 import { type ReactNode, useEffect, useState } from "react";
 import { GRID } from "@/components/events/card-skeleton";
 import { EventCard } from "@/components/events/event-card";
+import { PageHeader } from "@/components/layout/page-header";
 import { DataRouteError } from "@/components/layout/route-error";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -36,10 +37,7 @@ export function FriendsView() {
 
   return (
     <>
-      <header className="flex flex-col gap-1">
-        <h1 className="text-[32px] leading-[1.05] font-extrabold tracking-[-0.03em] md:text-[40px]">Znajomi</h1>
-        <p className="text-lg text-muted-foreground">Zobacz, dokąd idą Twoi znajomi, i wybierz się z nimi.</p>
-      </header>
+      <PageHeader title="Znajomi">Zobacz, dokąd idą Twoi znajomi, i wybierz się z nimi.</PageHeader>
       {data.friends.length === 0 ? (
         <div className="mx-auto flex w-full max-w-[440px] flex-col gap-4">
           <Requests items={data.incoming} />

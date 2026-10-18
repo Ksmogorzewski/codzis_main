@@ -80,7 +80,9 @@ function NotFound() {
       <BackLink />
       <div className="flex flex-col items-center gap-2.5 border-2 border-dashed border-input px-5 py-8 text-center">
         <Icon name="search_off" size={40} className="text-muted-foreground" />
-        <h1 className="text-lg font-bold">Nie znaleziono tego wydarzenia</h1>
+        <h1 className="font-display text-[30px] leading-[0.95] font-black text-balance uppercase [font-stretch:66%]">
+          Nie znaleziono tego wydarzenia
+        </h1>
         <p className="max-w-md text-meta text-muted-foreground">
           Mogło się już zakończyć albo zniknąć z kalendarza miasta.
         </p>

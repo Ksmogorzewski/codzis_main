@@ -96,7 +96,7 @@ export function CrewChat({ id, crew, info }: Props) {
             role="group"
             aria-labelledby="icebreaker-title"
             className={cn(
-              "flex w-full max-w-md flex-col items-center gap-3 border bg-card px-5 py-6 text-center shadow-lg transition-transform duration-250",
+              "flex w-full max-w-md flex-col items-center gap-3 border-2 border-input bg-card px-5 py-6 text-center transition-transform duration-250",
               !locked && "translate-y-4",
             )}
           >
