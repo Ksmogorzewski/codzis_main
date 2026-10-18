@@ -1,12 +1,11 @@
-"""Dane konta w profilu: nazwisko, data urodzenia i zdjęcie profilowe.
+"""Dane konta w profilu: data urodzenia i zdjęcie profilowe.
 
-Imienia tu nie ma: zostaje z rejestracji albo z Google (atrybut Cognito `name`, w users `displayName`)
-i się nie zmienia, bo widzą je inni zapisani na wydarzenie.
+Imię i nazwisko są tu tylko do odczytu: z rejestracji albo z Google (atrybuty Cognito `name` i `family_name`,
+w users `displayName` i `familyName`) i się nie zmieniają, bo innym pokazujemy „Ola K.” (display_name w handler.py).
 
-Rekord users.account (mapa): lastName, birthDate (RRRR-MM-DD), photoUrl, photoKey (nasze zdjęcie w S3).
-Pierwsze GET /api/me zakłada mapę z tokenu - przy Google nazwisko (family_name) i zdjęcie (picture);
-potem zmienia ją tylko użytkownik, kolejne logowania jej nie ruszają. Nazwisko i datę urodzenia widzi
-tylko właściciel konta.
+Rekord users.account (mapa): birthDate (RRRR-MM-DD), photoUrl, photoKey (nasze zdjęcie w S3). Pierwsze
+GET /api/me zakłada mapę - przy Google ze zdjęciem z konta (claim picture); potem zmienia ją tylko użytkownik,
+kolejne logowania jej nie ruszają. Datę urodzenia widzi tylko właściciel konta.
 
 Zdjęcia: bucket zdjęć ogłoszeń (PHOTOS_BUCKET), klucz photos/avatars/<userId>/<losowe>.<ext>, upload
 presigned POST prosto z przeglądarki, odczyt przez CloudFront panelu pod /photos/* (PHOTOS_BASE_URL).
@@ -25,7 +24,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 PHOTOS_BUCKET = os.environ.get("PHOTOS_BUCKET", "")
 PHOTOS_BASE_URL = os.environ.get("PHOTOS_BASE_URL", "").rstrip("/")
-MAX_LAST_NAME = 60
 MIN_BIRTH_DATE = date(1900, 1, 1)
 MAX_PHOTO_BYTES = 5 * 1024 * 1024  # przeglądarka i tak zmniejsza zdjęcie przed wysyłką
 UPLOAD_EXPIRES_S = 300
@@ -42,29 +40,15 @@ log = logging.getLogger()
 
 
 def prefill(claims: dict) -> dict:
-    """Mapa account przy pierwszym logowaniu: z Google nazwisko i zdjęcie, jeśli są w tokenie."""
-    account = {}
-    last = _clean(claims.get("family_name"))
-    if last and len(last) <= MAX_LAST_NAME:
-        account["lastName"] = last
+    """Mapa account przy pierwszym logowaniu: z Google zdjęcie profilowe, jeśli jest w tokenie."""
     picture = claims.get("picture")
-    if isinstance(picture, str) and picture.startswith("https://"):
-        account["photoUrl"] = picture
-    return account
+    return {"photoUrl": picture} if isinstance(picture, str) and picture.startswith("https://") else {}
 
 
 def validate(body: dict, today: date) -> tuple[dict, list[str]]:
-    """PUT /api/me {lastName, birthDate} -> (wartości, błędne pola). Puste albo brak pola = usunąć."""
+    """PUT /api/me {birthDate} -> (wartości, błędne pola). Pusta albo brak = usunąć; inne pola pomijamy."""
     values: dict[str, Any] = {}
     errors = []
-
-    last = body.get("lastName")
-    cleaned = _clean(last) if isinstance(last, str) else ""
-    if (last is not None and not isinstance(last, str)) or len(cleaned) > MAX_LAST_NAME:
-        errors.append("lastName")
-    else:
-        values["lastName"] = cleaned or None
-
     birth = body.get("birthDate")
     if birth is None or birth == "":
         values["birthDate"] = None
@@ -90,7 +74,7 @@ def with_photo(current: dict, key: str | None) -> dict:
 
 def view(account: dict | None) -> dict:
     account = account or {}
-    return {k: account.get(k) for k in ("lastName", "birthDate", "photoUrl")}
+    return {k: account.get(k) for k in ("birthDate", "photoUrl")}
 
 
 # --- S3 ---
@@ -138,7 +122,3 @@ def _birth_date_ok(value: str, today: date) -> bool:
         return MIN_BIRTH_DATE <= date.fromisoformat(value) <= today
     except ValueError:
         return False
-
-
-def _clean(value: object) -> str:
-    return " ".join(str(value or "").split())

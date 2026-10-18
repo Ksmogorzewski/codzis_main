@@ -6,22 +6,15 @@ import {
   birthDateError,
   fitWithin,
   fullName,
-  lastNameError,
   photoFileError,
 } from "./account";
 
 const TODAY = "2026-10-18";
 
 describe("dane konta", () => {
-  it("body PUT /api/me: nazwisko bez nadmiarowych spacji, puste pola = usuń", () => {
-    expect(accountInput("  Kowalska   Nowak ", "1990-05-17")).toEqual({ lastName: "Kowalska Nowak", birthDate: "1990-05-17" });
-    expect(accountInput("   ", "")).toEqual({ lastName: null, birthDate: null });
-  });
-
-  it("nazwisko do 60 znaków (jak na serwerze)", () => {
-    expect(lastNameError("Kowalska")).toBeNull();
-    expect(lastNameError(`${"x".repeat(60)}   `)).toBeNull();
-    expect(lastNameError("x".repeat(61))).toBe("Nazwisko może mieć najwyżej 60 znaków.");
+  it("body PUT /api/me: data urodzenia, pusta = usuń", () => {
+    expect(accountInput("1990-05-17")).toEqual({ birthDate: "1990-05-17" });
+    expect(accountInput("")).toEqual({ birthDate: null });
   });
 
   it("data urodzenia opcjonalna, prawdziwa, z przeszłości i od 1900 r.", () => {

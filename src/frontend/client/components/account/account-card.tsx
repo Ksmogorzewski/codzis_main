@@ -14,8 +14,6 @@ import {
   avatarInitials,
   birthDateError,
   fullName,
-  lastNameError,
-  MAX_LAST_NAME,
   MIN_BIRTH_DATE,
   photoFileError,
 } from "@/lib/account";
@@ -24,29 +22,28 @@ import type { Me } from "@/lib/schemas";
 import { plural } from "../../../shared/format";
 
 /**
- * „Twoje dane” na stronie profilu: zdjęcie, imię (bez zmian – widzą je inni zapisani), nazwisko i data
- * urodzenia (widzi je tylko właściciel). Przy koncie Google nazwisko i zdjęcie przychodzą z Google przy
- * pierwszym logowaniu; potem zmienia je już tylko użytkownik.
+ * „Twoje dane” na stronie profilu: zdjęcie, imię i nazwisko (z rejestracji albo Google, bez zmian – innym
+ * pokazujemy „Ola K.”) i data urodzenia (widzi ją tylko właściciel). Przy koncie Google zdjęcie przychodzi
+ * z Google przy pierwszym logowaniu; potem zmienia je już tylko użytkownik.
  */
 export function AccountCard({ me }: { me: Me }) {
   const save = useSaveAccount();
   const upload = useUploadPhoto();
   const removePhoto = useDeletePhoto();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [lastName, setLastName] = useState(me.account.lastName ?? "");
   const [birthDate, setBirthDate] = useState(me.account.birthDate ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const today = warsawDate(new Date());
-  const input = accountInput(lastName, birthDate);
-  const dirty = input.lastName !== me.account.lastName || input.birthDate !== me.account.birthDate;
+  const input = accountInput(birthDate);
+  const dirty = input.birthDate !== me.account.birthDate;
   const photo = me.account.photoUrl;
   const photoBusy = upload.isPending || removePhoto.isPending;
   const age = birthDate && !birthDateError(birthDate, today) ? ageOn(birthDate, today) : null;
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const problem = lastNameError(lastName) ?? birthDateError(birthDate, today);
+    const problem = birthDateError(birthDate, today);
     setError(problem);
     if (problem) return;
     save.mutate(input, {
@@ -76,9 +73,9 @@ export function AccountCard({ me }: { me: Me }) {
   return (
     <Card className="gap-5 p-5">
       <div className="flex items-center gap-4">
-        <Avatar key={photo ?? "brak"} url={photo} first={me.name} last={me.account.lastName} />
+        <Avatar key={photo ?? "brak"} url={photo} first={me.name} last={me.familyName} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h2 className="text-xl font-extrabold text-pretty">{fullName(me.name, me.account.lastName) || "Twoje dane"}</h2>
+          <h2 className="text-xl font-extrabold text-pretty">{fullName(me.name, me.familyName) || "Twoje dane"}</h2>
           <p className="truncate text-meta text-muted-foreground">
             {me.identityProvider === "Google" ? "Konto Google" : "Konto e-mail"}
             {me.email && ` · ${me.email}`}
@@ -107,21 +104,15 @@ export function AccountCard({ me }: { me: Me }) {
       </div>
 
       <form className="grid gap-4 md:grid-cols-3" onSubmit={onSubmit} noValidate>
-        <Field
-          id="account-first-name"
-          label="Imię"
-          hint={me.name ? "Widzą je inni zapisani. Nie zmienisz go." : "Podasz je przy pierwszym zapisie na wydarzenie."}
-        >
+        <Field id="account-first-name" label="Imię" hint="Widzą je inni zapisani. Nie zmienisz go.">
           <Input id="account-first-name" value={me.name ?? ""} readOnly disabled />
         </Field>
-        <Field id="account-last-name" label="Nazwisko" hint="Widzisz je tylko Ty.">
-          <Input
-            id="account-last-name"
-            autoComplete="family-name"
-            maxLength={MAX_LAST_NAME}
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-          />
+        <Field
+          id="account-last-name"
+          label="Nazwisko"
+          hint={me.familyName ? "Inni widzą tylko pierwszą literę. Nie zmienisz go." : "Nie podano przy rejestracji."}
+        >
+          <Input id="account-last-name" value={me.familyName ?? ""} readOnly disabled />
         </Field>
         <Field
           id="account-birth-date"

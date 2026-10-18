@@ -2,14 +2,15 @@
 
     GET    /api/me          profil zalogowanego użytkownika (pierwsze wywołanie zakłada rekord i dane konta;
                             kopiuje z tokenu e-mail, imię -> displayName, nazwisko -> familyName)
-    PUT    /api/me          {"lastName", "birthDate"} -> dane konta (account.py); imię zostaje bez zmian
+    PUT    /api/me          {"birthDate"} -> dane konta (account.py); imię i nazwisko zostają bez zmian
     POST   /api/me/photo    {"contentType"} -> {"key", "upload": {"url", "fields"}} (presigned POST do S3)
     PUT    /api/me/photo    {"key"} -> wgrane zdjęcie staje się zdjęciem profilowym (poprzednie usuwamy)
     DELETE /api/me/photo    -> profil bez zdjęcia
     GET    /api/onboarding  pytania onboardingu (onboarding.py)
     PUT    /api/profile     {"answers": {...}} -> walidacja, preferencje, zapis w tabeli users
 
-Odpowiedź tras /api/me = GET /api/me, z "account": {"lastName", "birthDate", "photoUrl"}.
+Odpowiedź tras /api/me = GET /api/me: m.in. "name" (imię), "familyName" (nazwisko - tylko dla właściciela),
+"account": {"birthDate", "photoUrl"}.
 
 Eksploruj, zapisy i Popularne (logika: events.py, DynamoDB: store.py). Karta (`Card`) = karta
 rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za to z
@@ -504,6 +505,7 @@ def _view(item: dict) -> dict:
         "userId": item["userId"],
         "email": item.get("email"),
         "name": item.get("displayName"),
+        "familyName": item.get("familyName"),
         "picture": item.get("picture"),
         "account": account.view(item.get("account")),
         "identityProvider": item.get("identityProvider"),

@@ -1,4 +1,4 @@
-"""Dane konta w profilu: nazwisko, data urodzenia, zdjęcie (src/client_api/account.py, trasy /api/me)."""
+"""Dane konta w profilu: data urodzenia i zdjęcie (src/client_api/account.py, trasy /api/me)."""
 
 import boto3
 import pytest
@@ -14,7 +14,15 @@ GOOGLE = {
     "identities": '[{"providerName": "Google"}]',
 }
 EMAIL = {"sub": "user-1", "email": "ala@example.com", "name": "Ala"}
-EMPTY = {"lastName": None, "birthDate": None, "photoUrl": None}
+EMPTY = {"birthDate": None, "photoUrl": None}
+ANSWERS = {
+    "who": "kids",
+    "vibe": ["active"],
+    "discover": ["history", "guided"],
+    "district": "Wola",
+    "travel": "local",
+    "budget": "up50",
+}
 
 
 def me(client_api, claims):
@@ -38,89 +46,78 @@ def upload(client_api, claims, content_type="image/jpeg"):
 # --- dane konta zakładane przy pierwszym logowaniu ---
 
 
-def test_google_first_login_fills_last_name_and_photo(client_api):
+def test_google_first_login_takes_names_and_photo_from_google(client_api):
     body = me(client_api, GOOGLE)
-    assert body["name"] == "Anna"  # imię z Google (given_name -> name), niezmienne
-    assert body["account"] == {"lastName": "Nowak", "birthDate": None, "photoUrl": GOOGLE["picture"]}
+    # imię i nazwisko z tokenu (given_name -> name, family_name), tylko do odczytu
+    assert (body["name"], body["familyName"]) == ("Anna", "Nowak")
+    assert body["account"] == {"birthDate": None, "photoUrl": GOOGLE["picture"]}
 
 
 def test_later_logins_keep_account_set_by_user(client_api):
     me(client_api, GOOGLE)
-    call(client_api, "PUT /api/me", {"lastName": "Kowalska", "birthDate": None}, claims=GOOGLE)
+    call(client_api, "PUT /api/me", {"birthDate": "1990-05-17"}, claims=GOOGLE)
 
     body = me(client_api, {**GOOGLE, "picture": "https://lh3.googleusercontent.com/a/nowe"})
 
-    assert body["account"] == {"lastName": "Kowalska", "birthDate": None, "photoUrl": GOOGLE["picture"]}
+    assert body["account"] == {"birthDate": "1990-05-17", "photoUrl": GOOGLE["picture"]}
 
 
 def test_email_account_starts_empty(client_api):
-    assert me(client_api, EMAIL)["account"] == EMPTY
-
-
-def test_google_claims_out_of_range_are_skipped(client_api):
-    body = me(client_api, {**GOOGLE, "family_name": "x" * 61, "picture": "http://example.com/a.jpg"})
+    body = me(client_api, EMAIL)
+    assert body["familyName"] is None
     assert body["account"] == EMPTY
+
+
+def test_google_photo_only_over_https(client_api):
+    assert me(client_api, {**GOOGLE, "picture": "http://example.com/a.jpg"})["account"] == EMPTY
 
 
 # --- PUT /api/me ---
 
 
-def test_put_me_saves_last_name_and_birth_date(client_api, users_table):
+def test_put_me_saves_birth_date(client_api, users_table):
     me(client_api, EMAIL)
 
-    status, body = call(
-        client_api, "PUT /api/me", {"lastName": "  Kowalska  Nowak ", "birthDate": "1990-05-17"}, claims=EMAIL
-    )
+    status, body = call(client_api, "PUT /api/me", {"birthDate": "1990-05-17"}, claims=EMAIL)
 
     assert status == 200
     assert body["name"] == "Ala"
-    assert body["account"] == {"lastName": "Kowalska Nowak", "birthDate": "1990-05-17", "photoUrl": None}
-    stored = users_table.get_item(Key={"userId": "user-1"})["Item"]["account"]
-    assert stored == {"lastName": "Kowalska Nowak", "birthDate": "1990-05-17"}
+    assert body["account"] == {"birthDate": "1990-05-17", "photoUrl": None}
+    assert users_table.get_item(Key={"userId": "user-1"})["Item"]["account"] == {"birthDate": "1990-05-17"}
 
 
-def test_put_me_empty_values_clear_fields_and_keep_photo(client_api):
+def test_put_me_does_not_change_names(client_api, users_table):
     me(client_api, GOOGLE)
-    _, body = call(client_api, "PUT /api/me", {"lastName": " ", "birthDate": ""}, claims=GOOGLE)
-    assert body["account"] == {"lastName": None, "birthDate": None, "photoUrl": GOOGLE["picture"]}
+
+    _, body = call(client_api, "PUT /api/me", {"birthDate": None, "lastName": "Kowalska", "name": "X"}, claims=GOOGLE)
+
+    assert (body["name"], body["familyName"]) == ("Anna", "Nowak")
+    assert "lastName" not in users_table.get_item(Key={"userId": "user-g"})["Item"]["account"]
+
+
+def test_put_me_empty_date_clears_it_and_keeps_photo(client_api):
+    me(client_api, GOOGLE)
+    call(client_api, "PUT /api/me", {"birthDate": "1990-05-17"}, claims=GOOGLE)
+    _, body = call(client_api, "PUT /api/me", {"birthDate": ""}, claims=GOOGLE)
+    assert body["account"] == {"birthDate": None, "photoUrl": GOOGLE["picture"]}
 
 
 def test_put_me_keeps_onboarding_profile(client_api):
     me(client_api, EMAIL)
-    answers = {
-        "who": "kids",
-        "vibe": ["active"],
-        "discover": ["history", "guided"],
-        "district": "Wola",
-        "travel": "local",
-        "budget": "up50",
-    }
-    status, saved = call(client_api, "PUT /api/profile", {"answers": answers}, claims=EMAIL)
+    status, saved = call(client_api, "PUT /api/profile", {"answers": ANSWERS}, claims=EMAIL)
     assert status == 200
 
-    _, body = call(client_api, "PUT /api/me", {"lastName": "Kowalska", "birthDate": None}, claims=EMAIL)
+    _, body = call(client_api, "PUT /api/me", {"birthDate": "1990-05-17"}, claims=EMAIL)
 
     assert body["needsOnboarding"] is False
     assert body["profile"] == saved["profile"]
 
 
-@pytest.mark.parametrize(
-    ("payload", "fields"),
-    [
-        ({"lastName": "x" * 61, "birthDate": None}, ["lastName"]),
-        ({"lastName": 5, "birthDate": None}, ["lastName"]),
-        ({"lastName": None, "birthDate": "2999-01-01"}, ["birthDate"]),
-        ({"lastName": None, "birthDate": "1899-12-31"}, ["birthDate"]),
-        ({"lastName": None, "birthDate": "17.05.1990"}, ["birthDate"]),
-        ({"lastName": None, "birthDate": "1990-02-30"}, ["birthDate"]),
-        ({"lastName": None, "birthDate": "19900517"}, ["birthDate"]),
-        ({"lastName": [], "birthDate": 1990}, ["lastName", "birthDate"]),
-    ],
-)
-def test_put_me_validation(client_api, payload, fields):
-    status, body = call(client_api, "PUT /api/me", payload, claims=EMAIL)
+@pytest.mark.parametrize("birth_date", ["2999-01-01", "1899-12-31", "17.05.1990", "1990-02-30", "19900517", 1990])
+def test_put_me_rejects_bad_birth_date(client_api, birth_date):
+    status, body = call(client_api, "PUT /api/me", {"birthDate": birth_date}, claims=EMAIL)
     assert status == 400
-    assert body == {"error": "Niepoprawne dane profilu", "fields": fields}
+    assert body == {"error": "Niepoprawne dane profilu", "fields": ["birthDate"]}
 
 
 # --- zdjęcie profilowe ---

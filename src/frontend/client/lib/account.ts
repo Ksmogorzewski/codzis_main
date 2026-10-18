@@ -1,27 +1,17 @@
-// Dane konta w profilu: nazwisko, data urodzenia i zdjęcie (PUT /api/me, /api/me/photo).
-// Imię zostaje z rejestracji albo Google (niezmienne - widzą je inni zapisani), więc tu go nie ma.
+// Dane konta w profilu: data urodzenia i zdjęcie (PUT /api/me, /api/me/photo).
+// Imię i nazwisko zostają z rejestracji albo Google (niezmienne - innym pokazujemy „Ola K.”).
 // Walidacja jak w src/client_api/account.py.
 import { initials } from "../../shared/format";
 
-export const MAX_LAST_NAME = 60;
 export const MIN_BIRTH_DATE = "1900-01-01";
 // Przed wysyłką zdjęcie zmniejszamy do PHOTO_SIZE px (JPEG), więc źródło może być duże (zdjęcie z telefonu).
 export const MAX_PHOTO_SOURCE_BYTES = 20 * 1024 * 1024;
 export const PHOTO_SIZE = 512;
 
-export type AccountInput = { lastName: string | null; birthDate: string | null };
+export type AccountInput = { birthDate: string | null };
 
-const normalize = (value: string) => value.split(/\s+/).filter(Boolean).join(" ");
-
-/** Body PUT /api/me: puste pole = usuń je z profilu. */
-export const accountInput = (lastName: string, birthDate: string): AccountInput => ({
-  lastName: normalize(lastName) || null,
-  birthDate: birthDate || null,
-});
-
-export function lastNameError(value: string): string | null {
-  return normalize(value).length > MAX_LAST_NAME ? `Nazwisko może mieć najwyżej ${MAX_LAST_NAME} znaków.` : null;
-}
+/** Body PUT /api/me: pusta data = usuń ją z profilu. */
+export const accountInput = (birthDate: string): AccountInput => ({ birthDate: birthDate || null });
 
 /** `today` = dzisiejsza data w Warszawie (RRRR-MM-DD); pusta data jest w porządku (pole opcjonalne). */
 export function birthDateError(value: string, today: string): string | null {

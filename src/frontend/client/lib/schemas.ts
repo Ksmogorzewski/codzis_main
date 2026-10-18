@@ -51,9 +51,8 @@ export type Answers = z.infer<typeof AnswersSchema>;
 // Preferencje liczy backend z odpowiedzi; front ich nie potrzebuje do działania, więc luźno.
 export const PreferencesSchema = z.record(z.string(), z.unknown());
 
-// Dane konta (PUT /api/me, zdjęcie: /api/me/photo); imię to `name` w Me (z rejestracji albo Google)
+// Dane konta (PUT /api/me, zdjęcie: /api/me/photo); imię i nazwisko to `name` i `familyName` w Me (niezmienne)
 export const AccountSchema = z.object({
-  lastName: nullableString,
   birthDate: nullableString,
   photoUrl: nullableString,
 });
@@ -62,8 +61,10 @@ export const MeSchema = z.object({
   userId: z.string(),
   email: nullableString,
   name: nullableString,
+  // nazwisko z rejestracji albo Google - pełne tylko dla właściciela (innym backend pokazuje „Ola K.”)
+  familyName: nullableString,
   picture: nullableString,
-  account: AccountSchema.default({ lastName: null, birthDate: null, photoUrl: null }),
+  account: AccountSchema.default({ birthDate: null, photoUrl: null }),
   identityProvider: nullableString,
   needsOnboarding: z.boolean(),
   onboardingOutdated: z.boolean().default(false),
