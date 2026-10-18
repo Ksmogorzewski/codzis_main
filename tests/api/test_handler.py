@@ -1,6 +1,5 @@
 """Handler API panelu partnera (src/api/handler.py) na atrapach DynamoDB i SQS."""
 
-import json
 import sys
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -442,7 +441,7 @@ def test_unexpected_error_returns_500_with_request_id(partner_api, monkeypatch):
     def boom(partner):
         raise RuntimeError("awaria DynamoDB")
 
-    monkeypatch.setattr(partner_api, "get_profile", boom)
+    monkeypatch.setattr(sys.modules["routes.me"], "ensure_partner", boom)
     status, body = call(partner_api, "GET", "me")
     assert status == 500
     assert body == {"error": "Coś poszło nie tak. Spróbuj ponownie.", "requestId": REQUEST_ID}
@@ -454,17 +453,16 @@ def test_api_error_unchanged(partner_api):
     assert body == {"error": "Nie znaleziono"}
 
 
-def test_access_log_route_without_ids(partner_api, caplog):
-    caplog.set_level("INFO", logger="codzis.http")
+def test_access_log_route_without_ids(partner_api, access_logs):
     call(partner_api, "POST", "payments/abc-123/confirm")
-    access = json.loads(caplog.records[-1].getMessage())
+    access = access_logs()[-1]
     assert access["route"] == "POST /payments/{id}/confirm"
     assert access["status"] == 404
-    assert access["requestId"] == REQUEST_ID
+    assert access["correlation_id"] == REQUEST_ID  # Powertools: requestId API Gateway jako correlation_id
 
 
 def test_aws_clients_use_shared_timeouts(partner_api):
-    store = partner_api.partners_table.meta.client
+    store = sys.modules["store"].partners_table.meta.client
     assert store.meta.config.read_timeout == 3
     s3 = sys.modules["store"].s3
     assert s3.meta.config.connect_timeout == 1

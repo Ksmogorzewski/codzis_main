@@ -1,4 +1,6 @@
+import io
 import json
+import sys
 
 import boto3
 import pytest
@@ -77,7 +79,27 @@ def partner_api(monkeypatch):
         }
         for name, value in env.items():
             monkeypatch.setenv(name, value)
+        _forget_route_modules()
         yield load_lambda(API_DIR)
+        _forget_route_modules()  # następne testy (np. client-api) nie mogą dostać tras partnera
+
+
+def _forget_route_modules():
+    """`routes` to pakiet (katalog), którego `load_lambda` nie czyści, a client-api ma pakiet o tej samej nazwie.
+    Bez tego trasy z poprzedniego testu (albo innej Lambdy) zostałyby podpięte do nowej aplikacji."""
+    for name in [n for n in sys.modules if n == "routes" or n.startswith("routes.")]:
+        del sys.modules[name]
+
+
+@pytest.fixture
+def access_logs(partner_api):
+    """Linie logu JSON z Powertools Logger (nie przechodzi przez caplog) jako lista słowników."""
+    from codzis_common.app import logger
+
+    stream = io.StringIO()
+    previous = logger.registered_handler.setStream(stream)  # type: ignore[attr-defined]
+    yield lambda: [json.loads(line) for line in stream.getvalue().splitlines()]
+    logger.registered_handler.setStream(previous)  # type: ignore[attr-defined]
 
 
 @pytest.fixture
@@ -103,17 +125,34 @@ def aws(partner_api):
 
 
 def rest_event(method, path, body=None, api_key=PARTNER_KEY, claims=None):
-    """Zdarzenie REST API (v1, proxy {proxy+}) z kluczem API partnera albo - z `claims` - z tokenem Google
-    (autoryzator Cognito: claimy w requestContext.authorizer.claims, bez klucza API)."""
-    context = (
-        {"identity": {"apiKeyId": None}, "authorizer": {"claims": claims}}
-        if claims
-        else {"identity": {"apiKeyId": api_key}}
-    )
-    event = {
+    """Zdarzenie REST API v1 jak z API Gateway za CloudFrontem (zasób /{proxy+}, stage "api") z kluczem API
+    partnera albo - z `claims` - z tokenem Google (autoryzator Cognito: claimy w requestContext.authorizer.claims,
+    bez klucza API). `path` to adres względem stage'a ("/me"), `requestContext.path` - z prefiksem stage'a."""
+    identity = {"apiKeyId": None if claims else api_key, "sourceIp": "203.0.113.10", "userAgent": "Amazon CloudFront"}
+    context = {
+        "resourcePath": "/{proxy+}",
         "httpMethod": method,
+        "path": f"/api/{path}",
+        "stage": "api",
+        "requestId": REQUEST_ID,
+        "identity": identity,
+    }
+    if claims:
+        context["authorizer"] = {"claims": claims}
+    headers = {"Content-Type": "application/json", "Host": "abc123.execute-api.eu-central-1.amazonaws.com"}
+    event = {
+        "resource": "/{proxy+}",
+        "path": f"/{path}",
+        "httpMethod": method,
+        "headers": headers,
+        "multiValueHeaders": {name: [value] for name, value in headers.items()},
+        "queryStringParameters": None,
+        "multiValueQueryStringParameters": None,
         "pathParameters": {"proxy": path} if path else None,
-        "requestContext": {**context, "requestId": REQUEST_ID},
+        "stageVariables": None,
+        "requestContext": context,
+        "body": None,
+        "isBase64Encoded": False,
     }
     if body is not None:
         event["body"] = body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)
