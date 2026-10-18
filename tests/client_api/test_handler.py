@@ -167,8 +167,8 @@ class FakeLambda:
 
 def test_put_profile_triggers_precompute(client_api, monkeypatch):
     fake = FakeLambda()
-    monkeypatch.setattr(client_api, "RECOMMENDER_FUNCTION", "recommender")
-    monkeypatch.setattr(client_api, "lambda_client", fake)
+    monkeypatch.setattr(client_api.profiles, "RECOMMENDER_FUNCTION", "recommender")
+    monkeypatch.setattr(client_api.profiles, "lambda_client", fake)
 
     call(client_api, "PUT /api/profile", {"answers": VALID_ANSWERS})
     call(client_api, "GET /api/me")  # z preferencjami -> też zleca przeliczenie
@@ -179,15 +179,15 @@ def test_put_profile_triggers_precompute(client_api, monkeypatch):
 
 def test_get_me_without_preferences_does_not_precompute(client_api, monkeypatch):
     fake = FakeLambda()
-    monkeypatch.setattr(client_api, "RECOMMENDER_FUNCTION", "recommender")
-    monkeypatch.setattr(client_api, "lambda_client", fake)
+    monkeypatch.setattr(client_api.profiles, "RECOMMENDER_FUNCTION", "recommender")
+    monkeypatch.setattr(client_api.profiles, "lambda_client", fake)
     call(client_api, "GET /api/me")
     assert fake.calls == []
 
 
 def test_precompute_failure_does_not_fail_request(client_api, monkeypatch):
-    monkeypatch.setattr(client_api, "RECOMMENDER_FUNCTION", "recommender")
-    monkeypatch.setattr(client_api, "lambda_client", FakeLambda(fail=True))
+    monkeypatch.setattr(client_api.profiles, "RECOMMENDER_FUNCTION", "recommender")
+    monkeypatch.setattr(client_api.profiles, "lambda_client", FakeLambda(fail=True))
     status, _ = call(client_api, "PUT /api/profile", {"answers": VALID_ANSWERS})
     assert status == 200
 
@@ -239,14 +239,17 @@ def test_unexpected_error_returns_500_with_request_id(client_api, monkeypatch):
     def boom(claims):
         raise RuntimeError("awaria DynamoDB")
 
-    monkeypatch.setattr(client_api, "get_me", boom)
+    monkeypatch.setattr(client_api.profiles, "login", boom)
     status, body = call(client_api, "GET /api/me")
     assert status == 500
     assert body == {"error": "Coś poszło nie tak. Spróbuj ponownie.", "requestId": REQUEST_ID}
 
 
 def test_missing_claims_returns_500_not_crash(client_api):
-    response = client_api.handler({"routeKey": "GET /api/me", "requestContext": {"requestId": "r-2"}}, None)
+    event = api_event("GET /api/me")
+    del event["requestContext"]["authorizer"]
+    event["requestContext"]["requestId"] = "r-2"
+    response = client_api.handler(event, None)
     assert response["statusCode"] == 500
     assert json.loads(response["body"])["requestId"] == "r-2"
 

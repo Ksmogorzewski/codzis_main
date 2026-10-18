@@ -1,5 +1,7 @@
 import json
+import re
 import sys
+from urllib.parse import quote
 
 import boto3
 import pytest
@@ -103,7 +105,16 @@ def client_api(monkeypatch):
         boto3.client("s3").create_bucket(
             Bucket=PHOTOS_BUCKET, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"}
         )
+        _forget_shared_names()
         yield load_lambda(CLIENT_API_DIR)
+    _forget_shared_names()
+
+
+def _forget_shared_names():
+    """`routes`, `routes.*` i `schemas` ładujemy od nowa z handlerem (przed i po teście): API partnera ma moduły
+    o tych samych nazwach, a load_lambda nie czyści pakietu routes."""
+    for name in [n for n in sys.modules if n in ("routes", "schemas") or n.startswith("routes.")]:
+        del sys.modules[name]
 
 
 @pytest.fixture
@@ -138,12 +149,22 @@ def friends(client_api):
 
 
 def api_event(route_key, body=None, claims=None, path=None, query=None):
-    """Zdarzenie HTTP API (payload 2.0) po autoryzacji JWT, jak z API Gateway."""
+    """Zdarzenie HTTP API (payload 2.0) po autoryzacji JWT, jak z API Gateway.
+
+    `route_key` jak w infra/client_api.tf ("GET /api/events/{id}"). rawPath to szablon z wartościami z `path`
+    zakodowanymi jak w adresie URL (każda w jednym segmencie) - po nim trasę wybiera router Powertools."""
+    method, template = route_key.split(" ", 1)
+    raw_path = re.sub(r"\{(\w+)\}", lambda m: quote((path or {}).get(m.group(1), ""), safe=""), template)
     event = {
+        "version": "2.0",
         "routeKey": route_key,
+        "rawPath": raw_path,
+        "headers": {},
         "requestContext": {
             "authorizer": {"jwt": {"claims": claims or {"sub": "user-1", "email": "ala@example.com"}}},
+            "http": {"method": method, "path": raw_path},
             "requestId": REQUEST_ID,
+            "stage": "$default",
         },
     }
     if path is not None:
