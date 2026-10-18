@@ -7,6 +7,7 @@ import { Login } from "./components/Login";
 import { Payments } from "./components/Payments";
 import { Sidebar } from "./components/Sidebar";
 import { ApiError, api } from "./lib/api";
+import { clearSession, completeSignIn, googleLogin, hasLogin, signOut } from "./lib/auth";
 import { session } from "./lib/session";
 import type { Profile } from "./lib/types";
 
@@ -17,12 +18,14 @@ export function App() {
   const toast = useToast();
   const route = useHashRoute();
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [checking, setChecking] = useState(() => Boolean(session.get()));
+  // Z Google zawsze najpierw sprawdzamy powrót z logowania (?code=…) i zapisaną sesję
+  const [checking, setChecking] = useState(() => googleLogin() || Boolean(session.get()));
   const [eventsCount, setEventsCount] = useState<number | null>(null);
 
   const logout = useCallback(
     (message?: string) => {
       session.set(null);
+      clearSession();
       setProfile(null);
       setEventsCount(null);
       history.replaceState(null, "", window.location.pathname);
@@ -31,10 +34,11 @@ export function App() {
     [toast],
   );
 
-  // 403 = klucz unieważniony (np. usunięty z listy partnerów w Terraformie)
+  // 401 = sesja Google wygasła; 403 = klucz unieważniony (np. usunięty z listy partnerów w Terraformie)
   const handleError = useCallback(
     (e: unknown) => {
-      if (e instanceof ApiError && e.status === 403) logout("Sesja wygasła lub klucz został unieważniony.");
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403))
+        logout(googleLogin() ? e.message : "Sesja wygasła lub klucz został unieważniony.");
       else toast(e instanceof Error ? e.message : "Coś poszło nie tak", "error");
     },
     [logout, toast],
@@ -55,12 +59,23 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (googleLogin()) {
+      // Powrót z Google zapisuje sesję; z sesją od razu profil (pierwsze GET /me zakłada konto organizatora)
+      completeSignIn()
+        .then(async (failure) => {
+          if (failure) toast(failure, "error");
+          if (hasLogin()) setProfile(await api<Profile>("GET", "/me"));
+        })
+        .catch(handleError)
+        .finally(() => setChecking(false));
+      return;
+    }
     const saved = session.get();
     if (!saved) return;
     login(saved)
       .catch(() => session.set(null))
       .finally(() => setChecking(false));
-  }, [login]);
+  }, [login, toast, handleError]);
 
   if (checking) {
     return (
@@ -75,7 +90,12 @@ export function App() {
   const screen: Screen = SCREENS.includes(route.path as Screen) ? (route.path as Screen) : "wydarzenia";
   return (
     <div className="shell">
-      <Sidebar profile={profile} active={screen} eventsCount={eventsCount} onLogout={() => logout()} />
+      <Sidebar
+        profile={profile}
+        active={screen}
+        eventsCount={eventsCount}
+        onLogout={() => (googleLogin() ? void signOut() : logout())}
+      />
       <main className="main">
         {screen === "wydarzenia" && <Events onError={handleError} onCount={setEventsCount} credits={profile.credits} />}
         {screen === "dodaj" && (

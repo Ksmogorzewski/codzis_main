@@ -92,6 +92,8 @@ h1, h2, h3 { margin: 0; }
 .btn-ghost { background: var(--surface); color: var(--ink); border: 1px solid var(--line2); }
 .btn-ghost:hover { background: var(--surface2); color: var(--ink); }
 .btn-sm { height: 32px; padding: 0 10px; }
+.btn-google { gap: 10px; }
+.btn-google img { flex: none; }
 .btn .ms { font-size: 18px; }
 .icon-btn { width: 32px; height: 32px; border: 1px solid var(--line2); border-radius: 6px; background: var(--surface); color: var(--ink); cursor: pointer; display: grid; place-items: center; flex: none; }
 

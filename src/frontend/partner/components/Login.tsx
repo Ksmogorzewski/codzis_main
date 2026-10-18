@@ -1,13 +1,27 @@
 import { useState, type FormEvent } from "react";
 import { creditsLabel, formatMoney } from "../../shared/format";
+import { googleLogin, signIn } from "../lib/auth";
 import { config, sortedPackages } from "../lib/config";
 
 type Props = { onLogin: (apiKey: string) => Promise<void> };
 
+// Z Google w config.js (infra/partner_auth.tf): przycisk Google; bez niego: klucz API partnera.
 export function Login({ onLogin }: Props) {
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const google = googleLogin();
+
+  async function signInWithGoogle() {
+    setBusy(true);
+    setError("");
+    try {
+      await signIn(); // przekierowanie do Google, powrót obsługuje App
+    } catch {
+      setError("Nie udało się rozpocząć logowania przez Google. Spróbuj ponownie.");
+      setBusy(false);
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -43,20 +57,33 @@ export function Login({ onLogin }: Props) {
             <h1>Zaloguj się do panelu</h1>
             <p>Dodawaj wydarzenia i docieraj do osób, którym naprawdę pasują.</p>
           </div>
-          <label className="field">
-            Klucz API
-            <input type="password" autoComplete="current-password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-            <span className="field-hint">Klucz dostajesz przy rejestracji organizatora. Traktuj go jak hasło.</span>
-          </label>
+          {!google && (
+            <label className="field">
+              Klucz API
+              <input type="password" autoComplete="current-password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+              <span className="field-hint">Klucz dostajesz przy rejestracji organizatora. Traktuj go jak hasło.</span>
+            </label>
+          )}
           {error && (
             <p className="form-error" role="alert">
               {error}
             </p>
           )}
-          <button className="btn btn-dark" type="submit" disabled={busy}>
-            {busy ? "Logowanie…" : "Zaloguj się"}
-          </button>
-          <span className="muted">Nowy organizator? Napisz do nas – przygotujemy klucz dla Twojej instytucji.</span>
+          {google ? (
+            <button className="btn btn-ghost btn-google" type="button" disabled={busy} onClick={signInWithGoogle}>
+              <img src="/assets/google.svg" alt="" width={18} height={18} />
+              {busy ? "Przekierowanie…" : "Zaloguj się przez Google"}
+            </button>
+          ) : (
+            <button className="btn btn-dark" type="submit" disabled={busy}>
+              {busy ? "Logowanie…" : "Zaloguj się"}
+            </button>
+          )}
+          <span className="muted">
+            {google
+              ? "Nowy organizator? Zaloguj się kontem Google – konto organizatora założy się samo, a ogłoszenia podpiszemy imieniem i nazwiskiem z tego konta."
+              : "Nowy organizator? Napisz do nas – przygotujemy klucz dla Twojej instytucji."}
+          </span>
         </form>
         {cfg.clientPortal && (
           <span className="muted">
