@@ -1,9 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { DEMO_CREW, demoScript, demoSeed } from "./crew-demo";
+import { DEMO_CREW, DEMO_LATE_MAX, demoInbox, demoScript, demoSeed } from "./crew-demo";
 
 describe("crew-demo", () => {
   it("wiadomości startowe od członków ekipy; brakujące imiona z demo", () => {
     expect(demoSeed(["Piotr"]).map((m) => (m.kind === "ai" ? "" : m.author))).toEqual(["Piotr", "Marta", "Antek"]);
+  });
+
+  it("rozmowa startowa stała dla wydarzenia, różne wydarzenia trochę się różnią", () => {
+    const texts = (id: string) => demoSeed(DEMO_CREW.names, id).map((m) => (m.kind === "ai" ? "" : m.text));
+    expect(texts("kal-1")).toEqual(texts("kal-1"));
+    const variants = new Set(["kal-1", "kal-2", "kal-3", "spt-1", "spt-2", "prt-9"].map((id) => texts(id).join("|")));
+    expect(variants.size).toBeGreaterThan(1);
+    for (const id of ["kal-1", "spt-2"]) expect(demoSeed([], id).length).toBeGreaterThan(0);
+  });
+
+  it("skrzynka: rozmowa startowa + wiadomości, które „przyszły” później (maks. DEMO_LATE_MAX)", () => {
+    const seed = demoSeed(DEMO_CREW.names, "kal-1");
+    expect(demoInbox(DEMO_CREW.names, "kal-1", 0)).toEqual(seed);
+    expect(demoInbox(DEMO_CREW.names, "kal-1", 1)).toHaveLength(seed.length + 1);
+    expect(demoInbox(DEMO_CREW.names, "kal-1", 99)).toHaveLength(seed.length + DEMO_LATE_MAX);
+    expect(demoInbox(DEMO_CREW.names, "kal-1", 1).slice(0, seed.length)).toEqual(seed);
   });
 
   it("Wodzirej: punkt i termin zbiórki z danych wydarzenia, karta koloru na końcu", () => {
