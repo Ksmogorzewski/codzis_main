@@ -82,10 +82,12 @@ resource "aws_cognito_identity_provider" "google" {
   attribute_mapping = {
     email          = "email"
     email_verified = "email_verified"
-    # Atrybut "name" to w portalu samo imię (pole „Imię” przy rejestracji, widoczne na listach zapisanych)
-    name     = "given_name"
-    picture  = "picture"
-    username = "sub"
+    # Atrybut "name" to w portalu samo imię (pole „Imię” przy rejestracji, widoczne na listach zapisanych);
+    # nazwisko i zdjęcie wypełniają profil przy pierwszym logowaniu (src/client_api/account.py)
+    name        = "given_name"
+    family_name = "family_name"
+    picture     = "picture"
+    username    = "sub"
   }
 }
 
