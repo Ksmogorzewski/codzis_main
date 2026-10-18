@@ -1,11 +1,14 @@
-"""Kontrakt HTTP API klienta: błędy walidacji (komunikat + `fields` w tej kolejności).
+"""Kontrakt HTTP API klienta: trasy z infra/client_api.tf i błędy walidacji (komunikat + `fields` w tej kolejności).
 
 Oczekiwane odpowiedzi to zachowanie sprzed przejścia na router Powertools i modele Pydantic - nie mogą się zmienić.
 """
 
+import re
+
 import pytest
 
 from tests.client_api.conftest import call
+from tests.support import REPO
 
 VALID_ANSWERS = {
     "who": "kids",
@@ -108,3 +111,23 @@ def test_validation_errors_unchanged(client_api, route, request_parts, expected)
 )
 def test_valid_input_with_extra_fields_accepted(client_api, route, request_parts):
     assert call(client_api, route, claims=NAMED, **request_parts)[0] == 200
+
+
+def _infra_routes() -> set[str]:
+    """Trasy z `for_each` zasobu aws_apigatewayv2_route w infra/client_api.tf."""
+    text = (REPO / "infra" / "client_api.tf").read_text()
+    block = re.search(r"for_each = toset\(\[(.*?)\]\)", text, re.S)
+    assert block, "brak listy tras w infra/client_api.tf"
+    return set(re.findall(r'"([A-Z]+ /api/[^"]*)"', block.group(1)))
+
+
+def _app_routes(app) -> set[str]:
+    """Trasy routera Powertools w zapisie API Gateway ("GET /api/events/{id}")."""
+    routes = app._static_routes + app._dynamic_routes
+    return {f"{r.method} {re.sub(r'<(\w+)>', r'{\1}', r.path)}" for r in routes}
+
+
+def test_routes_registered(client_api):
+    infra = _infra_routes()
+    assert len(infra) == 23
+    assert _app_routes(client_api.app) == infra

@@ -1,7 +1,7 @@
 """Dane konta w profilu: data urodzenia i zdjęcie profilowe.
 
 Imię i nazwisko są tu tylko do odczytu: z rejestracji albo z Google (atrybuty Cognito `name` i `family_name`,
-w users `displayName` i `familyName`) i się nie zmieniają, bo innym pokazujemy „Ola K.” (display_name w handler.py).
+w users `displayName` i `familyName`) i się nie zmieniają, bo innym pokazujemy „Ola K.” (display_name w profiles.py).
 
 Rekord users.account (mapa): birthDate (RRRR-MM-DD), photoUrl, photoKey (nasze zdjęcie w S3). Pierwsze
 GET /api/me zakłada mapę - przy Google ze zdjęciem z konta (claim picture); potem zmienia ją tylko użytkownik,
