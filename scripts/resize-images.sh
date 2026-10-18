@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Zdjęcia wszystkich wydarzeń z tabeli do standardu (tagger/images.py: WebP 1200x800 w buckecie zdjęć) - jednorazowo
+# Zdjęcia wszystkich wydarzeń z tabeli do standardu (tagger/images.py: WebP 3:2 do 1200x800 w buckecie zdjęć) - jednorazowo
 # po wdrożeniu i po każdej zmianie standardu (nowy VERSION). Nowe i zmienione wydarzenia przelicza sam tagger przy
 # zapisie; ten przebieg dogania to, co już leży w codzis-events. Można go powtarzać: gotowe pliki są pomijane,
-# ponawia się tylko to, co się nie udało (kod wyjścia 2 = część zdjęć zostaje źródłowa, np. 404 u źródła).
+# ponawia się tylko to, co się nie udało. Zdjęcia usunięte u źródła (404) liczy osobno jako „brak u źródła”;
+# kod wyjścia 2 = inne błędy (część zdjęć zostaje źródłowa). Podsumowanie w ostatniej linii logu.
 # Lokalnie (Docker, kod taggera) z twoimi credentialami AWS, jak scripts/import-local.sh.
 #   scripts/resize-images.sh              # wszystkie wydarzenia
 #   scripts/resize-images.sh --dry-run    # tylko pobranie i przeliczenie (rozmiary w logu), bez zapisu

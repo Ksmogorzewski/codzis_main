@@ -13,6 +13,7 @@ import type { Card as CardData } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 import { EventBadges } from "./event-badges";
 import { EventImage } from "./event-image";
+import { HIDDEN_WHEN_SHOWN, PHOTO_REVEAL } from "./photo-reveal";
 import { POSTER_FIELD, POSTER_SHADE } from "./poster-tone";
 
 type Props = {
@@ -24,11 +25,6 @@ type Props = {
   /** Podpis przycisku zapisu (na „Znajomi idą”: „Idę też”). */
   saveLabel?: string;
 };
-
-// Zdjęcie wysuwa się od dołu na pole plakatu (250 ms, wyhamowanie). Trzy wyzwalacze: najechanie myszą
-// i fokus klawiatury (CSS), karta na środku ekranu dotykowego albo stuknięcie w plakat (data-active, usePhotoReveal).
-const SHOWN = "group-hover/card:[clip-path:inset(0)] group-focus-within/card:[clip-path:inset(0)] group-data-[active=true]/card:[clip-path:inset(0)]";
-const HIDDEN_WHEN_SHOWN = "group-hover/card:opacity-0 group-focus-within/card:opacity-0 group-data-[active=true]/card:opacity-0";
 
 /**
  * Karta-plakat: pole w kolorze kategorii z wielką godziną w tle i tytułem w kroju plakatu (zdjęcie, jeśli jest,
@@ -57,7 +53,7 @@ export function EventCard({ card, position, now, rank, saveLabel }: Props) {
   const onPhoto = cn("box-decoration-clone px-2", POSTER_FIELD[category]);
 
   return (
-    <Card ref={reveal.ref} data-active={reveal.active} className="group/card">
+    <Card ref={reveal.ref} data-active={reveal.active} className="group/poster">
       {/* Stuknięcie w plakat (poza linkiem tytułu) przełącza zdjęcie; klawiatura dostaje je przez fokus tytułu. */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: zdjęcie jest ozdobą, fokus obsługuje CSS */}
       {/* overflow-clip, nie hidden: godzina w tle wystaje poza pole, a z overflow-hidden fokus tytułu (scrollIntoView)
@@ -77,10 +73,7 @@ export function EventCard({ card, position, now, rank, saveLabel }: Props) {
             category={category}
             lazy
             onFailed={() => setPhotoFailed(true)}
-            className={cn(
-              "absolute inset-0 [clip-path:inset(100%_0_0_0)] motion-safe:transition-[clip-path] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(.16,1,.3,1)]",
-              SHOWN,
-            )}
+            className={PHOTO_REVEAL}
           />
         )}
         {clock && (

@@ -5,8 +5,10 @@ S3 i DynamoDB na atrapach moto, pobieranie zdjęć podmienione (bez sieci).
 
 import io
 import socket
+import urllib.error
 import urllib.request
 from collections import Counter
+from email.message import Message
 
 import boto3
 import pytest
@@ -64,15 +66,18 @@ def ringed(size: tuple[int, int], ring: int = 12) -> bytes:
 class Source:
     """Atrapa pobierania: zwraca obraz (albo rzuca błąd) i zapamiętuje, o co proszono."""
 
-    def __init__(self, data: bytes | None = None, failing: tuple[str, ...] = ()) -> None:
+    def __init__(self, data: bytes | None = None, failing: tuple[str, ...] = (), missing: tuple[str, ...] = ()) -> None:
         self.data = data or picture((1500, 1000))
         self.failing = failing
+        self.missing = missing
         self.calls: list[str] = []
 
     def __call__(self, url: str) -> bytes:
         self.calls.append(url)
         if url in self.failing:
-            raise ValueError("404")
+            raise ValueError("zepsute")
+        if url in self.missing:
+            raise urllib.error.HTTPError(url, 404, "Not Found", Message(), None)
         return self.data
 
 
@@ -85,7 +90,7 @@ class Source:
 def test_every_source_ends_in_the_standard(size):
     out = opened(render(picture(size, fmt="JPEG", exif=Image.Exif())))
     assert out.format == "WEBP"
-    assert out.size == (WIDTH, HEIGHT)
+    assert out.width * 2 == out.height * 3 and out.width <= WIDTH  # zawsze 3:2, najwyżej 1200×800
     assert out.mode == "RGB"
     assert not out.info.get("exif") and not out.info.get("icc_profile")  # bez metadanych
 
@@ -118,12 +123,32 @@ def test_outside_the_range_nothing_is_cut(size, edges):
     assert near(pixel(out, (600, 400)), BLUE)
 
 
-def test_small_source_is_not_stretched_beyond_2x():
-    out = opened(render(ringed((360, 270))))  # wypełnienie kadru wymagałoby 3,3×: zdjęcie 720×540 na środku
-    assert near(pixel(out, (600, 400)), BLUE)
-    # rozciągnięte zdjęcie byłoby tu już niebieskie; jest pole w kolorze brzegu
-    assert near(pixel(out, (150, 400)), RED)
-    assert near(pixel(out, (600, 100)), RED)
+@pytest.mark.parametrize(
+    ("size", "expected"),
+    [
+        ((1500, 1000), (WIDTH, HEIGHT)),
+        ((600, 400), (WIDTH, HEIGHT)),
+        ((360, 270), (720, 480)),
+        ((400, 265), (795, 530)),
+    ],
+)
+def test_photo_resolution_is_at_most_2x_source(size, expected):
+    assert opened(render(picture(size))).size == expected
+
+
+def test_small_photo_fills_the_frame():
+    out = opened(render(ringed((360, 270))))  # miniatura UM 4:3: kadr wypełniony, bez pola wokół
+    assert out.size == (720, 480)
+    assert near(pixel(out, (360, 4)), BLUE)  # góra ramki ucięta (4:3 -> 3:2)
+    assert near(pixel(out, (4, 240)), RED)  # boki całe
+    assert near(pixel(out, (360, 240)), BLUE)
+
+
+def test_small_poster_gets_only_as_much_field_as_needed():
+    out = opened(render(ringed((200, 300))))  # pionowy, 2× = 400×600 -> pole 900×600, nie 1200×800
+    assert out.size == (900, 600)
+    assert near(pixel(out, (100, 300)), RED)  # po bokach pole w kolorze brzegu plakatu
+    assert near(pixel(out, (450, 300)), BLUE)
 
 
 def test_poster_is_shown_whole():
@@ -180,9 +205,16 @@ def test_not_an_image_is_rejected(data):
 
 
 def test_too_many_pixels_are_rejected(monkeypatch):
-    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1000)  # błąd powyżej 2× limitu: 100×100 > 2000
+    monkeypatch.setattr(images, "MAX_PIXELS", 1000)
     with pytest.raises(ValueError):
         render(picture((100, 100)))
+
+
+def test_big_jpeg_is_decoded_smaller_instead_of_rejected(monkeypatch):
+    monkeypatch.setattr(images, "MAX_PIXELS", 4_000_000)  # 4800×3200 = 15 Mpx, JPEG dekoduje się w 1/2: 3,8 Mpx
+    assert opened(render(picture((4800, 3200), fmt="JPEG"))).size == (WIDTH, HEIGHT)
+    with pytest.raises(ValueError):
+        render(picture((4800, 3200)))  # PNG nie da się zdekodować mniejszego
 
 
 # --------------------------------------------------------------------------- adresy
@@ -378,6 +410,12 @@ def test_backfill_dry_run_writes_nothing(table, store, s3):
     assert stats == Counter({"events": 4, "with_photo": 3, "sprawdzone": 2, "błąd": 1})
     assert keys(s3) == []
     assert item(table, "um-a") == {"id": "um-a", "title": "A", "imageUrl": UM}
+
+
+def test_backfill_counts_photos_missing_at_source_apart(table, store):
+    stats = backfill(table, store, workers=1, fetch=Source(missing=(OTHER,)))
+    assert stats["brak u źródła"] == 1 and not stats["błąd"]  # 404 u źródła: kod wyjścia 0
+    assert item(table, "um-b")["imageUrl"] == OTHER
 
 
 def test_backfill_limit(table, store):

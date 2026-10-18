@@ -24,7 +24,7 @@ tagger/                  # the importable tagging module
   merger.py              # merge(raw_events, tagged) — full record + tags
   sqs_source.py          # SQSSource — receive/delete SQS messages
   dynamodb_sink.py       # DynamoDBSink — exists/put + DynamoDB sanitize
-  images.py              # event photos -> standard WebP 1200x800 in the photos bucket; backfill: python -m tagger.images
+  images.py              # event photos -> standard WebP 3:2 (up to 1200x800) in the photos bucket; backfill: python -m tagger.images
 requirements.txt
 .env                     # DEEPSEEK_API_KEY (gitignored); AWS via ECS task-role
 ```
