@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "WarsawNow — architektura",
+    "quality_profile": "showcase",
+    "viewBox": [1100, 680]
+  },
+  "components": [
+    { "id": "front", "type": "frontend", "label": "Front React", "sublabel": "CloudFront + S3", "pos": [40, 220], "size": [180, 72] },
+    { "id": "httpapi", "type": "security", "label": "HTTP API", "sublabel": "API Gateway · JWT Cognito", "pos": [300, 220], "size": [180, 72] },
+    { "id": "clientapi", "type": "backend", "label": "client-api", "sublabel": "Lambda · Powertools", "pos": [560, 60], "size": [180, 72] },
+    { "id": "usersdb", "type": "database", "label": "Dane użytkowników", "sublabel": "users · attendance · crews", "pos": [820, 60], "size": [180, 72] },
+    { "id": "eventsdb", "type": "database", "label": "codzis-events", "sublabel": "DynamoDB · TTL", "pos": [820, 220], "size": [180, 72] },
+    { "id": "recommender", "type": "backend", "label": "Rekomender RAG", "sublabel": "Lambda kontener · mpnet", "pos": [560, 380], "size": [180, 72] },
+    { "id": "deepseek", "type": "external", "label": "DeepSeek", "sublabel": "LLM", "pos": [820, 380], "size": [180, 72] },
+    { "id": "partnerapi", "type": "backend", "label": "API partnera", "sublabel": "REST API + Lambda", "pos": [300, 380], "size": [180, 72] },
+    { "id": "apium", "type": "external", "label": "API UM Warszawa", "sublabel": "dane.um.warszawa.pl", "pos": [40, 560], "size": [180, 72] },
+    { "id": "importer", "type": "backend", "label": "Importer", "sublabel": "ECS / laptop", "pos": [300, 560], "size": [180, 72] },
+    { "id": "sqs", "type": "messagebus", "label": "Kolejka SQS", "sublabel": "schemat v1 + DLQ", "pos": [560, 560], "size": [180, 72] },
+    { "id": "tagger", "type": "backend", "label": "Tagger", "sublabel": "ECS · tagi + zdjęcia", "pos": [820, 560], "size": [180, 72] }
+  ],
+  "connections": [
+    { "id": "front-api", "from": "front", "to": "httpapi", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "api-client", "from": "httpapi", "to": "clientapi", "label": "/api/*" },
+    { "id": "api-reco", "from": "httpapi", "to": "recommender", "label": "/api/recommendations" },
+    { "id": "client-users", "from": "clientapi", "to": "usersdb", "label": "profil, zapisy" },
+    { "id": "client-events", "from": "clientapi", "to": "eventsdb", "label": "scan + cache 5 min" },
+    { "id": "reco-events", "from": "recommender", "to": "eventsdb", "label": "indeks", "fromSide": "top", "toSide": "bottom" },
+    { "id": "reco-llm", "from": "recommender", "to": "deepseek", "label": "ranking", "variant": "dashed" },
+    { "id": "front-partner", "from": "front", "to": "partnerapi", "label": "panel partnera" },
+    { "id": "partner-sqs", "from": "partnerapi", "to": "sqs", "label": "ogłoszenia", "fromSide": "bottom", "toSide": "top" },
+    { "id": "um-importer", "from": "apium", "to": "importer", "label": "POST akcja" },
+    { "id": "importer-sqs", "from": "importer", "to": "sqs", "label": "rekordy v1", "variant": "emphasis" },
+    { "id": "sqs-tagger", "from": "sqs", "to": "tagger", "variant": "emphasis" },
+    { "id": "tagger-llm", "from": "tagger", "to": "deepseek", "label": "tagi", "variant": "dashed" },
+    { "id": "tagger-events", "from": "tagger", "to": "eventsdb", "label": "zapis", "variant": "emphasis", "fromSide": "right", "toSide": "right" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Ścieżka klienta", "items": ["API Gateway sprawdza token Cognito przed Lambdą", "Rekomendacje liczone w tle, zapis w codzis-recommendations"] },
+    { "dot": "amber", "title": "Zasilanie danymi", "items": ["Dispatcher (EventBridge) uruchamia taggera, gdy kolejka rośnie", "API UM blokuje IP AWS, więc import idzie z laptopa"] }
+  ]
+}
