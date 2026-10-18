@@ -57,14 +57,15 @@
   <h2>2. Jakie dane zbieramy i po co</h2>
   <ul>
     <li>
-      <strong>Konto.</strong> Adres e-mail i imię. Hasło przechowuje w zabezpieczonej postaci usługa logowania Amazon
+      <strong>Konto.</strong> Adres e-mail, imię i (opcjonalnie) nazwisko. Innym pokazujemy tylko imię i pierwszą
+      literę nazwiska, np. „Anna K.”. Hasło przechowuje w zabezpieczonej postaci usługa logowania Amazon
       Cognito, my go nie znamy. Jeśli logujesz się przez Google, dostajemy z konta Google wyłącznie identyfikator
       konta, adres e-mail, imię, nazwisko i zdjęcie profilowe (zakresy <em>openid</em>, <em>email</em>,
       <em>profile</em>). Nie dostajemy hasła do Google ani innych danych z Twojego konta Google.
     </li>
     <li>
-      <strong>Dane w profilu.</strong> Nazwisko, data urodzenia i zdjęcie profilowe. Są dobrowolne, widzisz je tylko
-      Ty i w każdej chwili zmienisz je albo usuniesz w profilu.
+      <strong>Dane w profilu.</strong> Data urodzenia i zdjęcie profilowe (przy koncie Google na start zdjęcie
+      z Google). Są dobrowolne i w każdej chwili zmienisz je albo usuniesz w profilu; datę urodzenia widzisz tylko Ty.
     </li>
     <li>
       <strong>Ankieta preferencji.</strong> Z kim wychodzisz, na co masz ochotę, zainteresowania, dzielnica i zasięg
@@ -73,8 +74,14 @@
       automatycznie dobieramy propozycje (profilowanie). Nie wywołuje to wobec Ciebie żadnych skutków prawnych.
     </li>
     <li>
-      <strong>Zapisy na wydarzenia.</strong> Które wydarzenia zapisujesz („Zapisz”). Twoje imię widzą inni zalogowani
-      zapisani na to samo wydarzenie, bez nazwiska, e-maila i zdjęcia.
+      <strong>Zapisy na wydarzenia.</strong> Które wydarzenia zapisujesz („Zapisz”). Twoje imię z inicjałem nazwiska
+      widzą inni zalogowani zapisani na to samo wydarzenie, bez pełnego nazwiska, e-maila i zdjęcia.
+    </li>
+    <li>
+      <strong>Znajomi.</strong> Masz kod i link z kodem QR, którym ktoś może wysłać Ci zaproszenie. Zaproszenie
+      pokazuje mu tylko Twoje imię z inicjałem. Po akceptacji znajomość jest obustronna: znajomi widzą, na które
+      nadchodzące wydarzenia się zapisujesz (bez historii), a Ty widzisz ich zapisy. Znajomego usuniesz w każdej chwili,
+      a kod możesz wygenerować na nowo. Czat ekipy na wydarzenie to na razie pokaz: wiadomości nie trafiają na serwer.
     </li>
     <li>
       <strong>Propozycje i wyszukiwanie.</strong> Przygotowane dla Ciebie zestawy propozycji zapisujemy, żeby szybciej
@@ -101,7 +108,7 @@
 
   <h2>3. Podstawy prawne</h2>
   <ul>
-    <li>Konto, profil, propozycje i zapisy na wydarzenia: świadczenie usługi, o którą prosisz (art. 6 ust. 1 lit. b RODO).</li>
+    <li>Konto, profil, propozycje, zapisy na wydarzenia i znajomi: świadczenie usługi, o którą prosisz (art. 6 ust. 1 lit. b RODO).</li>
     <li>
       Dane dobrowolne, czyli data urodzenia, zdjęcie, wiek, potrzeby dostępności i lokalizacja: Twoja zgoda (art. 6
       ust. 1 lit. a RODO, a dla potrzeb dostępności art. 9 ust. 2 lit. a RODO). Zgodę cofasz, usuwając te dane
@@ -134,8 +141,8 @@
       adres IP.
     </li>
     <li>
-      <strong>Inni użytkownicy</strong> widzą Twoje imię na liście zapisanych na to samo wydarzenie. Organizatorzy
-      nie dostają danych osób zapisanych.
+      <strong>Inni użytkownicy</strong> widzą Twoje imię z inicjałem nazwiska na liście zapisanych na to samo
+      wydarzenie, a Twoi znajomi także Twoje nadchodzące zapisy. Organizatorzy nie dostają danych osób zapisanych.
     </li>
   </ul>
   <p>Nie sprzedajemy danych i nie wyświetlamy reklam.</p>
@@ -143,6 +150,7 @@
   <h2>5. Jak długo przechowujemy dane</h2>
   <ul>
     <li>Konto, profil, ankieta i zapisy na wydarzenia: do usunięcia konta. Na prośbę wysłaną e-mailem usuniemy je w ciągu 30 dni.</li>
+    <li>Znajomości: do usunięcia znajomego albo konta. Niezaakceptowane zaproszenia wygasają po 30 dniach.</li>
     <li>Zdjęcie profilowe usuwamy, gdy je zmienisz albo usuniesz.</li>
     <li>Zestawy propozycji wygasają automatycznie.</li>
     <li>Logi serwerów są przechowywane 7 dni.</li>

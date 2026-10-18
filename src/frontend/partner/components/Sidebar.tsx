@@ -2,6 +2,7 @@ import { Icon } from "../../shared/Icon";
 import { initials } from "../../shared/format";
 import type { Screen } from "../App";
 import { googleLogin } from "../lib/auth";
+import { config } from "../lib/config";
 import type { Profile } from "../lib/types";
 
 type Props = { profile: Profile; active: Screen; eventsCount: number | null; onLogout: () => void };
@@ -48,6 +49,9 @@ export function Sidebar({ profile, active, eventsCount, onLogout }: Props) {
           <a href="#/platnosci">Doładuj</a>
         </div>
       </div>
+      <a className="side-legal" href={`${config().clientPortal ?? ""}/polityka-prywatnosci.html`}>
+        Polityka prywatności
+      </a>
       <div className="side-user">
         <span className="avatar">{initials(profile.partnerName)}</span>
         <span className="who">

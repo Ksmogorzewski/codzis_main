@@ -49,6 +49,14 @@ function AppLayout() {
       {/* Na telefonie miejsce na dolny pasek zakładek (56 px + bezpieczny obszar). */}
       <main className="mx-auto flex w-full max-w-[1160px] flex-col gap-4 px-4 pt-[18px] pb-[calc(96px+env(safe-area-inset-bottom))] md:px-8 md:pt-8 md:pb-16">
         <Outlet />
+        <footer className="mt-4 text-center text-meta text-muted-foreground">
+          <a
+            className="rounded-sm underline underline-offset-4 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
+            href="/polityka-prywatnosci.html"
+          >
+            Polityka prywatności
+          </a>
+        </footer>
       </main>
       <TabBar />
       <RequiredName />
