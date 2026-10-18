@@ -19,21 +19,21 @@ export function inviteLink(code: string, origin: string, pathname: string): stri
   return `${origin}${pathname}#/znajomi/dodaj/${code}`;
 }
 
-const byName = (a: string, b: string) => a.localeCompare(b, "pl");
+const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "pl");
 
 /** „Ola idzie”, „Kuba i Ola idą”, „Ola i 2 innych znajomych idzie” (pierwsze imię alfabetycznie); nikt - null. */
-export function friendsLine(names: readonly string[]): string | null {
-  const sorted = [...names].sort(byName);
+export function friendsLine(friends: readonly { name: string }[]): string | null {
+  const sorted = [...friends].sort(byName);
   const [first, second] = sorted;
   if (first === undefined) return null;
-  if (second === undefined) return `${first} idzie`;
-  if (sorted.length === 2) return `${first} i ${second} idą`;
-  return `${first} i ${sorted.length - 1} innych znajomych idzie`;
+  if (second === undefined) return `${first.name} idzie`;
+  if (sorted.length === 2) return `${first.name} i ${second.name} idą`;
+  return `${first.name} i ${sorted.length - 1} innych znajomych idzie`;
 }
 
-/** Najbliższy zapis znajomego: pierwsza karta „Znajomi idą” (posortowane po starcie) z jego imieniem. */
-export function nearestFor<T extends { friends: readonly string[] }>(name: string, items: readonly T[]): T | null {
-  return items.find((c) => c.friends.includes(name)) ?? null;
+/** Najbliższy zapis znajomego: pierwsza karta „Znajomi idą” (posortowane po starcie) z jego userId (nie imieniem). */
+export function nearestFor<T extends { friends: readonly { userId: string }[] }>(userId: string, items: readonly T[]): T | null {
+  return items.find((c) => c.friends.some((f) => f.userId === userId)) ?? null;
 }
 
 /** Macierz QR (true = ciemny moduł) -> ścieżka SVG z kwadratów 1x1 (viewBox = rozmiar macierzy). */

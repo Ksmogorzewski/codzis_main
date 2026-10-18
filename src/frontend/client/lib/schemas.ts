@@ -333,9 +333,15 @@ export const FriendStatusSchema = z.object({ status: z.string().default("friends
 // DELETE /api/friends/requests/{userId}, DELETE /api/friends/{userId} -> {}
 export const EmptySchema = z.object({}).catch({});
 
-// GET /api/friends/going: nadchodzące wydarzenia znajomych (po starcie, maks. 60) z imionami (alfabetycznie)
-// i mapa wydarzenie -> imiona dla linijki „Ola idzie” na kartach wszystkich list.
-export const FriendsGoingCardSchema = CardSchema.extend({ friends: stringList.catch([]) });
+// GET /api/friends/going: nadchodzące wydarzenia znajomych (po starcie, maks. 60) ze znajomymi {userId, name}
+// (po imieniu, potem po userId) i mapa wydarzenie -> znajomi dla linijki „Ola idzie” na kartach wszystkich list.
+// Tożsamość = userId (dwie „Ole” to dwie osoby); zepsuty wpis pomijamy.
+export const GoingFriendSchema = z.object({ userId: z.string(), name: friendName });
+export type GoingFriend = z.infer<typeof GoingFriendSchema>;
+
+const goingFriends = listOf(GoingFriendSchema);
+
+export const FriendsGoingCardSchema = CardSchema.extend({ friends: goingFriends });
 export type FriendsGoingCard = z.infer<typeof FriendsGoingCardSchema>;
 
 export const FriendsGoingSchema = z.object({
@@ -345,10 +351,10 @@ export const FriendsGoingSchema = z.object({
     .default({})
     .catch({})
     .transform((raw) => {
-      const out: Record<string, string[]> = {};
+      const out: Record<string, GoingFriend[]> = {};
       for (const [id, value] of Object.entries(raw)) {
-        const r = z.array(z.string()).safeParse(value);
-        if (r.success && r.data.length > 0) out[id] = r.data;
+        const friends = goingFriends.parse(value);
+        if (friends.length > 0) out[id] = friends;
       }
       return out;
     }),

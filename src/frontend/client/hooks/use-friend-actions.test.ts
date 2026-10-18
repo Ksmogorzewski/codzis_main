@@ -18,7 +18,7 @@ const overview: FriendsOverview = {
 function setup() {
   const qc = new QueryClient();
   qc.setQueryData(friendsKey(), overview);
-  qc.setQueryData(friendsGoingKey(), { items: [], byEvent: { e1: ["Ola"] } });
+  qc.setQueryData(friendsGoingKey(), { items: [], byEvent: { e1: [{ userId: "u2", name: "Ola" }] } });
   return qc;
 }
 

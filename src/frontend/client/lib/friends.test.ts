@@ -34,38 +34,52 @@ describe("inviteLink", () => {
 });
 
 describe("friendsLine", () => {
+  const f = (name: string, userId = name) => ({ userId, name });
+
   it("nikt - null", () => {
     expect(friendsLine([])).toBeNull();
   });
 
   it("jedna osoba", () => {
-    expect(friendsLine(["Ola"])).toBe("Ola idzie");
+    expect(friendsLine([f("Ola")])).toBe("Ola idzie");
   });
 
   it("dwie osoby", () => {
-    expect(friendsLine(["Kuba", "Ola"])).toBe("Kuba i Ola idą");
-    expect(friendsLine(["Ola", "Kuba"])).toBe("Kuba i Ola idą");
+    expect(friendsLine([f("Kuba"), f("Ola")])).toBe("Kuba i Ola idą");
+    expect(friendsLine([f("Ola"), f("Kuba")])).toBe("Kuba i Ola idą");
   });
 
   it("trzy i więcej: pierwsze imię alfabetycznie i liczba reszty", () => {
-    expect(friendsLine(["Ola", "Kuba", "Zosia"])).toBe("Kuba i 2 innych znajomych idzie");
-    expect(friendsLine(["Ola", "Łucja", "Ania", "Kuba"])).toBe("Ania i 3 innych znajomych idzie");
+    expect(friendsLine([f("Ola"), f("Kuba"), f("Zosia")])).toBe("Kuba i 2 innych znajomych idzie");
+    expect(friendsLine([f("Ola"), f("Łucja"), f("Ania"), f("Kuba")])).toBe("Ania i 3 innych znajomych idzie");
+  });
+
+  it("dwie osoby o tym samym imieniu to dwie osoby", () => {
+    expect(friendsLine([f("Ola", "u1"), f("Ola", "u2")])).toBe("Ola i Ola idą");
   });
 });
 
-describe("nearestFor", () => {
+describe("nearestFor (po userId, nie po imieniu)", () => {
+  const ola1 = { userId: "u1", name: "Ola" };
+  const ola2 = { userId: "u2", name: "Ola" };
+  const kuba = { userId: "u3", name: "Kuba" };
   const items = [
-    { id: "a", friends: ["Kuba"] },
-    { id: "b", friends: ["Kuba", "Ola"] },
+    { id: "a", friends: [kuba] },
+    { id: "b", friends: [kuba, ola2] },
+    { id: "c", friends: [ola1] },
   ];
 
-  it("pierwsza (najbliższa) karta z imieniem znajomego", () => {
-    expect(nearestFor("Ola", items)?.id).toBe("b");
-    expect(nearestFor("Kuba", items)?.id).toBe("a");
+  it("pierwsza (najbliższa) karta ze znajomym", () => {
+    expect(nearestFor("u3", items)?.id).toBe("a");
+  });
+
+  it("dwie znajome o imieniu „Ola” - każda ma swój najbliższy zapis", () => {
+    expect(nearestFor("u1", items)?.id).toBe("c");
+    expect(nearestFor("u2", items)?.id).toBe("b");
   });
 
   it("bez zapisów - null", () => {
-    expect(nearestFor("Zosia", items)).toBeNull();
+    expect(nearestFor("u9", items)).toBeNull();
   });
 });
 
@@ -91,13 +105,15 @@ describe("schematy znajomych (kontrakt client-api)", () => {
     expect(data.friends[0]).toMatchObject({ userId: "u1", name: "Ola" });
   });
 
-  it("GET /api/friends/going: karty z imionami i mapa wydarzenie -> imiona", () => {
+  it("GET /api/friends/going: karty ze znajomymi {userId, name} i mapa wydarzenie -> znajomi", () => {
+    const kuba = { userId: "u3", name: "Kuba" };
+    const ola = { userId: "u2", name: "Ola" };
     const data = FriendsGoingSchema.parse({
-      items: [{ id: "e1", title: "Koncert", friends: ["Kuba", "Ola"] }, { id: 7 }],
-      byEvent: { e1: ["Kuba", "Ola"], e2: "zepsute" },
+      items: [{ id: "e1", title: "Koncert", friends: [kuba, ola, "Zosia"] }, { id: 7 }],
+      byEvent: { e1: [kuba, { name: "bez id" }, ola], e2: "zepsute", e3: ["Ola"] },
     });
-    expect(data.items.map((c) => [c.id, c.friends])).toEqual([["e1", ["Kuba", "Ola"]]]);
-    expect(data.byEvent).toEqual({ e1: ["Kuba", "Ola"] });
+    expect(data.items.map((c) => [c.id, c.friends])).toEqual([["e1", [kuba, ola]]]);
+    expect(data.byEvent).toEqual({ e1: [kuba, ola] });
     expect(FriendsGoingSchema.parse({})).toEqual({ items: [], byEvent: {} });
   });
 

@@ -179,7 +179,7 @@ function FriendList({ friends }: { friends: Friend[] }) {
               <Initial name={f.name} />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="font-bold">{f.name}</span>
-                <NextSave card={nearestFor(f.name, items)} now={now} loading={!going.data && !going.isError} />
+                <NextSave card={nearestFor(f.userId, items)} now={now} loading={!going.data && !going.isError} />
               </div>
               <Button
                 variant="ghost"
