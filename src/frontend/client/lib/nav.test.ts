@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeTab, NAV_ITEMS } from "./nav";
+import { activeTab, badgeText, NAV_ITEMS } from "./nav";
 
 describe("nawigacja", () => {
   it("pięć miejsc w stałej kolejności („Znajomi” zamiast Eksploruj)", () => {
@@ -24,5 +24,19 @@ describe("nawigacja", () => {
     expect(activeTab("/wydarzenie/kal-1")).toBeNull();
     expect(activeTab("/wydarzenie/kal-1/ekipa")).toBeNull();
     expect(activeTab("/cos")).toBeNull();
+  });
+});
+
+describe("badgeText (plakietki w nawigacji)", () => {
+  it("0 i mniej - bez plakietki", () => {
+    expect(badgeText(0, 9)).toBeNull();
+    expect(badgeText(-1, 9)).toBeNull();
+  });
+
+  it("do limitu liczba, powyżej „9+” / „99+”", () => {
+    expect(badgeText(2, 9)).toBe("2");
+    expect(badgeText(9, 9)).toBe("9");
+    expect(badgeText(10, 9)).toBe("9+");
+    expect(badgeText(100, 99)).toBe("99+");
   });
 });

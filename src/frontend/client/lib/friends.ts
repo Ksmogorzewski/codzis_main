@@ -1,4 +1,7 @@
-// Znajomi: kod do podyktowania, link w QR, podpisy „Ola idzie”. Czyste funkcje (testy w friends.test.ts).
+// Znajomi: kod do podyktowania, link w QR, podpisy „Ola idzie”, plakietka zaproszeń. Czyste funkcje (testy w friends.test.ts).
+import { plural } from "../../shared/format";
+import { type ApiResult, NAME_REQUIRED } from "./api";
+import type { FriendsOverview } from "./schemas";
 
 /** Alfabet kodu (jak w backendzie: bez 0/O/1/I, które łatwo pomylić przy dyktowaniu). */
 const CODE_ALPHABET = /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}$/;
@@ -35,6 +38,19 @@ export function friendsLine(friends: readonly { name: string }[]): string | null
 export function nearestFor<T extends { friends: readonly { userId: string }[] }>(userId: string, items: readonly T[]): T | null {
   return items.find((c) => c.friends.some((f) => f.userId === userId)) ?? null;
 }
+
+/**
+ * Plakietka „Znajomi”: liczba zaproszeń do mnie z GET /api/friends. Konto bez imienia (409 name_required) -> 0
+ * bez błędu, żeby plakietka w nawigacji nie otwierała prośby o imię (robi to dopiero zakładka Znajomi).
+ */
+export function pendingInvites(r: ApiResult<FriendsOverview>): ApiResult<number> {
+  if (r.error?.code === NAME_REQUIRED) return { data: 0, error: null };
+  if (r.error !== null) return r;
+  return { data: r.data.incoming.length, error: null };
+}
+
+/** Podpis plakietki dla czytnika: „2 nowe zaproszenia” (link brzmi wtedy „Znajomi, 2 nowe zaproszenia”). */
+export const invitesLabel = (n: number) => plural(n, "nowe zaproszenie", "nowe zaproszenia", "nowych zaproszeń");
 
 /** Macierz QR (true = ciemny moduł) -> ścieżka SVG z kwadratów 1x1 (viewBox = rozmiar macierzy). */
 export function qrPath(modules: readonly (readonly boolean[])[]): string {

@@ -1,18 +1,24 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Icon } from "@/components/ui/icon";
 import { useCrewUnreadTotal } from "@/hooks/use-crew-unread";
+import { useFriendInvitesCount } from "@/hooks/use-friend-invites.query";
+import { invitesLabel } from "@/lib/friends";
 import { activeTab, NAV_ITEMS } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import { UnreadBadge } from "./nav-badge";
 
+const badgeCorner = "absolute -top-1 right-0 ring-2 ring-background";
+
 /**
  * Dolny pasek zakładek na telefonie (na desktopie te same linki są w nagłówku). Pięć zakładek mieści się
- * od 360 px (72 px na zakładkę); „Twoje” z plakietką nieprzeczytanych wiadomości w czatach ekip.
+ * od 360 px (72 px na zakładkę); „Twoje” z plakietką nieprzeczytanych wiadomości w czatach ekip,
+ * „Znajomi” z liczbą zaproszeń.
  */
 export function TabBar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = activeTab(pathname);
   const unread = useCrewUnreadTotal();
+  const invites = useFriendInvitesCount();
   return (
     <nav
       aria-label="Główna"
@@ -38,8 +44,9 @@ export function TabBar() {
                   )}
                 >
                   <Icon name={item.icon} size={22} filled={on} />
-                  {item.to === "/twoje" && (
-                    <UnreadBadge count={unread} className="absolute -top-1 right-0 ring-2 ring-background" />
+                  {item.to === "/twoje" && <UnreadBadge count={unread} className={badgeCorner} />}
+                  {item.to === "/znajomi" && (
+                    <UnreadBadge count={invites} label={invitesLabel} max={9} className={badgeCorner} />
                   )}
                 </span>
                 {item.label}

@@ -1,12 +1,23 @@
 import { unreadLabel } from "@/lib/crew-inbox";
+import { badgeText } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
+type Props = {
+  count: number;
+  className?: string;
+  /** Pełny podpis dla czytnika (domyślnie „3 nowe wiadomości”). */
+  label?: (count: number) => string;
+  /** Powyżej tej liczby „max+” (domyślnie 99+). */
+  max?: number;
+};
+
 /**
- * Plakietka z liczbą nieprzeczytanych wiadomości (czaty ekip, DEMO) przy „Twoje” i na liście czatów.
- * Liczba jest tylko wizualna; czytnik dostaje pełny podpis („3 nowe wiadomości”).
+ * Plakietka z liczbą: nieprzeczytane wiadomości (czaty ekip, DEMO) przy „Twoje” i na liście czatów,
+ * zaproszenia przy „Znajomi”. Liczba jest tylko wizualna; czytnik dostaje pełny podpis („3 nowe wiadomości”).
  */
-export function UnreadBadge({ count, className }: { count: number; className?: string }) {
-  if (count <= 0) return null;
+export function UnreadBadge({ count, className, label = unreadLabel, max = 99 }: Props) {
+  const text = badgeText(count, max);
+  if (text === null) return null;
   return (
     <>
       <span
@@ -16,9 +27,9 @@ export function UnreadBadge({ count, className }: { count: number; className?: s
           className,
         )}
       >
-        {count > 99 ? "99+" : count}
+        {text}
       </span>
-      <span className="sr-only">{`, ${unreadLabel(count)}`}</span>
+      <span className="sr-only">{`, ${label(count)}`}</span>
     </>
   );
 }

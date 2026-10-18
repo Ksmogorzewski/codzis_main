@@ -1,5 +1,6 @@
 // Pięć miejsc aplikacji: w nagłówku na desktopie, w dolnym pasku zakładek na telefonie.
-// „Twoje” ma plakietkę z liczbą nieprzeczytanych wiadomości w czatach ekip (lib/crew-inbox.ts).
+// „Twoje” ma plakietkę z liczbą nieprzeczytanych wiadomości w czatach ekip (lib/crew-inbox.ts),
+// „Znajomi” - z liczbą zaproszeń do mnie (hooks/use-friend-invites.query.ts).
 // Eksploruj nie ma pozycji w menu (trasa /eksploruj zostaje: link „Zobacz wszystkie wydarzenia” na Dla Ciebie).
 
 export const NAV_ITEMS = [
@@ -16,4 +17,10 @@ export type NavTarget = (typeof NAV_ITEMS)[number]["to"];
 export function activeTab(pathname: string): NavTarget | null {
   if (pathname.startsWith("/znajomi/")) return "/znajomi";
   return NAV_ITEMS.find((i) => i.to === pathname)?.to ?? null;
+}
+
+/** Liczba na plakietce: 0 - brak plakietki (null), powyżej `max` - „9+” / „99+”. */
+export function badgeText(count: number, max: number): string | null {
+  if (count <= 0) return null;
+  return count > max ? `${max}+` : String(count);
 }

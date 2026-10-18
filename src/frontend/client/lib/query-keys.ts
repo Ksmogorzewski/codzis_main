@@ -42,6 +42,9 @@ export const myEventsKey = () => ["my-events"] as const;
 /** GET /api/friends: mój kod, znajomi, zaproszenia (unieważniany po każdej akcji znajomych). */
 export const friendsKey = () => ["friends"] as const;
 
+/** Plakietka „Znajomi”: liczba zaproszeń (też GET /api/friends; pod friendsKey, więc akcje znajomych ją odświeżają). */
+export const friendInvitesKey = () => ["friends", "invites"] as const;
+
 /** GET /api/friends/going: wydarzenia znajomych i mapa wydarzenie -> imiona (linijka „Ola idzie” na kartach). */
 export const friendsGoingKey = () => ["friends-going"] as const;
 

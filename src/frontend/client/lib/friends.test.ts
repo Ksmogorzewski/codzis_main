@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { friendsLine, inviteLink, nearestFor, normalizeCode, qrPath } from "./friends";
+import { friendsLine, inviteLink, invitesLabel, nearestFor, normalizeCode, pendingInvites, qrPath } from "./friends";
 import { AttendeesSchema, FriendsGoingSchema, FriendsOverviewSchema, InviteResultSchema } from "./schemas";
 
 describe("normalizeCode (te same reguły co backend)", () => {
@@ -80,6 +80,35 @@ describe("nearestFor (po userId, nie po imieniu)", () => {
 
   it("bez zapisów - null", () => {
     expect(nearestFor("u9", items)).toBeNull();
+  });
+});
+
+describe("plakietka zaproszeń", () => {
+  const overview = FriendsOverviewSchema.parse({
+    code: "WAW-7K2P9X",
+    incoming: [
+      { userId: "u1", name: "Ola", createdAt: 2 },
+      { userId: "u2", name: "Ola", createdAt: 1 },
+    ],
+  });
+  const error = (status: number, code: string) => ({ data: null, error: { status, code, message: "x", fields: [] } });
+
+  it("liczba = zaproszenia do mnie", () => {
+    expect(pendingInvites({ data: overview, error: null })).toEqual({ data: 2, error: null });
+  });
+
+  it("konto bez imienia (409 name_required) - 0 bez błędu", () => {
+    expect(pendingInvites(error(409, "name_required"))).toEqual({ data: 0, error: null });
+  });
+
+  it("inne błędy przechodzą dalej", () => {
+    expect(pendingInvites(error(503, "http_503")).error?.code).toBe("http_503");
+  });
+
+  it("podpis dla czytnika", () => {
+    expect(invitesLabel(1)).toBe("1 nowe zaproszenie");
+    expect(invitesLabel(2)).toBe("2 nowe zaproszenia");
+    expect(invitesLabel(5)).toBe("5 nowych zaproszeń");
   });
 });
 
