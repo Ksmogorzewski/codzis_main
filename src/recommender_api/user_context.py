@@ -60,6 +60,13 @@ def window(when: str, today: date, day: str | None = None) -> tuple[date, date]:
     return today, today
 
 
+def search_prefs(prefs: dict) -> dict:
+    """Profil wyszukiwania frazą: sama dzielnica (podbicie „blisko domu” i lokalizacja dla AI), bez reszty
+    preferencji. Wynik frazy jest wspólny dla wszystkich z tej dzielnicy (results_store.search_owner),
+    więc nie może zależeć od ani mówić nic o konkretnej osobie."""
+    return {"district": prefs["district"]} if prefs.get("district") else {}
+
+
 def start_area(prefs: dict) -> str:
     return prefs.get("travelRange") if prefs.get("travelRange") in AREAS else "city"
 

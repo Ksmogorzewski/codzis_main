@@ -3,13 +3,16 @@
     GET /api/recommendations?when=today|tomorrow|weekend|week|date&date=RRRR-MM-DD&q=...&limit=16
         HTTP API + JWT authorizer Cognito; profil z tabeli users (preferences, ragProfile).
         Bez q zestaw układa profil; z q fraza dominuje (szukamy w całej Warszawie, bez twardych
-        filtrów z onboardingu), a preferencje z profilu rozstrzygają tylko remisy.
+        filtrów z onboardingu). Zestaw z q jest wspólny dla dzielnicy z profilu (userId
+        "search#<dzielnica>"): liczy się raz, tylko z frazy, dzielnicy i terminu (bez reszty profilu),
+        a każda następna osoba z tej dzielnicy dostaje go od razu, także na zimnej instancji.
         Zawsze odpowiada od razu z zapisanego zestawu (tabela recommendations, results_store.py),
         także nieaktualnego - wtedy z "updating": true i nowym liczonym w tle. Gdy model i indeks
         są już w pamięci (ciepła instancja), faza 1 liczy się od razu w tej samej Lambdzie i pierwsze
         żądanie zwraca karty zamiast czekać; 202 {"status": "preparing"} = zestawu jeszcze nie ma
         (albo zmienił się profil, albo instancja jest zimna) i właśnie liczy się w tle.
-    {"action": "compute", ...}  jeden zestaw w tle (zlecany przez GET; bez limitu 30 s HTTP API)
+    {"action": "compute", ...}  jeden zestaw w tle (zlecany przez GET; bez limitu 30 s HTTP API);
+        "shared": true = wspólny zestaw frazy (search#<dzielnica>), bez czytania profilu
     {"action": "precompute", "userId": "..."}  dziś, jutro i weekend dla jednej osoby
         (client-api po zapisaniu profilu i przy logowaniu)
     {"action": "precompute"}  to samo dla wszystkich aktywnych (EventBridge w nocy)
@@ -38,8 +41,8 @@ from boto3.dynamodb.conditions import Attr
 from index_store import FileStore, S3Store, load_events_file, refresh, scan_events
 from present import card, still_on
 from recommender import DEFAULT_MODEL, EmbeddingModel, Recommender
-from results_store import RESULTS_VERSION, ResultsStore, claimed, expires_at, prefs_hash, set_key
-from user_context import AREAS, WINDOWS, build_context, start_area, window
+from results_store import RESULTS_VERSION, ResultsStore, claimed, expires_at, prefs_hash, search_owner, set_key
+from user_context import AREAS, WINDOWS, build_context, search_prefs, start_area, window
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
@@ -137,34 +140,51 @@ def get_recommendations(user_id: str, params: dict) -> dict | None:
     except ValueError as e:
         raise ApiError(400, str(e), fields=["date"])
 
+    if query:
+        # Fraza: wspólny zestaw dzielnicy (search#<dzielnica>) bez reszty profilu - liczy go pierwsza osoba,
+        # kolejne z tej dzielnicy dostają gotowy (z AI) od razu, bez modelu w pamięci.
+        prefs, rag = search_prefs(user["preferences"]), None
+        owner = search_owner(prefs.get("district"))
+    else:
+        prefs, rag, owner = user["preferences"], user.get("ragProfile"), user_id
     key = set_key(when, span, query, limit)
-    fingerprint = prefs_hash(user["preferences"], user.get("ragProfile"))
-    body, fresh = _stored(results.get(user_id, key), fingerprint, now)
+    fingerprint = prefs_hash(prefs, rag)
+    body, fresh = _stored(results.get(owner, key), fingerprint, now)
     if not fresh:
         job = {"when": when, "from": span[0].isoformat(), "to": span[1].isoformat(),
                "q": query, "limit": limit}
+        if query:
+            job |= {"shared": True, "district": prefs.get("district")}
         try:
-            if results.claim(user_id, key, fingerprint, now):
+            if results.claim(owner, key, fingerprint, now):
                 if _engine is not None:
                     # Ciepła instancja: faza 1 (filtry + wektory) od razu w tej samej Lambdzie -
                     # karty w ~100 ms zamiast 202 + 2 s. AI (faza 2) i tak liczy się w tle, jak dotąd.
-                    _compute_inline(user_id, user, key, fingerprint, job, now)
-                    body, _ = _stored(results.get(user_id, key), fingerprint, now)
-                    _start_compute(user_id, key, fingerprint, job)
+                    _compute_inline(owner, prefs, rag, key, fingerprint, job, now)
+                    body, _ = _stored(results.get(owner, key), fingerprint, now)
+                    _start_compute(owner, key, fingerprint, job)
                 else:
                     # Zimna instancja: liczenie w tle (jak dotąd), stary zestaw pokazujemy dalej.
-                    _start_compute(user_id, key, fingerprint, job)
+                    _start_compute(owner, key, fingerprint, job)
                     if body:
                         body["updating"] = True
         except ApiError:
             raise
         except Exception:
             # Nie udało się zlecić liczenia: zapisany zestaw i tak pokazujemy, bez niego - 503 (strona ponowi)
-            log.exception("Nie udało się zlecić liczenia zestawu %s", key)
-            results.release(user_id, key, fingerprint)
+            log.exception("Nie udało się zlecić liczenia zestawu %s", _log_key(key))
+            results.release(owner, key, fingerprint)
             if body is None:
                 raise ApiError(503, "Nie udało się przygotować propozycji – spróbuj za chwilę.")
+    if body and query:
+        body["query"] = query  # wspólny zestaw: fraza tak, jak wpisała ją ta osoba
     return body  # None -> 202, strona zapyta ponownie
+
+
+def _log_key(key: str) -> str:
+    """Klucz zestawu do logów - bez wpisanej frazy (treść od użytkownika nie trafia do logów)."""
+    parts = key.split("#", 4)
+    return "#".join([*parts[:4], "<fraza>"]) if len(parts) == 5 and parts[4] else key
 
 
 def _stored(item: dict | None, fingerprint: str, now: datetime) -> tuple[dict | None, bool]:
@@ -197,25 +217,32 @@ def _start_compute(user_id: str, key: str, fingerprint: str, job: dict) -> None:
         raise
 
 
-def _compute_inline(user_id: str, user: dict, key: str, fingerprint: str, job: dict, now: datetime) -> None:
+def _compute_inline(owner: str, prefs: dict, rag: str | None, key: str, fingerprint: str, job: dict,
+                    now: datetime) -> None:
     """Faza 1 (filtry + wektory) policzona od razu w bieżącej, ciepłej Lambdzie i zapisana.
-    Używana tylko, gdy _engine już jest w pamięci (bez ryzyka zimnego startu w ścieżce GET)."""
+    Używana tylko, gdy _engine już jest w pamięci (bez ryzyka zimnego startu w ścieżce GET).
+    owner = userId albo search#<dzielnica> (wspólny zestaw frazy, prefs = search_prefs)."""
     span = (date.fromisoformat(job["from"]), date.fromisoformat(job["to"]))
-    body, _context, found = compute(_engine, user["preferences"], user.get("ragProfile"), span,
-                                    job.get("q", ""), job.get("limit", DEFAULT_LIMIT), now, job["when"])
+    body, _context, found = compute(_engine, prefs, rag, span, job.get("q", ""), job.get("limit", DEFAULT_LIMIT),
+                                    now, job["when"])
     refine_it = LLM_ENABLED and _engine.client is not None and bool(found)
-    results.put(user_id, key, fingerprint, {**body, "refining": refine_it}, expires_at(span))
+    results.put(owner, key, fingerprint, {**body, "refining": refine_it}, expires_at(span))
 
 
 def compute_set(event: dict) -> dict:
-    """Jeden zestaw zlecony przez GET (claim już jest)."""
-    user = users.get_item(Key={"userId": event["userId"]}, ConsistentRead=True).get("Item") or {}
+    """Jeden zestaw zlecony przez GET (claim już jest). Wspólny zestaw frazy ("shared": userId =
+    search#<dzielnica>) liczy się z samej dzielnicy, bez czytania profilu."""
     span = (date.fromisoformat(event["from"]), date.fromisoformat(event["to"]))
     key = set_key(event["when"], span, event.get("q", ""), event["limit"])
-    if not user.get("preferences"):
-        return {"computed": 0}
-    done = _compute_sets(event["userId"], user["preferences"], user.get("ragProfile"),
-                         [(event["when"], span, key)], event.get("q", ""), event["limit"], datetime.now(WARSAW))
+    if event.get("shared"):
+        prefs, rag = search_prefs({"district": event.get("district")}), None
+    else:
+        user = users.get_item(Key={"userId": event["userId"]}, ConsistentRead=True).get("Item") or {}
+        if not user.get("preferences"):
+            return {"computed": 0}
+        prefs, rag = user["preferences"], user.get("ragProfile")
+    done = _compute_sets(event["userId"], prefs, rag, [(event["when"], span, key)], event.get("q", ""),
+                         event["limit"], datetime.now(WARSAW))
     return {"computed": done}
 
 
@@ -271,7 +298,7 @@ def _compute_sets(user_id, prefs, rag_profile, jobs, query, limit, now) -> int:
         try:
             body, context, found = compute(engine, prefs, rag_profile, span, query, limit, now, when)
         except Exception:
-            log.exception("Nie udało się policzyć zestawu %s", key)
+            log.exception("Nie udało się policzyć zestawu %s", _log_key(key))
             results.release(user_id, key, fingerprint)
             continue
         refine_it = use_llm and bool(found)
@@ -287,7 +314,7 @@ def _compute_sets(user_id, prefs, rag_profile, jobs, query, limit, now) -> int:
         expanded = engine.expand(context) if context.get("query") else context
         pool = engine.retriever.retrieve(expanded, top_k=limit) if expanded is not context else found
         ranked = engine.rerank(expanded, pool)
-        log.info("AI dla %s: %s%s w %.1f s", key, "OK" if ranked else f"brak ({engine.last_error})",
+        log.info("AI dla %s: %s%s w %.1f s", _log_key(key), "OK" if ranked else f"brak ({engine.last_error})",
                  " (fraza rozwinięta)" if expanded is not context else "", time.monotonic() - started)
         items = ranked or (pool if expanded is not context else None)
         better = {**body, "ranking": "llm" if ranked else body["ranking"], "items": [card(c, query) for c in items]} if items else body
