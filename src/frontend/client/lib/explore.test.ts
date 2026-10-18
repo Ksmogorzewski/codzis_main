@@ -5,7 +5,6 @@ import {
   eventsParams,
   eventsPath,
   ExploreSearchSchema,
-  moreInCategorySearch,
   sortCards,
   startKey,
 } from "./explore";
@@ -123,35 +122,5 @@ describe("Eksploruj: lista dzielnic", () => {
   it("bez ankiety: unikalne dzielnice z wyników, alfabetycznie po polsku", () => {
     const cards = [card({ district: "Żoliborz" }), card({ district: "Bemowo" }), card({ district: null }), card({ district: "Bemowo" })];
     expect(districtOptions(undefined, cards)).toEqual(["Bemowo", "Żoliborz"]);
-  });
-});
-
-describe("Więcej w kategorii: Dla Ciebie -> Eksploruj", () => {
-  it("bez kategorii nie ma linku", () => {
-    expect(moreInCategorySearch({ when: "today", cat: "all" })).toBeNull();
-  });
-
-  it("to samo okno czasu i kategoria, reszta filtrów domyślna", () => {
-    expect(moreInCategorySearch({ when: "tomorrow", cat: "sport" })).toEqual({ ...DEFAULT_EXPLORE, when: "tomorrow", cat: "sport" });
-    expect(moreInCategorySearch({ when: "weekend", cat: "kultura" })).toEqual({ ...DEFAULT_EXPLORE, when: "weekend", cat: "kultura" });
-  });
-
-  it("inny dzień przenosi datę, bez daty = dziś", () => {
-    expect(moreInCategorySearch({ when: "date", date: "2026-10-30", cat: "rekreacja" })).toEqual({
-      ...DEFAULT_EXPLORE,
-      when: "date",
-      date: "2026-10-30",
-      cat: "rekreacja",
-    });
-    expect(moreInCategorySearch({ when: "date", cat: "sport" })).toEqual({ ...DEFAULT_EXPLORE, cat: "sport" });
-  });
-
-  it("7 dni (Eksploruj ich nie ma) -> od dziś", () => {
-    expect(moreInCategorySearch({ when: "week", cat: "sport" })).toEqual({ ...DEFAULT_EXPLORE, cat: "sport" });
-  });
-
-  it("wynik przechodzi walidację adresu Eksploruj bez zmian", () => {
-    const search = moreInCategorySearch({ when: "date", date: "2026-10-30", cat: "sport" });
-    expect(ExploreSearchSchema.parse(search)).toEqual(search);
   });
 });

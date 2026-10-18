@@ -9,9 +9,8 @@ import { useEventStats } from "@/hooks/use-event-stats.query";
 import { useColdStart, useRecommendations } from "@/hooks/use-recommendations.query";
 import { isNeedsOnboarding } from "@/lib/api";
 import { withStats } from "@/lib/community";
-import { CATEGORY_LABEL, filterByCategory } from "@/lib/categories";
+import { filterByCategory } from "@/lib/categories";
 import { areaLabel, countLabel, dateTitle, dayLine, readAtLabel, WHEN_OPTIONS } from "@/lib/events";
-import { moreInCategorySearch } from "@/lib/explore";
 import { startLocation, useLocation } from "@/lib/location";
 import type { When } from "@/lib/schemas";
 import { DEFAULT_SEARCH, type HomeSearch, type RecommendationsParams, recommendationsParams, rememberSearch } from "@/lib/search";
@@ -116,21 +115,15 @@ function EmptyState({ search }: { search: HomeSearch }) {
   );
 }
 
-/**
- * Eksploruj nie ma pozycji w menu: na końcu propozycji (i w pustym stanie) link do wszystkich wydarzeń.
- * Z wybraną kategorią: „Więcej: Sport — …” do Eksploruj z tą kategorią i tym samym oknem czasu
- * (chip filtruje tylko ~16 propozycji, więc np. biegów mogło w nich zabraknąć).
- */
-function AllEventsLink({ search }: { search: HomeSearch }) {
-  const more = moreInCategorySearch(search);
+/** Eksploruj nie ma pozycji w menu: na końcu propozycji (i w pustym stanie) link do wszystkich wydarzeń. */
+function AllEventsLink() {
   return (
     <p className="flex justify-center">
       <Link
         to="/eksploruj"
-        search={more ?? undefined}
         className="inline-flex min-h-11 items-center gap-1.5 rounded-sm px-1 text-base font-bold text-brand-ink underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring"
       >
-        {more ? `Więcej: ${CATEGORY_LABEL[more.cat]} — zobacz wszystkie wydarzenia` : "Nie pasuje? Zobacz wszystkie wydarzenia"}
+        Nie pasuje? Zobacz wszystkie wydarzenia
         <Icon name="arrow_forward" size={20} />
       </Link>
     </p>
@@ -230,7 +223,7 @@ export function HomeView() {
           ) : (
             <EmptyState search={search} />
           )}
-          <AllEventsLink search={search} />
+          <AllEventsLink />
 
           <p className="text-sm text-muted-foreground">
             Dopasowane do Twojego profilu. Wydarzenia z kalendarza miasta, zajęć sportowych i od organizatorów

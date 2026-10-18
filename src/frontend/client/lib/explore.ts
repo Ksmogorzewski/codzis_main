@@ -6,7 +6,7 @@ import { CATEGORIES, type Category } from "./categories";
 import { dateBounds, warsawDate } from "./events";
 import { distanceKm, type Point } from "./geo";
 import type { Card } from "./schemas";
-import { type HomeSearch, normalizeQuery, recommendationsParams } from "./search";
+import { normalizeQuery } from "./search";
 
 export const EXPLORE_WHEN = ["today", "tomorrow", "weekend", "date"] as const;
 export type ExploreWhen = (typeof EXPLORE_WHEN)[number];
@@ -60,19 +60,6 @@ export function eventsParams(s: ExploreSearch, now: Date): EventsParams {
     indoor: s.indoor,
     q: s.q,
   };
-}
-
-/**
- * „Więcej: Sport” pod propozycjami: Eksploruj z tym samym oknem czasu i kategorią. Propozycji jest ~16
- * i chip kategorii filtruje tylko je, więc pełna lista kategorii jest w Eksploruj. Bez kategorii -> null.
- * Eksploruj nie ma „7 dni”, więc tydzień zaczyna się od dziś; „Inny dzień” bez daty = dziś.
- */
-export function moreInCategorySearch(s: Pick<HomeSearch, "when" | "date" | "cat">): ExploreSearch | null {
-  if (s.cat === "all") return null;
-  const params = recommendationsParams({ ...s, q: "" });
-  const when = params.when === "week" ? "today" : params.when;
-  const search: ExploreSearch = { ...DEFAULT_EXPLORE, when, cat: s.cat };
-  return params.date ? { ...search, date: params.date } : search;
 }
 
 // Serwer domyślnie zwraca 60 kart od najbliższego startu; bierzemy maksimum, żeby sortowanie po
