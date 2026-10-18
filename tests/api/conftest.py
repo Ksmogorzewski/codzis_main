@@ -1,6 +1,5 @@
 import io
 import json
-import sys
 from datetime import UTC, datetime, timedelta
 
 import boto3
@@ -116,16 +115,7 @@ def partner_api(monkeypatch):
         }
         for name, value in env.items():
             monkeypatch.setenv(name, value)
-        _forget_route_modules()
         yield load_lambda(API_DIR)
-        _forget_route_modules()  # następne testy (np. client-api) nie mogą dostać tras partnera
-
-
-def _forget_route_modules():
-    """`routes` to pakiet (katalog), którego `load_lambda` nie czyści, a client-api ma pakiet o tej samej nazwie.
-    Bez tego trasy z poprzedniego testu (albo innej Lambdy) zostałyby podpięte do nowej aplikacji."""
-    for name in [n for n in sys.modules if n == "routes" or n.startswith("routes.")]:
-        del sys.modules[name]
 
 
 @pytest.fixture
