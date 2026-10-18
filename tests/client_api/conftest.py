@@ -12,6 +12,7 @@ EVENTS_TABLE = "test-events"
 ATTENDANCE_TABLE = "test-attendance"
 STATS_TABLE = "test-event-stats"
 FRIENDS_TABLE = "test-friends"
+REQUEST_ID = "req-client-1"
 
 
 def _create_tables():
@@ -135,6 +136,7 @@ def api_event(route_key, body=None, claims=None, path=None, query=None):
         "routeKey": route_key,
         "requestContext": {
             "authorizer": {"jwt": {"claims": claims or {"sub": "user-1", "email": "ala@example.com"}}},
+            "requestId": REQUEST_ID,
         },
     }
     if path is not None:

@@ -70,7 +70,8 @@ import boto3
 import events
 import friends
 import store
-from codzis_common.http import ApiError, now_iso, parse_body, response
+from codzis_common.aws import AWS_CONFIG
+from codzis_common.http import ApiError, handle_request, now_iso, parse_body, response
 from onboarding import build_steps, compute_preferences, onboarding_version, public_steps, rag_profile, validate_answers
 
 USERS_TABLE = os.environ["USERS_TABLE"]
@@ -86,60 +87,62 @@ RECOMMENDER_FUNCTION = os.environ.get("RECOMMENDER_FUNCTION")
 STEPS = build_steps(DISTRICTS)
 ONBOARDING_VERSION = onboarding_version(STEPS)
 
-users = boto3.resource("dynamodb").Table(USERS_TABLE)
-lambda_client = boto3.client("lambda")
+users = boto3.resource("dynamodb", config=AWS_CONFIG).Table(USERS_TABLE)
+lambda_client = boto3.client("lambda", config=AWS_CONFIG)
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 
 def handler(event, context):
+    """Punkt wejścia: każdy błąd kończy się odpowiedzią JSON (inny niż ApiError -> 500 z requestId)."""
+    return handle_request(event, event.get("routeKey"), lambda: route(event))
+
+
+def route(event: dict) -> dict:
     claims = event["requestContext"]["authorizer"]["jwt"]["claims"]
-    try:
-        match event.get("routeKey"):
-            case "GET /api/me":
-                return response(200, get_me(claims))
-            case "GET /api/onboarding":
-                return response(200, {"version": ONBOARDING_VERSION, "steps": public_steps(STEPS)})
-            case "PUT /api/profile":
-                return response(200, put_profile(claims, parse_body(event)))
-            case "GET /api/events":
-                return response(200, get_events(claims, _query(event)))
-            case "GET /api/events/stats":
-                return response(200, get_stats(claims, _query(event)))
-            case "GET /api/events/{id}":
-                return response(200, get_event(claims, _event_id(event)))
-            case "PUT /api/events/{id}/save":
-                return response(200, put_save(claims, _event_id(event)))
-            case "DELETE /api/events/{id}/save":
-                return response(200, delete_save(claims, _event_id(event)))
-            case "GET /api/events/{id}/attendees":
-                return response(200, get_attendees(claims, _event_id(event)))
-            case "GET /api/popular":
-                return response(200, get_popular(claims))
-            case "GET /api/me/events":
-                return response(200, get_my_events(claims))
-            case "GET /api/friends":
-                return response(200, get_friends(claims))
-            case "POST /api/friends/code":
-                return response(200, {"code": friends.regenerate_code(claims["sub"], _require_name(claims))})
-            case "GET /api/friends/code/{code}":
-                return response(200, friends.preview(claims["sub"], _path(event, "code"), _epoch()))
-            case "POST /api/friends/invite":
-                return response(200, post_invite(claims, parse_body(event)))
-            case "PUT /api/friends/requests/{userId}":
-                return response(200, put_friend_request(claims, _path(event, "userId")))
-            case "DELETE /api/friends/requests/{userId}":
-                friends.decline(claims["sub"], _path(event, "userId"))
-                return response(200, {})
-            case "DELETE /api/friends/{userId}":
-                friends.remove(claims["sub"], _path(event, "userId"))
-                return response(200, {})
-            case "GET /api/friends/going":
-                return response(200, get_friends_going(claims))
-        raise ApiError(404, "Nie znaleziono")
-    except ApiError as e:
-        return response(e.status, e.body)
+    match event.get("routeKey"):
+        case "GET /api/me":
+            return response(200, get_me(claims))
+        case "GET /api/onboarding":
+            return response(200, {"version": ONBOARDING_VERSION, "steps": public_steps(STEPS)})
+        case "PUT /api/profile":
+            return response(200, put_profile(claims, parse_body(event)))
+        case "GET /api/events":
+            return response(200, get_events(claims, _query(event)))
+        case "GET /api/events/stats":
+            return response(200, get_stats(claims, _query(event)))
+        case "GET /api/events/{id}":
+            return response(200, get_event(claims, _event_id(event)))
+        case "PUT /api/events/{id}/save":
+            return response(200, put_save(claims, _event_id(event)))
+        case "DELETE /api/events/{id}/save":
+            return response(200, delete_save(claims, _event_id(event)))
+        case "GET /api/events/{id}/attendees":
+            return response(200, get_attendees(claims, _event_id(event)))
+        case "GET /api/popular":
+            return response(200, get_popular(claims))
+        case "GET /api/me/events":
+            return response(200, get_my_events(claims))
+        case "GET /api/friends":
+            return response(200, get_friends(claims))
+        case "POST /api/friends/code":
+            return response(200, {"code": friends.regenerate_code(claims["sub"], _require_name(claims))})
+        case "GET /api/friends/code/{code}":
+            return response(200, friends.preview(claims["sub"], _path(event, "code"), _epoch()))
+        case "POST /api/friends/invite":
+            return response(200, post_invite(claims, parse_body(event)))
+        case "PUT /api/friends/requests/{userId}":
+            return response(200, put_friend_request(claims, _path(event, "userId")))
+        case "DELETE /api/friends/requests/{userId}":
+            friends.decline(claims["sub"], _path(event, "userId"))
+            return response(200, {})
+        case "DELETE /api/friends/{userId}":
+            friends.remove(claims["sub"], _path(event, "userId"))
+            return response(200, {})
+        case "GET /api/friends/going":
+            return response(200, get_friends_going(claims))
+    raise ApiError(404, "Nie znaleziono")
 
 
 def get_me(claims: dict) -> dict:

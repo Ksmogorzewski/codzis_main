@@ -1,11 +1,13 @@
 """Handler API panelu partnera (src/api/handler.py) na atrapach DynamoDB i SQS."""
 
+import json
+import sys
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 
-from tests.api.conftest import PARTNER_KEY, PARTNER_NAME, STARTER_CREDITS, call
+from tests.api.conftest import PARTNER_KEY, PARTNER_NAME, REQUEST_ID, STARTER_CREDITS, call
 from tests.support import taxonomy
 
 WARSAW = "+02:00"
@@ -390,3 +392,40 @@ def test_bad_body(partner_api, raw, error):
     status, body = call(partner_api, "POST", "payments", raw)
     assert status == 400
     assert body == {"error": error}
+
+
+# --- nieoczekiwany błąd -> 500 z requestId, log dostępu ---
+
+
+def test_unexpected_error_returns_500_with_request_id(partner_api, monkeypatch):
+    def boom(partner):
+        raise RuntimeError("awaria DynamoDB")
+
+    monkeypatch.setattr(partner_api, "get_profile", boom)
+    status, body = call(partner_api, "GET", "me")
+    assert status == 500
+    assert body == {"error": "Coś poszło nie tak. Spróbuj ponownie.", "requestId": REQUEST_ID}
+
+
+def test_api_error_unchanged(partner_api):
+    status, body = call(partner_api, "GET", "nie-ma")
+    assert status == 404
+    assert body == {"error": "Nie znaleziono"}
+
+
+def test_access_log_route_without_ids(partner_api, caplog):
+    caplog.set_level("INFO", logger="codzis.http")
+    call(partner_api, "POST", "payments/abc-123/confirm")
+    access = json.loads(caplog.records[-1].getMessage())
+    assert access["route"] == "POST /payments/{id}/confirm"
+    assert access["status"] == 404
+    assert access["requestId"] == REQUEST_ID
+
+
+def test_aws_clients_use_shared_timeouts(partner_api):
+    store = partner_api.partners_table.meta.client
+    assert store.meta.config.read_timeout == 5
+    s3 = sys.modules["store"].s3
+    assert s3.meta.config.connect_timeout == 2
+    assert s3.meta.config.signature_version == "s3v4"  # podpis S3 zachowany po scaleniu konfiguracji
+    assert sys.modules["store"].sqs.meta.config.retries["mode"] == "standard"

@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from tests.client_api.conftest import api_event, call
+from tests.client_api.conftest import REQUEST_ID, api_event, call
 
 VALID_ANSWERS = {
     "who": "kids",
@@ -216,3 +216,35 @@ def test_decimal_from_dynamodb_serialized_as_int_or_float(client_api, users_tabl
     )
     _, body = call(client_api, "GET /api/me")
     assert body["profile"]["preferences"] == {"maxPrice": 12.5, "count": 3}
+
+
+# --- nieoczekiwany błąd -> 500 z requestId ---
+
+
+def test_unexpected_error_returns_500_with_request_id(client_api, monkeypatch):
+    def boom(claims):
+        raise RuntimeError("awaria DynamoDB")
+
+    monkeypatch.setattr(client_api, "get_me", boom)
+    status, body = call(client_api, "GET /api/me")
+    assert status == 500
+    assert body == {"error": "Coś poszło nie tak. Spróbuj ponownie.", "requestId": REQUEST_ID}
+
+
+def test_missing_claims_returns_500_not_crash(client_api):
+    response = client_api.handler({"routeKey": "GET /api/me", "requestContext": {"requestId": "r-2"}}, None)
+    assert response["statusCode"] == 500
+    assert json.loads(response["body"])["requestId"] == "r-2"
+
+
+def test_api_error_unchanged(client_api):
+    status, body = call(client_api, "GET /api/nie-ma")
+    assert status == 404
+    assert body == {"error": "Nie znaleziono"}
+
+
+def test_aws_clients_use_shared_timeouts(client_api):
+    assert client_api.lambda_client.meta.config.read_timeout == 5
+    assert client_api.users.meta.client.meta.config.connect_timeout == 2
+    assert client_api.store.ddb.meta.config.retries["mode"] == "standard"
+    assert client_api.friends.ddb.meta.config.read_timeout == 5
