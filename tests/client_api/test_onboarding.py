@@ -47,7 +47,7 @@ def test_build_steps_has_unique_step_and_field_ids():
     field_ids = [f["id"] for s in built for f in s["fields"]]
     assert len(step_ids) == len(set(step_ids))
     assert len(field_ids) == len(set(field_ids))
-    assert step_ids[:4] == ["who", "vibe", "where", "when"]
+    assert step_ids[:4] == ["who", "vibe", "activity", "occasion"]
 
 
 def test_build_steps_district_options_come_from_argument():

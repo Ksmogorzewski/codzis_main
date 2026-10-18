@@ -96,6 +96,30 @@ def build_steps(districts: list[str]) -> list[dict]:
                      interests=["Święta"]),
             ]}],
         },
+        {
+            "id": "activity", "icon": "directions_run",
+            "title": "Jak chcesz uczestniczyć?", "hint": "Opcjonalne – wybierz jedną",
+            "fields": [{"id": "activity", "type": "single", "required": False, "options": [
+                _opt("watch", "Wolę oglądać i słuchać", "theater_comedy", "Widz / słuchacz",
+                     activityLevel=["Widz / słuchacz"]),
+                _opt("join", "Chcę brać aktywny udział", "school", "Udział aktywny",
+                     activityLevel=["Udział aktywny"]),
+                _opt("move", "Chcę się poruszać", "fitness_center", "Wysiłek fizyczny",
+                     activityLevel=["Wysiłek fizyczny"]),
+            ]}],
+        },
+        {
+            "id": "occasion", "icon": "celebration",
+            "title": "Na jaką okazję szukasz?", "hint": "Opcjonalne – wybierz maksymalnie 2",
+            "fields": [{"id": "occasion", "type": "multi", "required": False, "maxSelect": 2, "options": [
+                _opt("date", "Na randkę", "favorite", "Na randkę", occasion=["Na randkę"]),
+                _opt("friends", "Ze znajomymi", "group", "Ze znajomymi", occasion=["Ze znajomymi"]),
+                _opt("with_kids", "Z dziećmi", "family_restroom", "Z dziećmi", occasion=["Z dziećmi"]),
+                _opt("solo", "Samodzielnie", "person", "Solo", occasion=["Samodzielnie"]),
+                _opt("new_people", "Poznać nowych ludzi", "handshake", "Nowi ludzie",
+                     occasion=["Poznawanie nowych ludzi"]),
+            ]}],
+        },
         # --- dodatkowe kafelki: dokładniejsze dopasowanie (gdzie, kiedy, za ile, jak) ---
         {
             "id": "where", "icon": "near_me",
