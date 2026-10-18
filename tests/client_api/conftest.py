@@ -105,15 +105,15 @@ def client_api(monkeypatch):
         boto3.client("s3").create_bucket(
             Bucket=PHOTOS_BUCKET, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"}
         )
-        _forget_routes()
+        _forget_shared_names()
         yield load_lambda(CLIENT_API_DIR)
-    _forget_routes()
+    _forget_shared_names()
 
 
-def _forget_routes():
-    """Pakiet routes/ (routery Powertools) ładujemy od nowa z handlerem - load_lambda czyści tylko moduły z *.py
-    katalogu, a API partnera ma własny pakiet routes o tej samej nazwie."""
-    for name in [n for n in sys.modules if n == "routes" or n.startswith("routes.")]:
+def _forget_shared_names():
+    """`routes`, `routes.*` i `schemas` ładujemy od nowa z handlerem (przed i po teście): API partnera ma moduły
+    o tych samych nazwach, a load_lambda nie czyści pakietu routes."""
+    for name in [n for n in sys.modules if n in ("routes", "schemas") or n.startswith("routes.")]:
         del sys.modules[name]
 
 
