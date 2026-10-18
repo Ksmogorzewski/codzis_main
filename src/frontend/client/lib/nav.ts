@@ -1,9 +1,11 @@
-// Cztery miejsca aplikacji: w nagłówku na desktopie, w dolnym pasku zakładek na telefonie.
+// Pięć miejsc aplikacji: w nagłówku na desktopie, w dolnym pasku zakładek na telefonie.
+// „Twoje” ma plakietkę z liczbą nieprzeczytanych wiadomości w czatach ekip (lib/crew-inbox.ts).
 
 export const NAV_ITEMS = [
   { to: "/", label: "Dla Ciebie", icon: "home" },
   { to: "/eksploruj", label: "Eksploruj", icon: "explore" },
   { to: "/popularne", label: "Popularne", icon: "trending_up" },
+  { to: "/twoje", label: "Twoje", icon: "event_available" },
   { to: "/profil", label: "Profil", icon: "person" },
 ] as const;
 

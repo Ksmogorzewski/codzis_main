@@ -25,6 +25,9 @@ function Toaster(props: ToasterProps) {
           toast:
             "flex w-full items-center gap-2 rounded-lg bg-foreground px-4.5 py-3.5 text-base font-semibold text-background shadow-[0_10px_30px_rgb(0_0_0/0.25)]",
           icon: "flex shrink-0 items-center",
+          // akcja w toaście (np. „Otwórz” przy nowej wiadomości w czacie ekipy)
+          actionButton:
+            "ml-auto h-11 shrink-0 cursor-pointer rounded-md bg-background px-3.5 text-sm font-bold text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring",
         },
       }}
       {...props}

@@ -2,8 +2,8 @@ import { type FormEvent, useEffect, useReducer, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
-import { chatReducer, initialChat, timeline } from "@/lib/crew-chat";
-import { DEMO_CREW, demoScript, demoSeed } from "@/lib/crew-demo";
+import { type ChatMessageInput, chatReducer, initialChat, timeline } from "@/lib/crew-chat";
+import { DEMO_CREW, demoScript } from "@/lib/crew-demo";
 import { cn } from "@/lib/utils";
 import { ChatMessage, TypingIndicator } from "./chat-message";
 import { ColorCard } from "./color-card";
@@ -11,6 +11,8 @@ import { ColorCard } from "./color-card";
 type Props = {
   /** Pozostali członkowie ekipy (bez mnie): imiona zapisanych, uzupełnione demo. */
   members: string[];
+  /** Wiadomości, które już są w czacie (DEMO: demoInbox - ta sama rozmowa co na zakładce „Twoje”). */
+  seed: ChatMessageInput[];
   /** Podpis moich wiadomości (ownLabel). */
   myLabel: string;
   category: string;
@@ -20,10 +22,10 @@ type Props = {
 
 // Czat mikro-ekipy wydarzenia (mockup_czatu_warsawnow_2). Ekran: components/crew/crew-chat-screen.tsx.
 // DEMO: wiadomości i odpowiedzi to scenariusz z lib/crew-demo.ts odtwarzany lokalnie (bez backendu).
-export function CrewChat({ members, myLabel, category, place, when }: Props) {
+export function CrewChat({ members, seed, myLabel, category, place, when }: Props) {
   // Scenariusz liczony raz przy wejściu: zmiana listy zapisanych w tle nie przestawia rozmowy.
   const [plan] = useState(() => ({
-    seed: demoSeed(members),
+    seed,
     steps: timeline(demoScript({ members, category, place, when })),
   }));
   const [state, dispatch] = useReducer(chatReducer, plan.seed, initialChat);

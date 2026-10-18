@@ -33,3 +33,6 @@ export const attendeesKey = (id: string) => ["attendees", id] as const;
 export const eventStatsRootKey = () => ["event-stats"] as const;
 
 export const eventStatsKey = (ids: readonly string[]) => ["event-stats", [...ids].sort().join(",")] as const;
+
+/** Zakładka „Twoje”: moje zapisy (GET /api/me/events); też plakietka nieprzeczytanych w nawigacji. */
+export const myEventsKey = () => ["my-events"] as const;

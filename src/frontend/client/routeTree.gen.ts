@@ -15,6 +15,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppEksplorujRouteImport } from './routes/_app/eksploruj'
 import { Route as AppPopularneRouteImport } from './routes/_app/popularne'
 import { Route as AppProfilRouteImport } from './routes/_app/profil'
+import { Route as AppTwojeRouteImport } from './routes/_app/twoje'
 import { Route as AppWydarzenieIdRouteImport } from './routes/_app/wydarzenie.$id'
 import { Route as AppWydarzenieIdEkipaRouteImport } from './routes/_app/wydarzenie.$id_.ekipa'
 
@@ -47,6 +48,11 @@ const AppProfilRoute = AppProfilRouteImport.update({
   path: '/profil',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTwojeRoute = AppTwojeRouteImport.update({
+  id: '/twoje',
+  path: '/twoje',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppWydarzenieIdRoute = AppWydarzenieIdRouteImport.update({
   id: '/wydarzenie/$id',
   path: '/wydarzenie/$id',
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/eksploruj': typeof AppEksplorujRoute
   '/popularne': typeof AppPopularneRoute
   '/profil': typeof AppProfilRoute
+  '/twoje': typeof AppTwojeRoute
   '/wydarzenie/$id': typeof AppWydarzenieIdRoute
   '/wydarzenie/$id/ekipa': typeof AppWydarzenieIdEkipaRoute
 }
@@ -72,6 +79,7 @@ export interface FileRoutesByTo {
   '/eksploruj': typeof AppEksplorujRoute
   '/popularne': typeof AppPopularneRoute
   '/profil': typeof AppProfilRoute
+  '/twoje': typeof AppTwojeRoute
   '/': typeof AppIndexRoute
   '/wydarzenie/$id': typeof AppWydarzenieIdRoute
   '/wydarzenie/$id/ekipa': typeof AppWydarzenieIdEkipaRoute
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   '/_app/eksploruj': typeof AppEksplorujRoute
   '/_app/popularne': typeof AppPopularneRoute
   '/_app/profil': typeof AppProfilRoute
+  '/_app/twoje': typeof AppTwojeRoute
   '/_app/': typeof AppIndexRoute
   '/_app/wydarzenie/$id': typeof AppWydarzenieIdRoute
   '/_app/wydarzenie/$id_/ekipa': typeof AppWydarzenieIdEkipaRoute
@@ -95,6 +104,7 @@ export interface FileRouteTypes {
     | '/eksploruj'
     | '/popularne'
     | '/profil'
+    | '/twoje'
     | '/wydarzenie/$id'
     | '/wydarzenie/$id/ekipa'
   fileRoutesByTo: FileRoutesByTo
@@ -103,6 +113,7 @@ export interface FileRouteTypes {
     | '/eksploruj'
     | '/popularne'
     | '/profil'
+    | '/twoje'
     | '/'
     | '/wydarzenie/$id'
     | '/wydarzenie/$id/ekipa'
@@ -113,6 +124,7 @@ export interface FileRouteTypes {
     | '/_app/eksploruj'
     | '/_app/popularne'
     | '/_app/profil'
+    | '/_app/twoje'
     | '/_app/'
     | '/_app/wydarzenie/$id'
     | '/_app/wydarzenie/$id_/ekipa'
@@ -167,6 +179,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProfilRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/twoje': {
+      id: '/_app/twoje'
+      path: '/twoje'
+      fullPath: '/twoje'
+      preLoaderRoute: typeof AppTwojeRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/wydarzenie/$id': {
       id: '/_app/wydarzenie/$id'
       path: '/wydarzenie/$id'
@@ -188,6 +207,7 @@ interface AppRouteChildren {
   AppEksplorujRoute: typeof AppEksplorujRoute
   AppPopularneRoute: typeof AppPopularneRoute
   AppProfilRoute: typeof AppProfilRoute
+  AppTwojeRoute: typeof AppTwojeRoute
   AppIndexRoute: typeof AppIndexRoute
   AppWydarzenieIdRoute: typeof AppWydarzenieIdRoute
   AppWydarzenieIdEkipaRoute: typeof AppWydarzenieIdEkipaRoute
@@ -197,6 +217,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppEksplorujRoute: AppEksplorujRoute,
   AppPopularneRoute: AppPopularneRoute,
   AppProfilRoute: AppProfilRoute,
+  AppTwojeRoute: AppTwojeRoute,
   AppIndexRoute: AppIndexRoute,
   AppWydarzenieIdRoute: AppWydarzenieIdRoute,
   AppWydarzenieIdEkipaRoute: AppWydarzenieIdEkipaRoute,
