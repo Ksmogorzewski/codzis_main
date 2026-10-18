@@ -7,6 +7,10 @@ export const Route = createFileRoute("/login")({
   beforeLoad: async ({ context }) => {
     if (await context.auth.hasSession()) throw redirect({ to: "/" });
   },
+  // Nieudany powrót z logowania Google (np. przerwane) - komunikat w formularzu. Bez pamięci loadera,
+  // żeby ten sam komunikat nie wrócił przy kolejnym wejściu na logowanie.
+  loader: async ({ context }) => ({ googleError: await context.auth.takeGoogleSignInError() }),
+  gcTime: 0,
   component: LoginView,
   errorComponent: PageRouteError,
 });

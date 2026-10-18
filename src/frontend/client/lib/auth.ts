@@ -1,6 +1,9 @@
-// Logowanie przez Cognito bez SDK: API Cognito wprost z przeglądarki (USER_PASSWORD_AUTH),
-// rejestracja z kodem z e-maila, reset hasła, odświeżanie tokenów (REFRESH_TOKEN_AUTH).
+// Logowanie przez Cognito bez SDK:
+//   - e-mail + hasło: API Cognito wprost z przeglądarki (USER_PASSWORD_AUTH), rejestracja z kodem z e-maila, reset hasła;
+//   - Google: Hosted UI Cognito, kod autoryzacyjny + PKCE (shared/oauth.ts), powrót na stronę główną.
+// Tokeny obu rodzajów sesji odświeża REFRESH_TOKEN_AUTH.
 // Sesja w localStorage pod tym samym kluczem co w poprzedniej wersji portalu (zalogowani zostają zalogowani).
+import { finishSignIn, logoutUrl, type OAuthApp, type SignInFailure, startSignIn } from "../../shared/oauth";
 import { nameError, normalizeName } from "./auth-form";
 import { config } from "./config";
 import { err, ok, type Result } from "./result";
@@ -12,7 +15,7 @@ const REFRESH_MARGIN_MS = 60_000;
 // Ile czekamy na unieważnienie refresh tokenu przy wylogowaniu (potem i tak czyścimy sesję).
 const REVOKE_TIMEOUT_MS = 1500;
 
-/** "google" zostaje w typie dla sesji zapisanych przez poprzednią wersję portalu. */
+/** method "google" = sesja z Hosted UI: wylogowanie czyści też ciasteczko Cognito. */
 export type Session = {
   idToken: string;
   accessToken: string;
@@ -45,7 +48,18 @@ const MESSAGES: Record<string, string> = {
   TooManyFailedAttemptsException: "Za dużo nieudanych prób. Spróbuj później.",
   CodeDeliveryFailureException: "Nie udało się wysłać e-maila z kodem. Spróbuj później.",
   PasswordResetRequiredException: "Ustaw nowe hasło – użyj „Nie pamiętasz hasła?”.",
+  GoogleDenied: "Logowanie przez Google zostało przerwane. Spróbuj ponownie.",
+  GoogleExpired: "Logowanie przez Google wygasło. Spróbuj ponownie.",
+  GoogleRejected: "Logowanie przez Google nie powiodło się. Spróbuj ponownie.",
   [NETWORK_ERROR]: "Brak połączenia. Sprawdź internet i spróbuj ponownie.",
+};
+
+// Nieudany powrót z Google (shared/oauth.ts) -> kod komunikatu
+const GOOGLE_FAILURE_CODES: Record<SignInFailure, string> = {
+  denied: "GoogleDenied",
+  expired: "GoogleExpired",
+  network: NETWORK_ERROR,
+  rejected: "GoogleRejected",
 };
 
 // --- czyste funkcje (testy w auth.test.ts) ---
@@ -62,6 +76,8 @@ export function cognitoErrorCode(type: unknown): string {
 }
 
 export const authFailure = (code: string): AuthFailure => ({ code, message: authErrorMessage(code) });
+
+export const googleFailure = (failure: SignInFailure): AuthFailure => authFailure(GOOGLE_FAILURE_CODES[failure]);
 
 /** Atrybuty przy rejestracji: e-mail i imię (pokazywane innym na listach zapisanych). */
 export function signUpAttributes(email: string, name: string): { Name: string; Value: string }[] {
@@ -135,12 +151,14 @@ async function idp<T>(action: string, body: object): Promise<AuthResult<T>> {
 const loadSession = () => readJson<Session>("local", SESSION_KEY);
 const clearSession = () => writeJson("local", SESSION_KEY, null);
 
-function storeTokens(r: AuthenticationResult, method: Session["method"]): Session {
-  const tokens = { idToken: r.IdToken, accessToken: r.AccessToken, refreshToken: r.RefreshToken, expiresIn: r.ExpiresIn };
+function saveSession(tokens: Tokens, method: Session["method"]): Session {
   const session = nextSession(tokens, loadSession(), Date.now(), method);
   writeJson("local", SESSION_KEY, session);
   return session;
 }
+
+const storeTokens = (r: AuthenticationResult, method: Session["method"]) =>
+  saveSession({ idToken: r.IdToken, accessToken: r.AccessToken, refreshToken: r.RefreshToken, expiresIn: r.ExpiresIn }, method);
 
 let refreshing: Promise<AuthResult<string | null>> | null = null;
 
@@ -191,6 +209,7 @@ export async function getIdToken(): Promise<AuthResult<string | null>> {
  * (zapisana sesja istnieje) - ekran pokaże błąd połączenia zamiast wylogowania.
  */
 export async function hasSession(): Promise<boolean> {
+  await googleSignInResult(); // powrót z Google zapisuje sesję, zanim ją sprawdzimy
   const r = await getIdToken();
   if (r.error !== null) return loadSession() !== null;
   return r.data !== null;
@@ -251,6 +270,53 @@ export const confirmForgotPassword = (email: string, code: string, password: str
     }),
   );
 
+// --- Google (Hosted UI + PKCE) ---
+
+/** Przycisk Google tylko, gdy Terraform włączył logowanie Google (google_client_id) i podał domenę Hosted UI. */
+export const googleAvailable = () => config().googleEnabled && config().cognitoDomain !== "";
+
+const googleApp = (): OAuthApp => ({
+  domain: config().cognitoDomain,
+  clientId: config().clientId,
+  // Strona główna: musi być na liście callback_urls i logout_urls (infra/client_auth.tf)
+  redirectUri: `${window.location.origin}/`,
+});
+
+/** Przekierowanie do Google; powrót na stronę główną z ?code=… (obsługuje googleSignInResult). */
+export const signInWithGoogle = () => startSignIn(googleApp());
+
+let googleReturn: Promise<AuthResult<void> | null> | null = null;
+let googleError: string | null = null;
+
+/**
+ * Powrót z logowania Google (?code=… w adresie): wymiana kodu na sesję, raz na wczytanie strony.
+ * null = zwykłe wejście. Czeka na niego strażnik tras (hasSession), zanim sprawdzi sesję.
+ */
+export function googleSignInResult(): Promise<AuthResult<void> | null> {
+  googleReturn ??= completeGoogleSignIn();
+  return googleReturn;
+}
+
+async function completeGoogleSignIn(): Promise<AuthResult<void> | null> {
+  if (!googleAvailable()) return null;
+  const r = await finishSignIn(googleApp());
+  if (!r) return null;
+  if ("failure" in r) {
+    googleError = googleFailure(r.failure).message;
+    return err(googleFailure(r.failure));
+  }
+  saveSession(r.tokens, "google");
+  return ok(undefined);
+}
+
+/** Komunikat nieudanego powrotu z Google dla ekranu logowania - zwracany raz (potem null). */
+export async function takeGoogleSignInError(): Promise<string | null> {
+  await googleSignInResult();
+  const message = googleError;
+  googleError = null;
+  return message;
+}
+
 // --- imię (jednorazowe uzupełnienie dla kont założonych przed polem „Imię”) ---
 
 /** Imię zalogowanego z aktualnego ID tokenu; null = konto bez imienia (albo brak sesji). */
@@ -282,15 +348,21 @@ export async function setMissingName(raw: string): Promise<AuthResult<void>> {
   return ok(undefined);
 }
 
-/** Wylogowanie: czyści sesję i (najwyżej 1,5 s) unieważnia refresh token w Cognito. */
+/**
+ * Wylogowanie: czyści sesję i (najwyżej 1,5 s) unieważnia refresh token w Cognito. Po logowaniu Google
+ * jeszcze wylogowanie z Hosted UI (przekierowanie i powrót na stronę główną) - inaczej ciasteczko Cognito
+ * od razu zalogowałoby tę samą osobę ponownie, bez wyboru konta.
+ */
 export async function signOut(): Promise<void> {
   const session = loadSession();
   clearSession();
-  if (!session?.refreshToken) return;
-  const revoke = idp("RevokeToken", { ClientId: config().clientId, Token: session.refreshToken });
-  await Promise.race([revoke, new Promise((resolve) => setTimeout(resolve, REVOKE_TIMEOUT_MS))]);
+  if (session?.refreshToken) {
+    const revoke = idp("RevokeToken", { ClientId: config().clientId, Token: session.refreshToken });
+    await Promise.race([revoke, new Promise((resolve) => setTimeout(resolve, REVOKE_TIMEOUT_MS))]);
+  }
+  if (session?.method === "google" && googleAvailable()) window.location.assign(logoutUrl(googleApp()));
 }
 
 /** Uwierzytelnienie w kontekście routera (context.auth). */
-export const routerAuth = { hasSession, signOut };
+export const routerAuth = { hasSession, signOut, takeGoogleSignInError };
 export type RouterAuth = typeof routerAuth;

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { meQueryOptions } from "@/hooks/use-me.query";
 import {
   type AuthFailure,
@@ -14,8 +15,10 @@ import {
   confirmForgotPassword,
   confirmSignUp,
   forgotPassword,
+  googleAvailable,
   resendCode,
   signIn,
+  signInWithGoogle,
   signUp,
 } from "@/lib/auth";
 import {
@@ -36,8 +39,11 @@ import { ok } from "@/lib/result";
 
 const safeHref = (url: string) => (/^https?:\/\//.test(url) ? url : null);
 
-/** Formularz logowania: logowanie, rejestracja z kodem z e-maila, reset hasła (Cognito przez fetch). */
-export function AuthForm() {
+/**
+ * Formularz logowania: logowanie, rejestracja z kodem z e-maila, reset hasła (Cognito przez fetch)
+ * i „Kontynuuj z Google” (Hosted UI). initialError = komunikat nieudanego powrotu z Google.
+ */
+export function AuthForm({ initialError = null }: { initialError?: string | null }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<AuthMode>("login");
@@ -48,6 +54,8 @@ export function AuthForm() {
   const [newPassword, setNewPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Błąd logowania Google: w tym samym alercie, ale bez oznaczania pól formularza jako błędnych
+  const [googleError, setGoogleError] = useState<string | null>(initialError);
   const [info, setInfo] = useState<string | null>(null);
 
   const mail = email.trim();
@@ -55,6 +63,7 @@ export function AuthForm() {
   function go(next: AuthMode, message: string | null = null) {
     setMode(next);
     setError(null);
+    setGoogleError(null);
     setInfo(message);
     setCode("");
   }
@@ -131,9 +140,23 @@ export function AuthForm() {
     }
     setBusy(true);
     setError(null);
+    setGoogleError(null);
     const r = await submitStep();
     if (r.error !== null) await handleFailure(r.error);
     setBusy(false);
+  }
+
+  // Przekierowanie do Google; po powrocie sesję zapisuje strażnik tras (lib/auth.ts: googleSignInResult).
+  async function onGoogle() {
+    setBusy(true);
+    setError(null);
+    setGoogleError(null);
+    try {
+      await signInWithGoogle();
+    } catch {
+      setGoogleError("Nie udało się rozpocząć logowania przez Google. Spróbuj ponownie.");
+      setBusy(false);
+    }
   }
 
   async function onResend() {
@@ -229,10 +252,10 @@ export function AuthForm() {
         <p className="-mt-2 text-meta text-muted-foreground">{PASSWORD_HINT}</p>
       )}
 
-      {error && (
+      {(error ?? googleError) && (
         <Alert variant="destructive">
           <Icon name="error" size={22} className="mt-px" />
-          <AlertTitle className="font-semibold">{error}</AlertTitle>
+          <AlertTitle className="font-semibold">{error ?? googleError}</AlertTitle>
         </Alert>
       )}
 
@@ -251,6 +274,20 @@ export function AuthForm() {
           <LinkButton onClick={() => go("login")}>Wróć do logowania</LinkButton>
         )}
       </div>
+
+      {(mode === "login" || mode === "register") && googleAvailable() && (
+        <>
+          <div className="flex items-center gap-3 text-meta text-muted-foreground">
+            <Separator className="w-auto flex-1" />
+            lub
+            <Separator className="w-auto flex-1" />
+          </div>
+          <Button type="button" variant="outline" size="lg" className="h-[58px] text-lg" disabled={busy} onClick={onGoogle}>
+            <img src="/assets/google.svg" alt="" width={22} height={22} className="size-[22px]" />
+            Kontynuuj z Google
+          </Button>
+        </>
+      )}
 
       {(mode === "login" || mode === "register") && (
         <p className="mt-1 text-center text-base text-muted-foreground">

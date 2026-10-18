@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   authErrorMessage,
   cognitoErrorCode,
+  googleFailure,
   idTokenName,
   nextSession,
   type Session,
@@ -31,6 +32,16 @@ describe("komunikaty błędów Cognito", () => {
 
   it("nieznany kod: ogólny komunikat", () => {
     expect(authErrorMessage("SomethingNew")).toBe("Coś poszło nie tak. Spróbuj ponownie.");
+  });
+
+  it("nieudany powrót z Google: komunikat po polsku, brak sieci jak przy haśle", () => {
+    expect(googleFailure("denied").message).toBe("Logowanie przez Google zostało przerwane. Spróbuj ponownie.");
+    expect(googleFailure("expired").message).toBe("Logowanie przez Google wygasło. Spróbuj ponownie.");
+    expect(googleFailure("rejected").message).toBe("Logowanie przez Google nie powiodło się. Spróbuj ponownie.");
+    expect(googleFailure("network")).toEqual({
+      code: "NetworkError",
+      message: "Brak połączenia. Sprawdź internet i spróbuj ponownie.",
+    });
   });
 
   it("wyciąga kod z pola __type", () => {
