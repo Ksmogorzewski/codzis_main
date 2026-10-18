@@ -1,5 +1,11 @@
 # codzis_main
 
+Domena: https://portal.waw-out.pl/
+Testowy user dla Jury:
+    Username: w4r54wn0w@gmail.com
+    Password: 1qaz@WSX
+
+
 PoC **WarsawNow**: co robić w Warszawie dziś.
 - **Portal klienta** (`portal.waw-out.pl`): logowanie e-mailem lub Google (Cognito), profil zbierany kafelkami (onboarding) i zapisywany w DynamoDB, a na jego podstawie zakładka **Rekomendacje** (RAG: embeddingi eventów + ranking DeepSeek z uzasadnieniem „Pasuje: …”).
 - **Panel organizatora** (`partner.waw-out.pl`): partner loguje się kluczem API, kupuje kredyty (mock bramka płatności) i publikuje ogłoszenia (1 zdjęcie → S3, 1 ogłoszenie = 1 kredyt).
