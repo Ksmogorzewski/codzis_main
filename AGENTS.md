@@ -9,7 +9,7 @@ Instrukcje dla agentów AI (Claude, Codex, Cursor, Copilot…) i ludzi. WarsawNo
 |---|---|---|---|
 | Importer: API UM → schemat v1 → SQS | `src/importer/` | Python, ECS | Krzysztof |
 | Tagger: DeepSeek → DynamoDB `codzis-events` | `run_task.py`, `tagger/` | Python, ECS | Krzysztof / Jeremi |
-| API klienta: `/api/me`, `/api/onboarding`, `/api/profile`, Eksploruj i społeczność: `/api/events` (+ `/stats`, `/{id}`, `/{id}/save`, `/{id}/attendees`), `/api/popular` | `src/client_api/` | Python, Lambda (zip) | Krzysztof |
+| API klienta: `/api/me` (+ `/api/me/photo`), `/api/onboarding`, `/api/profile`, Eksploruj i społeczność: `/api/events` (+ `/stats`, `/{id}`, `/{id}/save`, `/{id}/attendees`), `/api/popular` | `src/client_api/` | Python, Lambda (zip) | Krzysztof |
 | Rekomender RAG: `/api/recommendations` | `src/recommender_api/`, `recommender/` | Python, Lambda (kontener) | Jeremi |
 | API panelu partnera | `src/api/`, `src/dispatcher/` | Python, Lambda | Krzysztof |
 | **Front** (portal klienta + panel partnera) | `src/frontend/` | React + TS (Vite) | Dawid (klient) — **`src/frontend/AGENTS.md`** |
@@ -73,7 +73,7 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 
 ## Dane
 - **Kontrakt:** rekord wydarzenia „schemat v1” (`src/importer/schema.py`), taksonomia tagów (`tagger/prompt.py`), kroki ankiety (`src/client_api/onboarding.py` — dodanie pytania nie wymaga zmian we froncie), karta rekomendacji (`src/recommender_api/present.py`). Front odwzorowuje je w `src/frontend/client/lib/schemas.ts`.
-- **Tabele (DynamoDB) i jedyny zapisujący:** `codzis-events` — tagger (TTL `expiresAt` sam usuwa zakończone); `codzis-users` (klucz `userId` = `sub`) — client-api; `codzis-recommendations` (`userId` + `setKey`, TTL `expiresAt`) — rekomender; `codzis-attendance` (zapisy „idę”: `eventId` + `userId`, `name` = imię z tokenu, `savedAt`; GSI `byUser`; PITR) i `codzis-event-stats` (licznik `saves` per `eventId`, `kind = "event"`; GSI `bySaves`) — client-api, zawsze razem w jednej transakcji; dane testowe (`scripts/seed_demo.py`) tylko z `seed: true` (`userId` = `seed-<n>`), usuwalne w całości; zapisy na wygasłe wydarzenia zostają (analityka), przy odczycie je pomijamy; `submissions`, `partners` (`partnerId` = `sub` z puli partnerów przy Google, inaczej `apiKeyId`), `payments` — API partnera.
+- **Tabele (DynamoDB) i jedyny zapisujący:** `codzis-events` — tagger (TTL `expiresAt` sam usuwa zakończone); `codzis-users` (klucz `userId` = `sub`; dane konta w mapie `account`: nazwisko, data urodzenia, zdjęcie — `src/client_api/account.py`, zdjęcia w buckecie zdjęć pod `photos/avatars/`) — client-api; `codzis-recommendations` (`userId` + `setKey`, TTL `expiresAt`) — rekomender; `codzis-attendance` (zapisy „idę”: `eventId` + `userId`, `name` = imię z tokenu, `savedAt`; GSI `byUser`; PITR) i `codzis-event-stats` (licznik `saves` per `eventId`, `kind = "event"`; GSI `bySaves`) — client-api, zawsze razem w jednej transakcji; dane testowe (`scripts/seed_demo.py`) tylko z `seed: true` (`userId` = `seed-<n>`), usuwalne w całości; zapisy na wygasłe wydarzenia zostają (analityka), przy odczycie je pomijamy; `submissions`, `partners` (`partnerId` = `sub` z puli partnerów przy Google, inaczej `apiKeyId`), `payments` — API partnera.
 - **API UM** (`POST https://dane.um.warszawa.pl/api/action/<akcja>`) nie ma historii ani stronicowania i **blokuje adresy IP AWS** — import uruchamiamy z laptopa (`scripts/import-local.sh`).
 
 ## Nowe dane w DynamoDB (decyzja zespołu: zostajemy przy DynamoDB, bez Postgresa)

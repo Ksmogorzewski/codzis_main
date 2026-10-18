@@ -128,7 +128,10 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 
 | Endpoint | Opis |
 | --- | --- |
-| `GET /api/me` | profil (pierwsze wywołanie zakłada rekord), `needsOnboarding`, `onboardingOutdated` |
+| `GET /api/me` | profil (pierwsze wywołanie zakłada rekord i dane konta), `account`, `needsOnboarding`, `onboardingOutdated` |
+| `PUT /api/me` | `{"lastName", "birthDate"}` → dane konta (imię się nie zmienia); puste pole = usuń |
+| `POST /api/me/photo` | `{"contentType"}` → `{key, upload}`: presigned POST, przeglądarka wysyła zdjęcie prosto do S3 |
+| `PUT /api/me/photo` / `DELETE /api/me/photo` | `{"key"}` → wgrane zdjęcie staje się profilowym (stare usuwamy) / profil bez zdjęcia |
 | `GET /api/onboarding` | kafelki z pytaniami (ikony, limity wyborów, wymagane pola) |
 | `PUT /api/profile` | `{"answers": {"who": ["kids"], ...}}` → walidacja, preferencje, zapis |
 | `GET /api/recommendations` | `?when=today\|tomorrow\|weekend\|week\|date&date=2026-10-30&q=jazz&limit=16` → karty wydarzeń z uzasadnieniem (sekcja Rekomendacje); `202 {"status": "preparing"}` gdy zestaw właśnie się liczy, `409` bez profilu, `503` zanim powstanie indeks |
@@ -141,7 +144,8 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 
 | Pole | Opis |
 | --- | --- |
-| `email`, `displayName`, `picture`, `identityProvider` | z tokenu (`Google` / `Cognito`) |
+| `email`, `displayName`, `picture`, `identityProvider` | z tokenu (`Google` / `Cognito`); `displayName` = imię (z rejestracji albo `given_name` z Google), niezmienne |
+| `account` | dane konta z profilu: `lastName`, `birthDate` (RRRR-MM-DD), `photoUrl`, `photoKey`; zakładane przy pierwszym logowaniu (z Google nazwisko i zdjęcie), potem zmienia je tylko użytkownik; widzi je tylko on. Zdjęcia: bucket zdjęć, `photos/avatars/<userId>/…`, zmniejszone w przeglądarce do 512 px |
 | `onboarding` | `{version, completedAt, answers}`: surowe odpowiedzi; zmiana pytań zmienia `version` |
 | `preferences` | odpowiedzi przemapowane na słownik eventów: `themes`, `formats`, `audience`, `occasion`, `activityLevel`, `cost`, `mode`, `setting`, `registration`, `accessibility` (opcje taksonomii taggera), `interests` (kategorie kalendarza UM), `days`/`timeOfDay`/`weekend` (jak `facets` eventów), `district`, `travelRange`, `maxPrice`, `ageRange` |
 | `ragProfile` | tekst pod RAG, np. `interests=[Czas wolny, Kultura] \| district=Śródmieście \| cost=Bezpłatne \| mode=Stacjonarne \| audience=Dorośli (18-64) \| …` |
