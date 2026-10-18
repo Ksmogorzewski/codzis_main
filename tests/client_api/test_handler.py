@@ -246,7 +246,10 @@ def test_unexpected_error_returns_500_with_request_id(client_api, monkeypatch):
 
 
 def test_missing_claims_returns_500_not_crash(client_api):
-    response = client_api.handler({"routeKey": "GET /api/me", "requestContext": {"requestId": "r-2"}}, None)
+    event = api_event("GET /api/me")
+    del event["requestContext"]["authorizer"]
+    event["requestContext"]["requestId"] = "r-2"
+    response = client_api.handler(event, None)
     assert response["statusCode"] == 500
     assert json.loads(response["body"])["requestId"] == "r-2"
 
