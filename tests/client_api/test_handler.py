@@ -139,16 +139,41 @@ def test_put_profile_bad_body(client_api, raw, error):
     assert body == {"error": error}
 
 
-def test_onboarding_outdated_when_version_changed(client_api, users_table):
+def _set_onboarding(users_table, expression, values):
+    users_table.update_item(Key={"userId": "user-1"}, UpdateExpression=expression, ExpressionAttributeValues=values)
+
+
+def test_onboarding_not_outdated_when_only_version_changed(client_api, users_table):
+    # Inny hash pytań (np. usunięte pytanie, nowe pole opcjonalne), ale wszystkie wymagane pola mają odpowiedź
     call(client_api, "PUT /api/profile", {"answers": VALID_ANSWERS})
-    users_table.update_item(
-        Key={"userId": "user-1"},
-        UpdateExpression="SET onboarding.version = :v",
-        ExpressionAttributeValues={":v": "stara-wersja"},
-    )
+    _set_onboarding(users_table, "SET onboarding.version = :v", {":v": "stara-wersja"})
+    _, body = call(client_api, "GET /api/me")
+    assert body["needsOnboarding"] is False
+    assert body["onboardingOutdated"] is False
+
+
+def test_onboarding_outdated_when_required_question_unanswered(client_api, users_table):
+    # Ankieta sprzed dodania wymaganego pytania „travel”: brak odpowiedzi na nie
+    call(client_api, "PUT /api/profile", {"answers": VALID_ANSWERS})
+    _set_onboarding(users_table, "SET onboarding.version = :v REMOVE onboarding.answers.travel", {":v": "stara"})
     _, body = call(client_api, "GET /api/me")
     assert body["needsOnboarding"] is False
     assert body["onboardingOutdated"] is True
+
+
+def test_onboarding_not_outdated_by_removed_question(client_api, users_table):
+    # Odpowiedź na pytanie, którego już nie ma (np. dawne „Ile masz lat?”), nie dezaktualizuje profilu
+    call(client_api, "PUT /api/profile", {"answers": VALID_ANSWERS})
+    _set_onboarding(users_table, "SET onboarding.answers.age = :a", {":a": ["30-49"]})
+    _, body = call(client_api, "GET /api/me")
+    assert body["onboardingOutdated"] is False
+
+
+def test_onboarding_not_completed_is_not_outdated(client_api, users_table):
+    users_table.put_item(Item={"userId": "user-1", "onboarding": {"version": "stara", "answers": {}}})
+    _, body = call(client_api, "GET /api/me")
+    assert body["needsOnboarding"] is True
+    assert body["onboardingOutdated"] is False
 
 
 # --- rekomender w tle ---

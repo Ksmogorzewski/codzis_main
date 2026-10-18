@@ -24,7 +24,14 @@ import account
 from codzis_common.app import ApiError, logger
 from codzis_common.aws import AWS_CONFIG
 from codzis_common.http import now_iso
-from onboarding import build_steps, compute_preferences, onboarding_version, rag_profile, with_age
+from onboarding import (
+    build_steps,
+    compute_preferences,
+    missing_required,
+    onboarding_version,
+    rag_profile,
+    with_age,
+)
 
 USERS_TABLE = os.environ["USERS_TABLE"]
 DISTRICTS = json.loads(os.environ["DISTRICTS"])
@@ -156,8 +163,9 @@ def view(item: dict) -> dict:
         "account": account.view(item.get("account")),
         "identityProvider": item.get("identityProvider"),
         "needsOnboarding": not completed,
-        # pytania zmieniły się od ostatniego wypełnienia - warto poprosić o uzupełnienie
-        "onboardingOutdated": completed and onboarding.get("version") != ONBOARDING_VERSION,
+        # doszło wymagane pytanie bez odpowiedzi - front prosi o uzupełnienie (bez wymuszania ankiety);
+        # usunięte pytania, nowe etykiety/mapowania i nowe pola opcjonalne profilu nie dezaktualizują
+        "onboardingOutdated": completed and bool(missing_required(onboarding.get("answers") or {}, STEPS)),
         "profile": {
             "answers": onboarding.get("answers", {}),
             "completedAt": onboarding.get("completedAt"),

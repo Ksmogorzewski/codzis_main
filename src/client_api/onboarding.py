@@ -208,9 +208,17 @@ def build_steps(districts: list[str]) -> list[dict]:
 
 
 def onboarding_version(steps: list[dict]) -> str:
-    """Hash struktury pytań (id pól i opcji + mapowanie, bez etykiet). Zmiana -> profil do odświeżenia."""
+    """Hash struktury pytań (id pól i opcji + mapowanie, bez etykiet). Zapisywany z odpowiedziami; front klucza
+    nim ukrycie podpowiedzi o nowych pytaniach. O „nieaktualnym profilu” decyduje `missing_required`, nie hash."""
     shape = [(f["id"], f["type"], [(o["id"], o["maps"]) for o in f["options"]]) for s in steps for f in s["fields"]]
     return hashlib.sha1(json.dumps(shape, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:12]
+
+
+def missing_required(answers: dict, steps: list[dict]) -> list[str]:
+    """Id wymaganych pól bieżących kroków bez odpowiedzi w zapisanej ankiecie (nowe pytanie wymagane).
+
+    Usunięte pytania, zmiany etykiet i mapowań oraz nowe pola opcjonalne nie wymagają ponownej ankiety."""
+    return [f["id"] for s in steps for f in s["fields"] if f["required"] and not answers.get(f["id"])]
 
 
 def public_steps(steps: list[dict]) -> list[dict]:

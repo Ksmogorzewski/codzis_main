@@ -19,6 +19,7 @@ import { summary } from "@/lib/wizard";
 import { GRID, GridSkeleton } from "./card-skeleton";
 import { CategoryFilter } from "./category-filter";
 import { EventCard } from "./event-card";
+import { NewQuestionsBanner } from "./new-questions-banner";
 import { SearchBox } from "./search-box";
 import { WhenFilter } from "./when-filter";
 
@@ -183,6 +184,7 @@ export function HomeView() {
 
   return (
     <>
+      <NewQuestionsBanner />
       <Hero params={params} />
       <Filters search={search} go={go} />
 

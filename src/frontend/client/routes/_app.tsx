@@ -9,6 +9,7 @@ import { TabBar } from "@/components/layout/tab-bar";
 import { meQueryOptions } from "@/hooks/use-me.query";
 import { currentName } from "@/lib/auth";
 import { rememberTarget, requireSession, takeGoogleTarget } from "@/lib/login-redirect";
+import { onboardingRedirect } from "@/lib/onboarding-hint";
 import { namePrompt, useNamePrompt } from "@/lib/name-prompt";
 import { crewRootKey, friendCodeRootKey, friendsGoingKey, friendsKey, myCrewsKey } from "@/lib/query-keys";
 import { toggleDark, useDark } from "@/lib/theme";
@@ -22,9 +23,10 @@ export const Route = createFileRoute("/_app")({
     const target = takeGoogleTarget();
     if (!target) return;
     const me = await context.queryClient.fetchQuery(meQueryOptions).catch(() => null);
-    if (me && (me.needsOnboarding || me.onboardingOutdated)) {
+    const to = me && onboardingRedirect(me);
+    if (to) {
       rememberTarget(target);
-      throw redirect({ to: "/profil" });
+      throw redirect({ to });
     }
     if (target !== location.href) throw redirect({ href: target });
   },
