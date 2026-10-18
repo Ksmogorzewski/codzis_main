@@ -165,6 +165,19 @@ def test_friend_limit(friends, friends_table):
     assert error(friends.accept, KUBA, "Kuba", ALA, NOW).body["code"] == "friend_limit"
 
 
+def test_stale_invite_conflict_has_code(friends):
+    """Brak zaproszenia przy akceptacji w transakcji = 409 z kodem (bez kodu front przekierowuje do ankiety)."""
+    check = {
+        "ConditionCheck": {
+            "TableName": friends.FRIENDS_TABLE,
+            "Key": {"userId": ALA, "sk": f"in#{OLA}"},
+            "ConditionExpression": "attribute_exists(userId)",
+        }
+    }
+    err = error(friends._transact_or_fail, [check])
+    assert (err.status, err.body["code"]) == (409, "conflict")
+
+
 def test_rate_limit_wrong_codes(friends):
     ola_code = code_of(friends, OLA)
     for _ in range(5):

@@ -295,12 +295,12 @@ def _transact(items: list[dict]) -> list[bool]:
         failed = [r.get("Code") == "ConditionalCheckFailed" for r in e.response.get("CancellationReasons", [])]
         if any(failed):
             return failed
-        raise ApiError(409, "Konflikt zapisu, spróbuj ponownie") from e
+        raise ApiError(409, "Konflikt zapisu, spróbuj ponownie", code="conflict") from e
 
 
 def _transact_or_fail(items: list[dict]) -> None:
     if _transact(items):
-        raise ApiError(409, "Stan zaproszenia zmienił się, odśwież listę")
+        raise ApiError(409, "Stan zaproszenia zmienił się, odśwież listę", code="conflict")
 
 
 def _active(item: dict | None, now: int) -> bool:
