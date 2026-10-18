@@ -174,7 +174,7 @@ Testy frontendu: `npm --prefix src/frontend test`.
 
 Zakładka **Rekomendacje** w portalu klienta: wybór dnia (dziś / jutro / weekend / 7 dni / inny dzień do 60 dni naprzód), wyszukiwanie tekstem („jazz”, „joga”), kategorie i karty jak w makiecie (cena, miejsce, termin, „Pasuje: …”, Trasa, Bilet / Szczegóły). Silnik to pakiet [`recommender/`](recommender) z brancha `llm`, dostosowany do schematu v1 eventów.
 
-**Zapisane zestawy (tabela `codzis-recommendations`):** rekomendacje liczą się raz i są zapisywane per użytkownik (`userId` + okno, daty i fraza). Ponowne wejście, przełączanie dni i odświeżanie strony czytają zapis.
+**Zapisane zestawy (tabela `codzis-recommendations`):** rekomendacje liczą się raz i są zapisywane per użytkownik (`userId` + okno i daty). Ponowne wejście, przełączanie dni i odświeżanie strony czytają zapis. **Wyszukiwanie frazą jest wspólne dla dzielnicy:** zestaw z `q` ma `userId` = `search#<dzielnica z profilu>` i liczy się tylko z frazy, dzielnicy i terminu (bez reszty profilu, `user_context.search_prefs`). Pierwsza osoba z dzielnicy liczy go (wektory od razu, potem AI w tle), każda następna dostaje gotowy wynik z AI od razu, także na zimnej instancji. Fraza w kluczu: małe litery, pojedyncze spacje; zestaw jest świeży 12 h (`RESULTS_MAX_AGE`), potem przelicza się w tle przy wejściu.
 - **Z góry** liczą się zestawy na dziś, jutro i najbliższy weekend:
   - w nocy dla osób aktywnych w ostatnich 14 dniach (`recommender_precompute_schedule`, domyślnie 3:00 UTC);
   - od razu po zmianie preferencji (client-api wywołuje rekomender asynchronicznie);

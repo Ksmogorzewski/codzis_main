@@ -3,6 +3,10 @@
 Klucz: userId + setKey = rodzaj okna, daty, limit i wpisana fraza, np.
 "today#2026-10-17#2026-10-17#12#" albo "date#2026-10-30#2026-10-30#12#jazz".
 
+Zestawy z frazą (wyszukiwarka) są wspólne dla dzielnicy: userId = "search#<dzielnica>" (search_owner),
+liczone tylko z frazy, dzielnicy i terminu (user_context.search_prefs, bez profilu) - kto pierwszy wyszuka
+frazę, liczy ją dla wszystkich z tej dzielnicy, kolejni dostają gotowy zestaw od razu.
+
 Rekord: body (zestaw kart jako JSON, z resultsVersion), prefsHash (odcisk preferencji, dla których
 policzony), generatedAt, expiresAt (TTL: dzień po końcu okna). Podczas liczenia na tym samym rekordzie
 leży claim (claimHash + claimedAt): inni nie liczą drugi raz, a stary zestaw dalej się wyświetla.
@@ -30,6 +34,14 @@ RESULTS_VERSION = 3
 # do profilu i wszyscy czekają na nowe liczenie zamiast widzieć dotychczasowe propozycje).
 PREFS_HASH_VERSION = 1
 CLAIM_SECONDS = 180  # liczenie dwóch faz (wektory + AI) trwa zwykle do minuty
+
+
+SEARCH_PREFIX = "search#"
+
+
+def search_owner(district: str | None) -> str:
+    """Właściciel wspólnego zestawu frazy: dzielnica z profilu ("-" bez dzielnicy). Nie koliduje z userId (sub)."""
+    return f"{SEARCH_PREFIX}{district or '-'}"
 
 
 def set_key(when: str, span: tuple[date, date], query: str, limit: int) -> str:
