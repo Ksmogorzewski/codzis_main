@@ -1,45 +1,21 @@
 """Handler API panelu partnera (src/api/handler.py) na atrapach DynamoDB i SQS."""
 
 import sys
-from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 
-from tests.api.conftest import PARTNER_KEY, PARTNER_NAME, REQUEST_ID, STARTER_CREDITS, call
+from tests.api.conftest import (
+    GOOGLE,
+    PARTNER_KEY,
+    PARTNER_NAME,
+    REQUEST_ID,
+    STARTER_CREDITS,
+    call,
+    future,
+    valid_event,
+)
 from tests.support import taxonomy
-
-WARSAW = "+02:00"
-
-
-def future(days=7, hour=19):
-    day = datetime.now(UTC) + timedelta(days=days)
-    return f"{day:%Y-%m-%d}T{hour:02d}:00:00{WARSAW}"
-
-
-def valid_event(**overrides):
-    body = {
-        "title": "  Koncert w parku ",
-        "lead": "Muzyka na żywo",
-        "text": "Pierwszy akapit\nz nową linią\n\nDrugi <b>akapit</b>",
-        "venue": "Park Skaryszewski",
-        "street": "al. Zieleniecka",
-        "streetNumber": "1",
-        "url": "https://example.com/koncert",
-        "cost": "Płatne",
-        "registration": "Wymagany bilet",
-        "setting": "Na zewnątrz",
-        "audience": ["Rodziny / wszystkie grupy", "Dorośli (18-64)", "Dorośli (18-64)"],
-        "priceMin": "20",
-        "priceMax": 35.5,
-        "category": "Kultura",
-        "district": "Wola",
-        "startsAt": future(hour=19),
-        "endsAt": future(hour=21),
-        "photoContentType": "image/jpeg",
-    }
-    body.update(overrides)
-    return body
 
 
 def post_event(partner_api, **overrides):
@@ -81,8 +57,6 @@ def test_get_me_unknown_key_uses_key_id_as_name(partner_api):
 
 
 # --- logowanie Google (samoobsługa: konto Google = konto organizatora) ---
-
-GOOGLE = {"sub": "5f1c2e7a-google", "name": "  Anna   Nowak ", "email": "anna@example.com", "email_verified": "true"}
 
 
 def test_google_first_login_creates_partner_from_token(partner_api, aws):

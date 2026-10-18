@@ -5,8 +5,7 @@ import json
 
 import pytest
 
-from tests.api.conftest import PARTNER_KEY, PARTNER_NAME, REQUEST_ID, call, rest_event
-from tests.api.test_handler import GOOGLE, future, valid_event
+from tests.api.conftest import GOOGLE, PARTNER_KEY, PARTNER_NAME, REQUEST_ID, call, future, rest_event, valid_event
 
 FIELDS_ERROR = "Niepoprawne lub brakujące pola"
 PACKAGES_ERROR = {"error": "Nieznany pakiet", "allowed": ["starter", "standard"]}
