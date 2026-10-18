@@ -11,7 +11,7 @@ export function SurveySkeleton() {
       <Skeleton className="h-3 rounded-full" />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {["a", "b", "c", "d"].map((k) => (
-          <Skeleton key={k} className="h-[190px] rounded-2xl md:h-[220px]" />
+          <Skeleton key={k} className="h-[190px] md:h-[220px]" />
         ))}
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { getRouteApi, Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,10 +24,7 @@ export function MyEventsView() {
 
   return (
     <>
-      <header className="flex flex-col gap-1">
-        <h1 className="text-[32px] leading-[1.05] font-extrabold tracking-[-0.03em] md:text-[40px]">Twoje wydarzenia</h1>
-        <p className="text-lg text-muted-foreground">Na co się zapisujesz i czaty ekip, z którymi idziesz.</p>
-      </header>
+      <PageHeader title="Twoje wydarzenia">Na co się zapisujesz i czaty ekip, z którymi idziesz.</PageHeader>
       {upcoming.length + past.length === 0 ? (
         <EmptyState />
       ) : (
@@ -72,7 +70,7 @@ function Section({ id, title, items, now, children }: SectionProps) {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-input px-5 py-8 text-center">
+    <div className="flex flex-col items-center gap-2.5 border-2 border-dashed border-input px-5 py-8 text-center">
       <Icon name="event_available" size={40} className="text-muted-foreground" />
       <p className="text-lg font-bold">Nie masz jeszcze zapisów</p>
       <p className="max-w-md text-meta text-muted-foreground">
@@ -92,7 +90,7 @@ export function MyEventsSkeleton() {
       <Skeleton className="h-10 w-[60%]" />
       <div className={LIST} aria-hidden="true">
         {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-[232px] rounded-2xl" />
+          <Skeleton key={i} className="h-[232px]" />
         ))}
       </div>
     </>

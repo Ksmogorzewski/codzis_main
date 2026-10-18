@@ -1,15 +1,12 @@
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
-// Karta bez cienia: od tła odróżnia ją kolor powierzchni i cienka ramka (cień tylko na sheet/toast).
+// Karta jak arkusz plakatu: ostre rogi i mocna linia atramentu, bez cienia (cień tylko na sheet/toast).
 function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card"
-      className={cn(
-        "flex flex-col overflow-hidden rounded-2xl border bg-card text-card-foreground",
-        className,
-      )}
+      className={cn("flex flex-col overflow-hidden border-2 border-input bg-card text-card-foreground", className)}
       {...props}
     />
   );

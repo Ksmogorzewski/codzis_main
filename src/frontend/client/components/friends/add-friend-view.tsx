@@ -28,7 +28,7 @@ export function AddFriendView() {
   if (!code) return <NoSuchCode />;
   if (overview.data?.code === code) return <OwnCode />;
   if (preview.isError) return <PreviewError error={preview.error} />;
-  if (!preview.data) return <Skeleton className="mx-auto h-[320px] w-full max-w-[440px] rounded-2xl" />;
+  if (!preview.data) return <Skeleton className="mx-auto h-[320px] w-full max-w-[440px]" />;
   return <Invite code={code} person={preview.data} overview={overview.data} />;
 }
 
@@ -113,10 +113,10 @@ type MessageProps = { icon: string; title: string; description?: string; childre
 function Message({ icon, title, description, children }: MessageProps) {
   return (
     <Card className="mx-auto w-full max-w-[440px] items-center gap-4 p-6 text-center">
-      <span className="grid size-16 place-items-center rounded-full bg-primary-soft text-primary-ink">
+      <span className="grid size-16 place-items-center bg-foreground text-background">
         <Icon name={icon} size={32} />
       </span>
-      <h1 className="text-[25px] leading-tight font-extrabold tracking-[-0.02em] text-balance">{title}</h1>
+      <h1 className="font-display text-[30px] leading-[0.95] font-black text-balance uppercase [font-stretch:66%]">{title}</h1>
       {description && <p className="text-base text-muted-foreground text-pretty">{description}</p>}
       <div className="flex w-full flex-col gap-2">{children}</div>
     </Card>

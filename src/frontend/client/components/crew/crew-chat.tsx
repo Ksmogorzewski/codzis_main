@@ -96,11 +96,11 @@ export function CrewChat({ id, crew, info }: Props) {
             role="group"
             aria-labelledby="icebreaker-title"
             className={cn(
-              "flex w-full max-w-md flex-col items-center gap-3 rounded-2xl border bg-card px-5 py-6 text-center shadow-lg transition-transform duration-250",
+              "flex w-full max-w-md flex-col items-center gap-3 border-2 border-input bg-card px-5 py-6 text-center transition-transform duration-250",
               !locked && "translate-y-4",
             )}
           >
-            <span className="flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary-ink">
+            <span className="flex size-12 items-center justify-center bg-foreground text-background">
               <Icon name="forum" size={24} />
             </span>
             <h2 id="icebreaker-title" className="text-title font-bold">
@@ -143,7 +143,7 @@ export function CrewChat({ id, crew, info }: Props) {
           <Button
             type="submit"
             size="icon"
-            className="size-12 rounded-md"
+            className="size-12"
             aria-label="Wyślij"
             disabled={pending !== null}
             aria-busy={pending !== null || undefined}

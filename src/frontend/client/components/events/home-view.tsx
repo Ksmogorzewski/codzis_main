@@ -10,7 +10,7 @@ import { useColdStart, useRecommendations } from "@/hooks/use-recommendations.qu
 import { isNeedsOnboarding } from "@/lib/api";
 import { withStats } from "@/lib/community";
 import { filterByCategory } from "@/lib/categories";
-import { areaLabel, countLabel, dateTitle, dayLine, readAtLabel, WHEN_OPTIONS } from "@/lib/events";
+import { areaLabel, countLabel, dateTitle, dayLine, posterTitle, readAtLabel, WHEN_OPTIONS } from "@/lib/events";
 import { startLocation, useLocation } from "@/lib/location";
 import type { When } from "@/lib/schemas";
 import { DEFAULT_SEARCH, type HomeSearch, type RecommendationsParams, recommendationsParams, rememberSearch } from "@/lib/search";
@@ -49,24 +49,54 @@ function useProfileSummary(): string | null {
   return labels.join(" · ") || "jeszcze nieuzupełniony";
 }
 
+/** Wielkie słowo nagłówka: „dziś?” prawie na całą szerokość, dłuższe („tym tygodniu?”) mniejsze. */
+function bigSize(big: string): string {
+  if (big.length <= 6) return "text-[112px] md:text-[200px]";
+  if (big.length <= 9) return "text-[88px] md:text-[160px]";
+  return "text-[60px] md:text-[112px]";
+}
+
+/** Nagłówek-plakat: czerwone pole z datą i wielkim „dziś?”, obok czarne pole z profilem. */
 function Hero({ params }: { params: RecommendationsParams }) {
   const profile = useProfileSummary();
   const title = params.when === "date" && params.date ? dateTitle(params.date, new Date()) : TITLE[params.when === "date" ? "today" : params.when];
+  const { lead, big } = posterTitle(title);
   return (
-    <section className="flex flex-col gap-1.5 rounded-3xl bg-primary p-6 text-primary-foreground">
-      <p className="text-meta font-semibold opacity-85">{dayLine(new Date())}</p>
-      <h1 className="text-[32px] leading-[1.05] font-extrabold tracking-[-0.03em] text-balance md:text-[40px]">
-        {title}
-      </h1>
-      <p className="mt-1 text-lg opacity-90">
-        Propozycje dla profilu: {profile ?? "…"}{" "}
+    <section className="flex flex-wrap border-2 border-input">
+      <div className="min-w-0 flex-[999_1_520px] overflow-hidden bg-poster-kultura px-5 pt-5 pb-3 text-poster-kultura-foreground md:px-7 md:pt-6 md:pb-4">
+        <p className="text-[13px] font-bold tracking-[0.12em] uppercase md:text-[15px]">{dayLine(new Date())}</p>
+        <h1 className="mt-3 break-words">
+          {lead && (
+            <span className="block font-display text-[34px] leading-none font-bold tracking-[-0.02em] [font-stretch:115%] md:text-[46px]">
+              {lead}
+            </span>
+          )}
+          <span
+            // rozmiar przed leading: tailwind-merge usuwa leading-* stojące przed klasą rozmiaru tekstu
+            className={cn(
+              bigSize(big),
+              // mt w em: miejsce na kreskę nad „Ś” przy ciasnej interlinii
+              "mt-[0.2em] block font-display leading-[0.82] font-black tracking-[-0.02em] uppercase [font-stretch:55%]",
+            )}
+          >
+            {big}
+          </span>
+        </h1>
+      </div>
+      <div className="flex flex-[1_1_300px] flex-col justify-between gap-6 bg-poster-ink px-5 py-5 text-poster-ink-foreground md:px-7 md:py-6">
+        <div>
+          <p className="text-[13px] font-bold tracking-[0.12em] text-poster-rekreacja uppercase">Dla profilu</p>
+          <p className="mt-2 font-display text-[28px] leading-[1.02] font-extrabold text-balance [font-stretch:90%] md:text-[34px]">
+            {profile ?? "…"}
+          </p>
+        </div>
         <Link
           to="/profil"
-          className="inline-flex min-h-11 items-center rounded-sm font-bold underline underline-offset-2 outline-none focus-visible:ring-3 focus-visible:ring-primary-foreground"
+          className="inline-flex min-h-11 items-center self-start font-bold underline decoration-2 underline-offset-4 outline-none hover:text-poster-rekreacja focus-visible:ring-3 focus-visible:ring-poster-ink-foreground"
         >
-          edytuj
+          Zmień odpowiedzi
         </Link>
-      </p>
+      </div>
     </section>
   );
 }
@@ -94,7 +124,7 @@ function Filters({ search, go }: { search: HomeSearch; go: (next: Partial<HomeSe
 function EmptyState({ search }: { search: HomeSearch }) {
   const filtered = search.q !== "" || search.cat !== "all";
   return (
-    <div className="flex flex-col items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-input px-5 py-8 text-center">
+    <div className="flex flex-col items-center gap-2.5 border-2 border-dashed border-input px-5 py-8 text-center">
       <Icon name="event_busy" size={40} className="text-muted-foreground" />
       <p className="text-lg font-bold">Brak propozycji dla tych filtrów</p>
       {filtered ? (
@@ -147,7 +177,7 @@ function Loading({ coldStart }: { coldStart: boolean }) {
 
 function NeedsProfile({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-input px-5 py-8 text-center">
+    <div className="flex flex-col items-center gap-2.5 border-2 border-dashed border-input px-5 py-8 text-center">
       <Icon name="tune" size={40} className="text-muted-foreground" />
       <p className="text-lg font-bold">{message}</p>
       <Button asChild size="sm">

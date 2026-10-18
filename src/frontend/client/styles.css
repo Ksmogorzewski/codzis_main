@@ -5,77 +5,104 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Tokeny WarsawNow (z mockupu [data-wn]) pod nazwami shadcn.
- * primary = granat, brand/destructive = czerwień Warszawy, success/warning tylko na znaczniki stanu.
+ * Tokeny WarsawNow – kierunek „Plakat” (polska szkoła plakatu): papier, atrament, płaskie kolory.
+ * Nazwy shadcn zostają: primary = atrament (główne akcje), brand = czerwień Warszawy,
+ * poster-* = kolory kategorii na plakatach kart (kultura / sport / rekreacja),
+ * input = mocna linia (ramki pól i kart), border = cienka linia podziału.
+ * success/warning tylko na znaczniki stanu.
+ * Kolory jak farba drukarska na szarym papierze offsetowym, nie czyste RGB: przygaszone (ok. 60–70% nasycenia),
+ * odcień znaku wodnego tylko o krok ciemniejszy od pola, ramki w miękkim atramencie zamiast czerni.
  */
 :root {
-  --radius: 1rem;
+  --radius: 0px;
 
-  --background: #f6f5f1;
-  --foreground: #141a33;
-  --card: #ffffff;
-  --card-foreground: #141a33;
-  --popover: #ffffff;
-  --popover-foreground: #141a33;
+  --background: #edece8;
+  --foreground: #1c1c1f;
+  --card: #f8f8f5;
+  --card-foreground: #1c1c1f;
+  --popover: #f8f8f5;
+  --popover-foreground: #1c1c1f;
 
-  --primary: #1d2a5c;
-  --primary-foreground: #ffffff;
-  --primary-soft: #e6e9f4;
-  --primary-ink: #1d2a5c;
-  --primary-deep: #141d45;
+  --primary: #1c1c1f;
+  --primary-foreground: #f4f3ef;
+  --primary-soft: #e2e1dc;
+  --primary-ink: #1c1c1f;
+  --primary-deep: #1c1c1f;
 
-  --secondary: #efeee9;
-  --secondary-foreground: #141a33;
-  --muted: #efeee9;
-  --muted-foreground: #4b5169;
-  --accent: #efeee9;
-  --accent-foreground: #141a33;
+  --secondary: #e2e1dc;
+  --secondary-foreground: #1c1c1f;
+  --muted: #e2e1dc;
+  --muted-foreground: #58585d;
+  --accent: #e2e1dc;
+  --accent-foreground: #1c1c1f;
 
-  --brand: #c8102e;
+  --brand: #ad353b;
   --brand-foreground: #ffffff;
-  --brand-soft: #fbe7ea;
-  --brand-ink: #a10d25;
-  --brand-on-dark: #ff6b7f;
+  --brand-soft: #f1dfdd;
+  --brand-ink: #922b30;
   --destructive: var(--brand);
   --destructive-foreground: var(--brand-foreground);
 
+  --poster-kultura: #a8353b;
+  --poster-kultura-shade: #973036;
+  --poster-kultura-foreground: #ffffff;
+  --poster-sport: #34508f;
+  --poster-sport-shade: #2e4780;
+  --poster-sport-foreground: #ffffff;
+  --poster-rekreacja: #c79a45;
+  --poster-rekreacja-shade: #b68b3b;
+  --poster-rekreacja-foreground: #1c1c1f;
+  /* czarne pole plakatu (profil w nagłówku) – czarne także w trybie ciemnym */
+  --poster-ink: #1c1c1f;
+  --poster-ink-foreground: #f4f3ef;
+  /* żółty akcent na czerwieni (słowo „dziś” na logowaniu) */
+  --poster-highlight: #ecc56a;
+
   --success: #1f7a44;
-  --success-soft: #e2f2e7;
+  --success-soft: #dcebdc;
   --success-ink: #17633a;
   --warning: #b07400;
   --warning-soft: #fcf0d4;
   --warning-ink: #7a5000;
 
-  --border: #e0ded7;
-  --input: #c9c6bd;
-  --ring: #1d2a5c;
-  --overlay: rgb(8 12 28 / 0.55);
+  --border: #d6d5cf;
+  --input: #3d3d42;
+  --ring: #34508f;
+  --overlay: rgb(28 28 31 / 0.6);
 }
 
 .dark {
-  --background: #0e1222;
-  --foreground: #eef0f7;
-  --card: #161b30;
-  --card-foreground: #eef0f7;
-  --popover: #161b30;
-  --popover-foreground: #eef0f7;
+  --background: #151517;
+  --foreground: #ebeae6;
+  --card: #1e1e21;
+  --card-foreground: #ebeae6;
+  --popover: #1e1e21;
+  --popover-foreground: #ebeae6;
 
-  --primary: #4f63c9;
-  --primary-foreground: #ffffff;
-  --primary-soft: #232b4f;
-  --primary-ink: #b4c0f5;
-  --primary-deep: #0a0f24;
+  --primary: #ebeae6;
+  --primary-foreground: #1c1c1f;
+  --primary-soft: #2a2a2e;
+  --primary-ink: #ebeae6;
+  --primary-deep: #0e0e10;
 
-  --secondary: #20263f;
-  --secondary-foreground: #eef0f7;
-  --muted: #20263f;
-  --muted-foreground: #a8aec4;
-  --accent: #20263f;
-  --accent-foreground: #eef0f7;
+  --secondary: #2a2a2e;
+  --secondary-foreground: #ebeae6;
+  --muted: #2a2a2e;
+  --muted-foreground: #a9a8a3;
+  --accent: #2a2a2e;
+  --accent-foreground: #ebeae6;
 
-  --brand: #d42a43;
-  --brand-soft: #3a1720;
-  --brand-ink: #ff8a9a;
+  --brand: #c0444a;
+  --brand-soft: #3a1d1f;
+  --brand-ink: #f19a9c;
+
+  --poster-kultura: #9a3439;
+  --poster-kultura-shade: #8a2e33;
+  --poster-sport: #3a5596;
+  --poster-sport-shade: #324b85;
+  --poster-rekreacja: #b88f42;
+  --poster-rekreacja-shade: #a6803a;
+  --poster-ink: #0e0e10;
 
   --success: #3fae6a;
   --success-soft: #14301f;
@@ -84,31 +111,33 @@
   --warning-soft: #33270c;
   --warning-ink: #f5c766;
 
-  --border: #272e4a;
-  --input: #3a4366;
-  --ring: #8093e6;
-  --overlay: rgb(2 4 12 / 0.7);
+  --border: #34343a;
+  --input: #5c5c63;
+  --ring: #9fb2e6;
+  --overlay: rgb(0 0 0 / 0.7);
 }
 
 @theme inline {
-  --font-sans: "Onest", ui-sans-serif, system-ui, sans-serif;
+  /* Tekst: Familjen Grotesk. Nagłówki-plakaty i liczby: Anybody (oś szerokości 50–150%, [font-stretch:…]). */
+  --font-sans: "Familjen Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Anybody", "Familjen Grotesk", ui-sans-serif, sans-serif;
 
-  /* Desktop od 860 px, jak w mockupie. */
+  /* Desktop od 860 px. */
   --breakpoint-md: 53.75rem;
 
-  /* Metadane 15 px i tytuł karty 19 px z mockupu. */
+  /* Metadane 15 px i tytuł karty 19 px. */
   --text-meta: 0.9375rem;
   --text-meta--line-height: 1.35;
   --text-title: 1.1875rem;
   --text-title--line-height: 1.25;
 
-  /* Pola i duże przyciski 16, karty i kafelki 24, hero i panel 28, pigułki rounded-full. */
-  --radius-sm: calc(var(--radius) - 6px);
-  --radius-md: calc(var(--radius) - 4px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 2px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
+  /* Plakat: ostre rogi wszędzie; rounded-full zostaje tylko dla kółek (znaczniki ankiety). */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -131,9 +160,20 @@
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-soft: var(--brand-soft);
   --color-brand-ink: var(--brand-ink);
-  --color-brand-on-dark: var(--brand-on-dark);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-poster-kultura: var(--poster-kultura);
+  --color-poster-kultura-shade: var(--poster-kultura-shade);
+  --color-poster-kultura-foreground: var(--poster-kultura-foreground);
+  --color-poster-sport: var(--poster-sport);
+  --color-poster-sport-shade: var(--poster-sport-shade);
+  --color-poster-sport-foreground: var(--poster-sport-foreground);
+  --color-poster-rekreacja: var(--poster-rekreacja);
+  --color-poster-rekreacja-shade: var(--poster-rekreacja-shade);
+  --color-poster-rekreacja-foreground: var(--poster-rekreacja-foreground);
+  --color-poster-ink: var(--poster-ink);
+  --color-poster-ink-foreground: var(--poster-ink-foreground);
+  --color-poster-highlight: var(--poster-highlight);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-success-ink: var(--success-ink);

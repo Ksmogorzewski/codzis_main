@@ -75,6 +75,22 @@ export function slotLabel(slot: Slot | null, now: Date): string | null {
   return cap(`${dayLabel(startDay, now)}, ${timeFormat.format(start)}${end ? `–${timeFormat.format(end)}` : ""}`);
 }
 
+// "19:00" – godzina startu w tle plakatu karty; bez godziny dla całego dnia, wielodniowych i cyklicznych bez planu
+export function posterTime(slot: Slot | null): string | null {
+  if (!slot) return null;
+  if (slot.recurring) return slot.start ?? null;
+  if (slot.allDay) return null;
+  const start = new Date(slot.start);
+  if (slot.end && warsawDate(new Date(slot.end)) !== warsawDate(start)) return null;
+  return timeFormat.format(start);
+}
+
+// "Co robimy w weekend?" → mała linia "Co robimy w" i wielkie "weekend?" (nagłówek-plakat ekranu głównego)
+export function posterTitle(title: string): { lead: string; big: string } {
+  const m = /^(Co robimy(?: w)?) (.+)$/.exec(title);
+  return m ? { lead: m[1]!, big: m[2]! } : { lead: "", big: title };
+}
+
 const money = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(".", ","));
 
 // Cena zadeklarowana przez organizatora, a bez niej koszt z tagów
@@ -135,13 +151,6 @@ export function areaLabel(r: Pick<Recommendations, "area" | "district">): string
 export const countLabel = (n: number) => plural(n, "propozycja", "propozycje", "propozycji");
 
 export const eventCountLabel = (n: number) => plural(n, "wydarzenie", "wydarzenia", "wydarzeń");
-
-// Kolor zastępczej "fotki" (paski jak w makiecie), stały dla danego eventu
-export function tint(id: string): string {
-  let hash = 0;
-  for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
-  return `oklch(0.8 0.08 ${hash} / 0.55)`;
-}
 
 // --- szczegóły wydarzenia ---
 

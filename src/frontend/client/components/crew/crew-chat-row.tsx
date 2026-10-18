@@ -21,7 +21,7 @@ export function CrewChatRow({ id }: { id: string }) {
       params={{ id }}
       className="flex min-h-16 items-center gap-3 border-t px-4 py-3 outline-none transition-colors duration-200 hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-inset"
     >
-      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-soft text-primary-ink">
+      <span className="grid size-10 shrink-0 place-items-center bg-foreground text-background">
         <Icon name="forum" size={22} filled />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">

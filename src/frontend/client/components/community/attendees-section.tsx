@@ -23,7 +23,7 @@ export function AttendeesSection({ id }: { id: string }) {
       {!data ? (
         <div aria-hidden="true" className="flex flex-col gap-2">
           <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-9 w-[70%] rounded-full" />
+          <Skeleton className="h-9 w-[70%]" />
         </div>
       ) : (
         <>
@@ -37,8 +37,8 @@ export function AttendeesSection({ id }: { id: string }) {
                   // osoba = userId (imiona się powtarzają); mój wpis dodany optymistycznie nie ma jeszcze id
                   key={personKey(p, i)}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-base font-semibold",
-                    (p.isMe || p.isFriend) && "bg-primary-soft text-primary-ink",
+                    "flex items-center gap-1.5 bg-secondary px-3 py-1.5 text-base font-semibold",
+                    (p.isMe || p.isFriend) && "bg-foreground text-background",
                   )}
                 >
                   {p.isFriend && !p.isMe && <Icon name="diversity_3" size={18} filled />}

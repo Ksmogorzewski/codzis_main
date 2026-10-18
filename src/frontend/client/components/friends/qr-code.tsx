@@ -19,7 +19,7 @@ export function QrCode({ value, label, className }: { value: string; label: stri
       aria-label={label}
       viewBox={`0 0 ${size} ${size}`}
       shapeRendering="crispEdges"
-      className={cn("aspect-square rounded-xl bg-white", className)}
+      className={cn("aspect-square bg-white", className)}
     >
       <path d={d} className="fill-primary-deep" />
     </svg>

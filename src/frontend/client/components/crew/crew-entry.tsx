@@ -29,7 +29,7 @@ export function CrewEntry({ id, saved }: Props) {
   const crew = useMyCrews().data?.items.find((c) => c.eventId === id);
 
   return (
-    <Card className="gap-3 p-5">
+    <Card className="gap-3 bg-secondary p-5">
       <h2 className="flex items-center gap-2 text-xl font-extrabold">
         <Icon name="forum" size={24} filled className="text-primary-ink" />
         Ekipa na to wydarzenie
