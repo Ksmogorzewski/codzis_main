@@ -1,12 +1,13 @@
 """Eksploruj, zapisy, lista zapisanych i Popularne (handler API klienta) na atrapie DynamoDB."""
 
+import json
 from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from tests.client_api.conftest import call
+from tests.client_api.conftest import api_event, call
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 NOW = datetime(2026, 10, 14, 12, 0, tzinfo=WARSAW)  # środa; najbliższy tydzień 14-20.10
@@ -130,6 +131,25 @@ def test_event_detail_404(api):
     status, body = call(api, "GET /api/events/{id}", path={"id": "nie-ma"})
     assert status == 404
     assert body == {"error": "Nie znaleziono wydarzenia"}
+
+
+def _raw_path_call(api, method, raw_path):
+    """Żądanie z surowym (zakodowanym) adresem, jak go wysłał klient - router Powertools widzi rawPath."""
+    event = api_event(f"{method} /api/events/{{id}}", path={"id": "x"})
+    event["rawPath"] = event["requestContext"]["http"]["path"] = raw_path
+    response = api.handler(event, None)
+    return response["statusCode"], json.loads(response["body"])
+
+
+def test_event_detail_percent_encoded_id_is_decoded(api):
+    status, body = _raw_path_call(api, "GET", "/api/events/%74omorrow")  # %74 = "t", jak pathParameters z API GW
+    assert (status, body["id"]) == (200, "tomorrow")
+
+
+@pytest.mark.parametrize("raw_id", ["tom%2Forrow", "tomorrow%0A", "tomorrow%20"])
+def test_event_detail_encoded_bad_id_is_404(api, raw_id):
+    status, body = _raw_path_call(api, "GET", f"/api/events/{raw_id}")
+    assert (status, body) == (404, {"error": "Nie znaleziono wydarzenia"})
 
 
 # --- PUT/DELETE /api/events/{id}/save ---

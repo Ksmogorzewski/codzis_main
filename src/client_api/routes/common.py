@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Any
+from urllib.parse import unquote
 
 from aws_lambda_powertools.event_handler.router import APIGatewayHttpRouter
 from pydantic import TypeAdapter, ValidationError
@@ -32,9 +33,12 @@ def query(router: APIGatewayHttpRouter) -> dict[str, str]:
 
 
 def path_id(value: str, message: str = NOT_FOUND) -> str:
-    """Parametr ścieżki przez schemas.PathId; zły -> 404 `message`, zanim trafi jako klucz do DynamoDB."""
+    """Parametr ścieżki przez schemas.PathId; zły -> 404 `message`, zanim trafi jako klucz do DynamoDB.
+
+    Router dostaje segment z rawPath (zakodowany, np. "%41"), więc najpierw go dekodujemy - jak `pathParameters`
+    z API Gateway przed refaktorem."""
     try:
-        return _path_param.validate_python(value)
+        return _path_param.validate_python(unquote(value))
     except ValidationError:
         raise ApiError(404, message) from None
 
