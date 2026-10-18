@@ -4,6 +4,7 @@ import { GridSkeleton } from "@/components/events/card-skeleton";
 import { GenericRouteError } from "@/components/layout/route-error";
 import { meQueryOptions } from "@/hooks/use-me.query";
 import { onboardingQueryOptions } from "@/hooks/use-onboarding.query";
+import { onboardingRedirect } from "@/lib/onboarding-hint";
 import { DEFAULT_SEARCH, HomeSearchSchema } from "@/lib/search";
 
 // Ekran główny 1a Karty. Filtry w adresie (when, q, cat); domyślne wartości nie zaśmiecają adresu.
@@ -14,12 +15,12 @@ export const Route = createFileRoute("/_app/")({
   search: { middlewares: [stripSearchParams(DEFAULT_SEARCH)] },
   loader: async ({ context }) => {
     void context.queryClient.prefetchQuery(onboardingQueryOptions);
-    // Przywrócona sesja: jak po logowaniu, profil decyduje o ankiecie. Błąd /api/me nie blokuje ekranu.
+    // Przywrócona sesja: jak po logowaniu, ankieta tylko dla konta bez profilu (nowe pytania = baner na ekranie).
+    // Błąd /api/me nie blokuje ekranu.
     try {
       const me = await context.queryClient.ensureQueryData(meQueryOptions);
-      if (me.needsOnboarding) throw redirect({ to: "/profil" });
-      if (me.onboardingOutdated) throw redirect({ to: "/profil" }); // toast pokazuje /profil
-
+      const to = onboardingRedirect(me);
+      if (to) throw redirect({ to });
     } catch (e) {
       if (isRedirect(e)) throw e;
     }

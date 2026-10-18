@@ -54,7 +54,8 @@ lib/                     config (APP_CONFIG), auth (Cognito; Google: kod + PKCE 
                          events (formaty terminów/cen), explore (filtry, sortowanie), community (zapisy: stan
                          optymistyczny, podpisy), my-events (Twoje: grupy, wypisanie), crew-chat + crew-demo + crew-inbox
                          (czat ekipy i nieprzeczytane, DEMO), friends (normalizeCode jak backend, inviteLink, friendsLine,
-                         qrPath), login-redirect (powrót po logowaniu), name-prompt (prośba o imię po 409), maps (osadzona mapa
+                         qrPath), login-redirect (powrót po logowaniu), onboarding-hint (ankieta wymuszana tylko bez profilu; nowe wymagane pytania = baner
+                         na „Dla Ciebie”, „Później” per wersja pytań), name-prompt (prośba o imię po 409), maps (osadzona mapa
                          z trasą), nav, recommendations-cache, theme, storage, utils (cn)
 styles.css               Tailwind + tokeny (jasny i ciemny) — jedyny plik CSS
 public/                  ikony i manifest PWA (config.js tylko lokalnie)

@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, type ReactNode, useState } from "react";
-import { toast } from "sonner";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -36,6 +35,7 @@ import {
 } from "@/lib/auth-form";
 import { config } from "@/lib/config";
 import { afterLoginTarget, rememberGoogleTarget, rememberTarget } from "@/lib/login-redirect";
+import { onboardingRedirect } from "@/lib/onboarding-hint";
 import { ok } from "@/lib/result";
 
 const loginRoute = getRouteApi("/login");
@@ -80,12 +80,11 @@ export function AuthForm({ initialError = null }: { initialError?: string | null
     try {
       const me = await queryClient.fetchQuery(meQueryOptions);
       // przy ankiecie adres zaproszenia czeka na jej zapis (survey-view.tsx); bez ankiety - stary czyścimy
-      rememberTarget(me.needsOnboarding || me.onboardingOutdated ? afterLoginTarget(search) : null);
-      if (me.needsOnboarding) await navigate({ to: "/profil" });
-      else if (me.onboardingOutdated) {
-        toast("Dodaliśmy nowe pytania – uzupełnij profil.");
-        await navigate({ to: "/profil" });
-      } else await navigate({ href: afterLoginTarget(search) });
+      // nowe pytania w wypełnionym profilu nie zatrzymują - prosi o nie baner na ekranie głównym
+      const to = onboardingRedirect(me);
+      rememberTarget(to ? afterLoginTarget(search) : null);
+      if (to) await navigate({ to });
+      else await navigate({ href: afterLoginTarget(search) });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Nie udało się wczytać profilu.");
     }
