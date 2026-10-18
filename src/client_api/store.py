@@ -20,6 +20,7 @@ from typing import Any
 import boto3
 from boto3.dynamodb.conditions import Key
 
+from codzis_common.aws import AWS_CONFIG
 from codzis_common.http import ApiError
 from events import EventCache
 
@@ -38,7 +39,7 @@ CARD_FIELDS = [
     "venue", "location", "online", "occurrences", "schedule", "attributes", "tags", "importedAt",
 ]  # fmt: skip
 
-dynamodb = boto3.resource("dynamodb")
+dynamodb = boto3.resource("dynamodb", config=AWS_CONFIG)
 events_table = dynamodb.Table(EVENTS_TABLE)
 attendance_table = dynamodb.Table(ATTENDANCE_TABLE)
 stats_table = dynamodb.Table(STATS_TABLE)

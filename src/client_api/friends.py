@@ -32,6 +32,7 @@ from typing import Any
 import boto3
 from boto3.dynamodb.conditions import Key
 
+from codzis_common.aws import AWS_CONFIG
 from codzis_common.http import ApiError
 
 FRIENDS_TABLE = os.environ["FRIENDS_TABLE"]
@@ -45,7 +46,7 @@ MAX_WRONG_CODES = 10
 LIMIT_WINDOW_S = 3600
 PENDING_TTL_S = 30 * 24 * 3600
 
-table = boto3.resource("dynamodb").Table(FRIENDS_TABLE)
+table = boto3.resource("dynamodb", config=AWS_CONFIG).Table(FRIENDS_TABLE)
 ddb = table.meta.client  # klient zasobu: transakcje przyjmują zwykłe typy Pythona
 
 _CODE_BODY = re.compile(f"[{ALPHABET}]{{{CODE_LENGTH}}}")

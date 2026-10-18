@@ -6,22 +6,23 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.config import Config
 
+from codzis_common.aws import AWS_CONFIG
 from codzis_common.http import ApiError
 from config import LIST_LIMIT, PARTNERS_TABLE, PAYMENTS_TABLE, REGION, SUBMISSIONS_TABLE
 
-dynamodb = boto3.resource("dynamodb")
+dynamodb = boto3.resource("dynamodb", config=AWS_CONFIG)
 submissions_table = dynamodb.Table(SUBMISSIONS_TABLE)
 partners_table = dynamodb.Table(PARTNERS_TABLE)
 payments_table = dynamodb.Table(PAYMENTS_TABLE)
 # Klient zasobu (nie boto3.client) - transakcje przyjmują zwykłe typy Pythona.
 ddb = dynamodb.meta.client
-sqs = boto3.client("sqs")
+sqs = boto3.client("sqs", config=AWS_CONFIG)
 
 # Regionalny endpoint - globalny potrafi zwracać 307 dla świeżych bucketów, co psuje CORS.
 s3 = boto3.client(
     "s3",
     endpoint_url=f"https://s3.{REGION}.amazonaws.com",
-    config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
+    config=AWS_CONFIG.merge(Config(signature_version="s3v4", s3={"addressing_style": "virtual"})),
 )
 
 

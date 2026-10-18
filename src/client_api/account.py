@@ -22,6 +22,8 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
+from codzis_common.aws import AWS_CONFIG
+
 PHOTOS_BUCKET = os.environ.get("PHOTOS_BUCKET", "")
 PHOTOS_BASE_URL = os.environ.get("PHOTOS_BASE_URL", "").rstrip("/")
 MIN_BIRTH_DATE = date(1900, 1, 1)
@@ -34,7 +36,7 @@ _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 s3 = boto3.client(
     "s3",
     endpoint_url=f"https://s3.{os.environ.get('AWS_REGION', 'eu-central-1')}.amazonaws.com",
-    config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
+    config=AWS_CONFIG.merge(Config(signature_version="s3v4", s3={"addressing_style": "virtual"})),
 )
 log = logging.getLogger()
 

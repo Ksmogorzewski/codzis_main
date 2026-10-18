@@ -13,6 +13,7 @@ QUEUE_NAME = "test-events"
 PARTNER_KEY = "key-1"
 PARTNER_NAME = "Teatr Testowy"
 STARTER_CREDITS = 2
+REQUEST_ID = "req-partner-1"
 CATEGORIES = ["Kultura", "Sport", "Rekreacja", "Edukacja", "Dla dzieci"]
 CREDIT_PACKAGES = {
     "starter": {"name": "Start", "credits": 1, "price": 19},
@@ -112,7 +113,7 @@ def rest_event(method, path, body=None, api_key=PARTNER_KEY, claims=None):
     event = {
         "httpMethod": method,
         "pathParameters": {"proxy": path} if path else None,
-        "requestContext": context,
+        "requestContext": {**context, "requestId": REQUEST_ID},
     }
     if body is not None:
         event["body"] = body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)
