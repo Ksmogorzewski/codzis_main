@@ -7,12 +7,14 @@ je renderuje, a odpowiedzi zamieniane są tutaj na preferencje w słowniku event
   - interests -> kategorie źródłowe z kalendarza UM (np. "Kultura", "Czas wolny")
   - days, timeOfDay, weekend -> te same wartości co facets eventów (tagger/facets.py)
   - district -> dzielnica jak w polu district eventów
+  - ageRange (+ grupa w audience) -> nie z ankiety, tylko z daty urodzenia w danych konta (with_age)
 
 Dodanie pytania = nowy wpis w build_steps(); frontend nie wymaga zmian.
 """
 
 import hashlib
 import json
+from datetime import date
 from typing import Any
 
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
@@ -24,7 +26,7 @@ LIST_PREFS = [
     "interests", "themes", "formats", "audience", "occasion", "activityLevel",
     "cost", "mode", "setting", "registration", "accessibility", "days", "timeOfDay",
 ]
-SCALAR_PREFS = ["district", "travelRange", "maxPrice", "ageRange"]
+SCALAR_PREFS = ["district", "travelRange", "maxPrice", "ageRange", "about"]
 BOOL_PREFS = ["weekend"]
 
 # Kolejność i nazwy w tekstowym profilu pod RAG: najpierw pola z przykładu, potem reszta
@@ -33,7 +35,18 @@ RAG_FIELDS = [
     ("audience", "audience"), ("themes", "themes"), ("formats", "formats"), ("occasion", "occasion"),
     ("activityLevel", "activity"), ("setting", "setting"), ("registration", "registration"),
     ("maxPrice", "maxPrice"), ("travelRange", "travel"), ("days", "days"), ("timeOfDay", "timeOfDay"),
-    ("weekend", "weekend"), ("accessibility", "accessibility"), ("ageRange", "age"),
+    ("weekend", "weekend"), ("accessibility", "accessibility"), ("ageRange", "age"), ("about", "about"),
+]
+MAX_TEXT = 300  # pole tekstowe (type "text"): kilka zdań
+
+# Wiek nie jest pytaniem ankiety: przedział liczymy z daty urodzenia w danych konta (account.birthDate).
+# (od ilu lat, ageRange, grupa odbiorców) - te same wartości co w dawnym pytaniu „Ile masz lat?”
+AGE_GROUPS = [
+    (65, "65+", ["Seniorzy (65+)"]),
+    (50, "50-64", ["Dorośli (18-64)"]),
+    (30, "30-49", ["Dorośli (18-64)"]),
+    (18, "18-29", ["Dorośli (18-64)"]),
+    (0, "under18", ["Młodzież (13-17)"]),
 ]
 
 
@@ -174,13 +187,12 @@ def build_steps(districts: list[str]) -> list[dict]:
             "id": "about", "icon": "person",
             "title": "Na koniec kilka słów o Tobie", "hint": "Opcjonalne – pomaga lepiej dobrać propozycje",
             "fields": [
-                {"id": "age", "type": "single", "label": "Ile masz lat?", "required": False, "options": [
-                    _opt("under18", "Poniżej 18", short="< 18 lat", ageRange="under18", audience=["Młodzież (13-17)"]),
-                    _opt("18_29", "18–29", short="18–29 lat", ageRange="18-29", audience=["Dorośli (18-64)"]),
-                    _opt("30_49", "30–49", short="30–49 lat", ageRange="30-49", audience=["Dorośli (18-64)"]),
-                    _opt("50_64", "50–64", short="50–64 lat", ageRange="50-64", audience=["Dorośli (18-64)"]),
-                    _opt("65plus", "65+", short="65+ lat", ageRange="65+", audience=["Seniorzy (65+)"]),
-                ]},
+                # Wolny opis (bez opcji): trafia do preferencji jako "about" i do tekstowego profilu pod RAG
+                {"id": "bio", "type": "text", "label": "Kilka zdań o sobie", "required": False, "maxLength": MAX_TEXT,
+                 "placeholder": "np. Lubię jazz i długie spacery, szukam czegoś na wieczory w tygodniu.",
+                 # opis czyta ranking LLM (DeepSeek, recommender/ranker.py), więc prosimy o tekst bez danych osobowych
+                 "hint": "Nie podawaj danych osobowych – opis trafia do modelu AI, który dobiera propozycje.",
+                 "pref": "about", "options": []},
                 {"id": "accessibility", "type": "multi", "label": "Potrzeby dostępności", "required": False,
                  "options": [
                     _opt("mobility", "Dostęp dla osób z niepełnosprawnością ruchową", "accessible", "Dostęp bez barier",
@@ -207,7 +219,7 @@ def public_steps(steps: list[dict]) -> list[dict]:
         {
             **{k: v for k, v in s.items() if k != "fields"},
             "fields": [
-                {**{k: v for k, v in f.items() if k != "options"},
+                {**{k: v for k, v in f.items() if k not in ("options", "pref")},
                  "options": [{k: o[k] for k in ("id", "label", "icon", "short")} for o in f["options"]]}
                 for f in s["fields"]
             ],
@@ -217,7 +229,7 @@ def public_steps(steps: list[dict]) -> list[dict]:
 
 
 def validate_answers(answers, steps: list[dict]) -> tuple[dict, list[str]]:
-    """-> (odpowiedzi znormalizowane {pole: [id opcji]}, lista pól z błędem)."""
+    """-> (odpowiedzi znormalizowane {pole: [id opcji]}; pole tekstowe: {pole: [tekst]}, lista pól z błędem)."""
     fields = {f["id"]: f for s in steps for f in s["fields"]}
     if not isinstance(answers, dict):
         return {}, ["answers"]
@@ -226,6 +238,18 @@ def validate_answers(answers, steps: list[dict]) -> tuple[dict, list[str]]:
     normalized = {}
     for name, field in fields.items():
         raw = answers.get(name)
+        if field["type"] == "text":
+            if isinstance(raw, list) and len(raw) <= 1:
+                raw = raw[0] if raw else None
+            if raw is not None and not isinstance(raw, str):
+                errors.append(name)
+                continue
+            text = _clean_text(raw)
+            if len(text) > field["maxLength"] or (field["required"] and not text):
+                errors.append(name)
+            elif text:
+                normalized[name] = [text]
+            continue
         if raw in (None, "", []):
             values = []
         elif isinstance(raw, str):
@@ -257,6 +281,9 @@ def compute_preferences(answers: dict, steps: list[dict]) -> dict:
     )
     for step in steps:
         for field in step["fields"]:
+            if field["type"] == "text":
+                prefs[field["pref"]] = (answers.get(field["id"]) or [None])[0]
+                continue
             chosen = set(answers.get(field["id"], []))
             for option in field["options"]:
                 if option["id"] not in chosen:
@@ -274,6 +301,29 @@ def compute_preferences(answers: dict, steps: list[dict]) -> dict:
     return prefs
 
 
+def age_on(birth_date: str | None, today: date) -> int | None:
+    """Wiek w pełnych latach w dniu today (urodzeni 29 lutego kończą lata 1 marca); brak albo zła data -> None."""
+    try:
+        born = date.fromisoformat(birth_date or "")
+    except ValueError:
+        return None
+    age = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+    return age if age >= 0 else None
+
+
+def with_age(prefs: dict, birth_date: str | None, today: date) -> dict:
+    """Preferencje z przedziałem wieku z daty urodzenia: ageRange (w profilu RAG „age=…”) i grupa
+    odbiorców dopisana na końcu audience. Bez daty urodzenia - bez wieku."""
+    age = age_on(birth_date, today)
+    out = {**prefs, "ageRange": None}
+    for start, age_range, audience in AGE_GROUPS:
+        if age is not None and age >= start:
+            out["ageRange"] = age_range
+            out["audience"] = list(dict.fromkeys([*(prefs.get("audience") or []), *audience]))
+            break
+    return out
+
+
 def rag_profile(prefs: dict) -> str:
     """Tekstowy profil pod RAG, np.
     interests=[Kultura, Czas wolny] | district=Śródmieście | cost=Bezpłatne | mode=Stacjonarne
@@ -289,6 +339,12 @@ def rag_profile(prefs: dict) -> str:
         elif isinstance(value, bool):
             text = "true"
         else:
-            text = str(value)
+            text = str(value).replace("|", "/")  # wolny opis nie rozbija separatorów profilu
         parts.append(f"{name}={text}")
     return " | ".join(parts)
+
+
+def _clean_text(value: str | None) -> str:
+    """Tekst bez znaków sterujących i nadmiarowych spacji (nowe linie też zamieniamy na spacje)."""
+    printable = "".join(ch for ch in value or "" if ch.isprintable() or ch.isspace())
+    return " ".join(printable.split())

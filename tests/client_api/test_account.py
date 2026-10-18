@@ -1,5 +1,7 @@
 """Dane konta w profilu: data urodzenia i zdjęcie (src/client_api/account.py, trasy /api/me)."""
 
+from types import SimpleNamespace
+
 import boto3
 import pytest
 
@@ -102,7 +104,7 @@ def test_put_me_empty_date_clears_it_and_keeps_photo(client_api):
     assert body["account"] == {"birthDate": None, "photoUrl": GOOGLE["picture"]}
 
 
-def test_put_me_keeps_onboarding_profile(client_api):
+def test_put_me_keeps_onboarding_answers(client_api):
     me(client_api, EMAIL)
     status, saved = call(client_api, "PUT /api/profile", {"answers": ANSWERS}, claims=EMAIL)
     assert status == 200
@@ -110,7 +112,14 @@ def test_put_me_keeps_onboarding_profile(client_api):
     _, body = call(client_api, "PUT /api/me", {"birthDate": "1990-05-17"}, claims=EMAIL)
 
     assert body["needsOnboarding"] is False
-    assert body["profile"] == saved["profile"]
+    profile, before = body["profile"], saved["profile"]
+    assert (profile["answers"], profile["completedAt"]) == (before["answers"], before["completedAt"])
+    # preferencje dostają tylko przedział wieku z daty urodzenia
+    assert profile["preferences"] == {
+        **before["preferences"],
+        "ageRange": "30-49",
+        "audience": [*before["preferences"]["audience"], "Dorośli (18-64)"],
+    }
 
 
 @pytest.mark.parametrize("birth_date", ["2999-01-01", "1899-12-31", "17.05.1990", "1990-02-30", "19900517", 1990])
@@ -181,3 +190,58 @@ def test_deleted_google_photo_does_not_come_back_on_login(client_api):
     me(client_api, GOOGLE)
     call(client_api, "DELETE /api/me/photo", claims=GOOGLE)
     assert me(client_api, GOOGLE)["account"]["photoUrl"] is None
+
+
+# --- wiek z daty urodzenia w preferencjach i profilu RAG (onboarding.with_age) ---
+
+
+def test_profile_takes_age_from_birth_date(client_api):
+    me(client_api, EMAIL)
+    call(client_api, "PUT /api/me", {"birthDate": "1990-05-17"}, claims=EMAIL)
+
+    _, body = call(client_api, "PUT /api/profile", {"answers": ANSWERS}, claims=EMAIL)
+
+    prefs = body["profile"]["preferences"]
+    assert prefs["ageRange"] == "30-49"
+    assert prefs["audience"][-1] == "Dorośli (18-64)"
+    assert body["profile"]["ragProfile"].endswith(" | age=30-49")
+
+
+def test_birth_date_change_recomputes_age_in_saved_profile(client_api, users_table, monkeypatch):
+    calls: list[dict] = []
+    monkeypatch.setattr(client_api, "RECOMMENDER_FUNCTION", "recommender")
+    monkeypatch.setattr(client_api, "lambda_client", SimpleNamespace(invoke=lambda **kwargs: calls.append(kwargs)))
+    me(client_api, EMAIL)
+    call(client_api, "PUT /api/profile", {"answers": ANSWERS}, claims=EMAIL)
+    calls.clear()
+
+    _, body = call(client_api, "PUT /api/me", {"birthDate": "1950-05-17"}, claims=EMAIL)
+
+    prefs = body["profile"]["preferences"]
+    assert (prefs["ageRange"], prefs["audience"][-1]) == ("65+", "Seniorzy (65+)")
+    assert body["profile"]["ragProfile"].endswith(" | age=65+")
+    assert users_table.get_item(Key={"userId": "user-1"})["Item"]["preferences"]["ageRange"] == "65+"
+    assert len(calls) == 1  # nowy przedział wieku -> nowe zestawy rekomendacji
+
+    # ten sam przedział: bez ponownego liczenia
+    call(client_api, "PUT /api/me", {"birthDate": "1951-01-01"}, claims=EMAIL)
+    assert len(calls) == 1
+
+    # bez daty urodzenia: bez wieku i bez grupy z wieku
+    _, body = call(client_api, "PUT /api/me", {"birthDate": ""}, claims=EMAIL)
+    prefs = body["profile"]["preferences"]
+    assert prefs["ageRange"] is None
+    assert "Seniorzy (65+)" not in prefs["audience"]
+    assert "age=" not in body["profile"]["ragProfile"]
+    assert len(calls) == 2
+
+
+def test_birth_date_before_survey_does_not_create_preferences(client_api, users_table):
+    me(client_api, EMAIL)
+
+    _, body = call(client_api, "PUT /api/me", {"birthDate": "1990-05-17"}, claims=EMAIL)
+
+    assert body["profile"] is None
+    item = users_table.get_item(Key={"userId": "user-1"})["Item"]
+    assert "preferences" not in item
+    assert "ragProfile" not in item

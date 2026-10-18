@@ -19,12 +19,29 @@ export function pick(answers: Answers, field: OnboardingField, optionId: string)
 export const isFull = (answers: Answers, field: OnboardingField) =>
   field.type === "multi" && !!field.maxSelect && values(answers, field).length >= field.maxSelect;
 
-// Krótkie etykiety wybranych opcji (kafelek, podsumowanie profilu)
+// Pole tekstowe: odpowiedź to [tekst] przycięty do maxLength; same spacje = brak odpowiedzi
+export function withText(answers: Answers, field: OnboardingField, text: string): Answers {
+  const out = { ...answers };
+  if (text.trim()) out[field.id] = [field.maxLength ? text.slice(0, field.maxLength) : text];
+  else delete out[field.id];
+  return out;
+}
+
+// Ile znaków wolnego opisu mieści się na kafelku
+export const TEXT_CHIP_CHARS = 28;
+const shorten = (text: string) => {
+  const line = text.split(/\s+/).filter(Boolean).join(" ");
+  return line.length > TEXT_CHIP_CHARS ? `${line.slice(0, TEXT_CHIP_CHARS - 1).trimEnd()}…` : line;
+};
+
+// Krótkie etykiety wybranych opcji (kafelek, podsumowanie profilu); wolny opis - jego początek
 export const summary = (step: OnboardingStep, answers: Answers) =>
   step.fields.flatMap((f) =>
-    values(answers, f)
-      .map((id) => f.options.find((o) => o.id === id)?.short)
-      .filter((s): s is string => Boolean(s)),
+    f.type === "text"
+      ? values(answers, f).map(shorten)
+      : values(answers, f)
+          .map((id) => f.options.find((o) => o.id === id)?.short)
+          .filter((s): s is string => Boolean(s)),
   );
 
 export const filledCount = (steps: OnboardingStep[], answers: Answers) => steps.filter((s) => isFilled(s, answers)).length;
@@ -37,6 +54,11 @@ export function sanitize(steps: OnboardingStep[], answers: Answers | null | unde
   const out: Answers = {};
   for (const step of steps) {
     for (const f of step.fields) {
+      if (f.type === "text") {
+        const text = (answers?.[f.id]?.[0] ?? "").trim();
+        if (text) out[f.id] = [f.maxLength ? text.slice(0, f.maxLength) : text];
+        continue;
+      }
       const ids = new Set(f.options.map((o) => o.id));
       const v = [...new Set((answers?.[f.id] ?? []).filter((x) => ids.has(x)))];
       const limited = f.type === "multi" ? (f.maxSelect ? v.slice(0, f.maxSelect) : v) : v.slice(0, 1);
@@ -64,11 +86,13 @@ export function clearStep(answers: Answers, step: OnboardingStep): Answers {
 }
 
 // Okno z jednym polem jednokrotnego wyboru zamyka się samo po kliknięciu (jak w makiecie)
-export const autoApply = (step: OnboardingStep) => step.fields.length === 1 && step.fields[0]!.type !== "multi";
+export const autoApply = (step: OnboardingStep) =>
+  step.fields.length === 1 && step.fields[0]!.type !== "multi" && step.fields[0]!.type !== "text";
 
 // Okno kroku: komunikat, gdy nie da się go zatwierdzić „Gotowe” (null = można).
 export function stepProblem(step: OnboardingStep, draft: Answers): string | null {
-  if (!isFilled(step, draft)) return "Wybierz co najmniej jedną opcję";
+  if (!isFilled(step, draft))
+    return step.fields.some((f) => f.type === "text") ? "Uzupełnij co najmniej jedno pole" : "Wybierz co najmniej jedną opcję";
   if (!isComplete(step, draft)) return "Uzupełnij wymagane pola";
   return null;
 }

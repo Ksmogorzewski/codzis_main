@@ -1,5 +1,9 @@
 """Czyste funkcje onboardingu (src/client_api/onboarding.py)."""
 
+from datetime import date
+
+import pytest
+
 from tests.support import CLIENT_API_DIR, DISTRICTS, load_lambda, taxonomy
 
 onboarding = load_lambda(CLIENT_API_DIR, "onboarding")
@@ -92,6 +96,10 @@ def test_public_steps_hides_mappings_and_keeps_shape():
     vibe = next(s for s in public if s["id"] == "vibe")["fields"][0]
     assert vibe["maxSelect"] == 2
     assert vibe["required"] is True
+    bio = next(f for s in public for f in s["fields"] if f["id"] == "bio")
+    assert (bio["type"], bio["maxLength"], bio["options"], bio["required"]) == ("text", 300, [], False)
+    assert "pref" not in bio and bio["placeholder"]
+    assert "danych osobowych" in bio["hint"]
 
 
 # --- validate_answers ---
@@ -151,6 +159,22 @@ def test_validate_answers_unknown_district():
     assert errors == ["district"]
 
 
+def test_validate_answers_free_text_is_cleaned_and_optional():
+    answers, errors = onboarding.validate_answers({**VALID_ANSWERS, "bio": "  Lubię jazz\n\ni  spacery.\x00 "}, steps())
+    assert errors == []
+    assert answers["bio"] == ["Lubię jazz i spacery."]
+    # z frontu przychodzi też jako lista z jednym tekstem; puste pole = brak odpowiedzi
+    assert onboarding.validate_answers({**VALID_ANSWERS, "bio": ["Kino"]}, steps())[0]["bio"] == ["Kino"]
+    assert "bio" not in onboarding.validate_answers({**VALID_ANSWERS, "bio": "   "}, steps())[0]
+
+
+def test_validate_answers_free_text_limits():
+    assert onboarding.validate_answers({**VALID_ANSWERS, "bio": "x" * 301}, steps())[1] == ["bio"]
+    assert onboarding.validate_answers({**VALID_ANSWERS, "bio": "x" * 300}, steps())[1] == []
+    assert onboarding.validate_answers({**VALID_ANSWERS, "bio": 5}, steps())[1] == ["bio"]
+    assert onboarding.validate_answers({**VALID_ANSWERS, "bio": ["a", "b"]}, steps())[1] == ["bio"]
+
+
 def test_validate_answers_wrong_types():
     _, errors = onboarding.validate_answers({**VALID_ANSWERS, "vibe": [1, 2], "who": 5}, steps())
     assert errors == ["vibe", "who"]
@@ -166,7 +190,7 @@ def test_compute_preferences_maps_onto_taxonomy():
             "when": ["weekend", "weekday_evening"],
             "budget": "free",
             "registration": "walk_in",
-            "age": "65plus",
+            "bio": "Lubię jazz i spacery",
         },
         steps(),
     )
@@ -179,10 +203,10 @@ def test_compute_preferences_maps_onto_taxonomy():
     assert prefs["maxPrice"] == 0
     assert prefs["setting"] == []  # bez pytania o styl (pod dachem / plener) - zostaje pusta
     assert prefs["registration"] == ["Wstęp wolny"]
-    assert prefs["ageRange"] == "65+"
+    assert prefs["about"] == "Lubię jazz i spacery"
     assert prefs["weekend"] is True
     # suma bez duplikatów, w kolejności kroków
-    assert prefs["audience"] == ["Dorośli (18-64)", "Seniorzy (65+)"]
+    assert prefs["audience"] == ["Dorośli (18-64)"]
     assert prefs["interests"] == ["Dla młodzieży i dorosłych", "Czas wolny", "Kultura", "Edukacja"]
     # kolejność kanoniczna jak w facets eventów
     assert prefs["days"] == onboarding.WEEKDAYS + onboarding.WEEKEND
@@ -227,9 +251,61 @@ def test_rag_profile_format():
 
 def test_rag_profile_includes_max_price_when_not_free():
     prefs = onboarding.compute_preferences({}, steps())
-    prefs.update(maxPrice=50, travelRange="city", ageRange="18-29")
-    assert onboarding.rag_profile(prefs) == "maxPrice=50 | travel=city | age=18-29"
+    prefs.update(maxPrice=50, travelRange="city", about="Lubię jazz | kino")
+    assert onboarding.rag_profile(prefs) == "maxPrice=50 | travel=city | about=Lubię jazz / kino"
 
 
 def test_rag_profile_empty():
     assert onboarding.rag_profile(onboarding.compute_preferences({}, steps())) == ""
+
+
+# --- wiek z daty urodzenia (age_on / with_age) ---
+
+TODAY = date(2026, 10, 18)
+
+
+def test_age_on_counts_full_years():
+    assert onboarding.age_on("1990-10-18", TODAY) == 36
+    assert onboarding.age_on("1990-10-19", TODAY) == 35
+    # urodzeni 29 lutego kończą lata 1 marca (jak ageOn we froncie)
+    assert onboarding.age_on("2000-02-29", date(2025, 2, 28)) == 24
+    assert onboarding.age_on("2000-02-29", date(2025, 3, 1)) == 25
+    assert onboarding.age_on(None, TODAY) is None
+    assert onboarding.age_on("17.05.1990", TODAY) is None
+    assert onboarding.age_on("2027-01-01", TODAY) is None
+
+
+@pytest.mark.parametrize(
+    ("birth_date", "age_range", "group"),
+    [
+        ("2009-10-19", "under18", "Młodzież (13-17)"),  # 16 lat, 17 skończy jutro
+        ("2008-10-18", "18-29", "Dorośli (18-64)"),  # 18 lat dziś
+        ("1996-10-19", "18-29", "Dorośli (18-64)"),
+        ("1996-10-18", "30-49", "Dorośli (18-64)"),
+        ("1976-10-18", "50-64", "Dorośli (18-64)"),
+        ("1961-10-19", "50-64", "Dorośli (18-64)"),
+        ("1961-10-18", "65+", "Seniorzy (65+)"),
+    ],
+)
+def test_with_age_sets_range_and_audience_group(birth_date, age_range, group):
+    prefs = onboarding.with_age(onboarding.compute_preferences({}, steps()), birth_date, TODAY)
+    assert prefs["ageRange"] == age_range
+    assert prefs["audience"] == [group]
+
+
+def test_with_age_adds_group_after_answers_without_duplicates():
+    answers, _ = onboarding.validate_answers(VALID_ANSWERS, steps())  # solo_friends -> Dorośli (18-64)
+    prefs = onboarding.compute_preferences(answers, steps())
+
+    assert onboarding.with_age(prefs, "1990-05-17", TODAY)["audience"] == ["Dorośli (18-64)"]
+    assert onboarding.with_age(prefs, "1950-05-17", TODAY)["audience"] == ["Dorośli (18-64)", "Seniorzy (65+)"]
+    # bez daty urodzenia - bez wieku; preferencje wejściowe bez zmian
+    assert onboarding.with_age(prefs, None, TODAY) == prefs
+    assert prefs["ageRange"] is None
+    assert prefs["audience"] == ["Dorośli (18-64)"]
+
+
+def test_rag_profile_has_age_from_birth_date_before_about():
+    prefs = onboarding.with_age(onboarding.compute_preferences({}, steps()), "1990-05-17", TODAY)
+    prefs.update(about="Lubię jazz")
+    assert onboarding.rag_profile(prefs) == "audience=Dorośli (18-64) | age=30-49 | about=Lubię jazz"

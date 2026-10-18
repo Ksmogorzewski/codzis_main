@@ -134,7 +134,7 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 | Endpoint | Opis |
 | --- | --- |
 | `GET /api/me` | profil (pierwsze wywołanie zakłada rekord i dane konta), `account`, `needsOnboarding`, `onboardingOutdated` |
-| `PUT /api/me` | `{"birthDate"}` → dane konta (imię i nazwisko się nie zmieniają); pusta data = usuń |
+| `PUT /api/me` | `{"birthDate"}` → dane konta (imię i nazwisko się nie zmieniają); pusta data = usuń; przy wypełnionej ankiecie przelicza preferencje (przedział wieku) |
 | `POST /api/me/photo` | `{"contentType"}` → `{key, upload}`: presigned POST, przeglądarka wysyła zdjęcie prosto do S3 |
 | `PUT /api/me/photo` / `DELETE /api/me/photo` | `{"key"}` → wgrane zdjęcie staje się profilowym (stare usuwamy) / profil bez zdjęcia |
 | `GET /api/onboarding` | kafelki z pytaniami (ikony, limity wyborów, wymagane pola) |
@@ -143,17 +143,21 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 
 **Onboarding:** pytania i mapowanie odpowiedzi są w jednym miejscu, `src/client_api/onboarding.py`; frontend tylko je wyświetla. Jest 9 kafelków:
 - wymagane: z kim, klimat (maks. 2), co odkryć (maks. 2), gdzie (dzielnica i zasięg);
-- opcjonalne: sprawy miejskie, kiedy, budżet, formuła (na żywo / online, zapisy), o Tobie (wiek, dostępność).
+- opcjonalne: sprawy miejskie, kiedy, budżet, formuła (na żywo / online, zapisy), o Tobie (kilka zdań o sobie, dostępność).
+
+Pola: `single`, `multi` (limit `maxSelect`), `select` i `text`, czyli wolny opis „Kilka zdań o sobie”: do 300 znaków, odpowiedź `["tekst"]`. Backend usuwa znaki sterujące i zbędne odstępy, opis trafia do preferencji jako `about` i na koniec `ragProfile`. Czyta go tylko ranking DeepSeek (`recommender/ranker.py`), wyszukiwanie wektorowe go nie używa.
+
+Wieku nie ma w ankiecie. Przedział (`ageRange`: `under18`, `18-29`, `30-49`, `50-64`, `65+`, w `ragProfile` jako `age=…`) i grupę odbiorców dopisaną do `audience` liczymy z daty urodzenia w danych konta (`with_age` w `onboarding.py`). Dzieje się to przy zapisie ankiety i przy zmianie daty: `PUT /api/me` przelicza wtedy preferencje i `ragProfile`, a gdy zmieni się przedział, zleca nowe rekomendacje. Bez daty urodzenia profil jest bez wieku.
 
 **Rekord użytkownika (tabela `codzis-users`, klucz `userId` = `sub` z Cognito, PITR włączone):**
 
 | Pole | Opis |
 | --- | --- |
 | `email`, `displayName`, `picture`, `identityProvider` | z tokenu (`Google` / `Cognito`); `displayName` = imię (z rejestracji albo `given_name` z Google), niezmienne; `familyName` = nazwisko (opcjonalne przy rejestracji, z Google), innym tylko inicjał („Ola K.”) |
-| `account` | dane konta z profilu: `birthDate` (RRRR-MM-DD, widzi ją tylko właściciel), `photoUrl`, `photoKey`; zakładane przy pierwszym logowaniu (z Google zdjęcie), potem zmienia je tylko użytkownik. Zdjęcia: bucket zdjęć, `photos/avatars/<userId>/…`, zmniejszone w przeglądarce do 512 px |
+| `account` | dane konta z profilu: `birthDate` (RRRR-MM-DD, widzi ją tylko właściciel; z niej przedział wieku w `preferences.ageRange`), `photoUrl`, `photoKey`; zakładane przy pierwszym logowaniu (z Google zdjęcie), potem zmienia je tylko użytkownik. Zdjęcia: bucket zdjęć, `photos/avatars/<userId>/…`, zmniejszone w przeglądarce do 512 px |
 | `onboarding` | `{version, completedAt, answers}`: surowe odpowiedzi; zmiana pytań zmienia `version` |
-| `preferences` | odpowiedzi przemapowane na słownik eventów: `themes`, `formats`, `audience`, `occasion`, `activityLevel`, `cost`, `mode`, `setting`, `registration`, `accessibility` (opcje taksonomii taggera), `interests` (kategorie kalendarza UM), `days`/`timeOfDay`/`weekend` (jak `facets` eventów), `district`, `travelRange`, `maxPrice`, `ageRange` |
-| `ragProfile` | tekst pod RAG, np. `interests=[Czas wolny, Kultura] \| district=Śródmieście \| cost=Bezpłatne \| mode=Stacjonarne \| audience=Dorośli (18-64) \| …` |
+| `preferences` | odpowiedzi przemapowane na słownik eventów: `themes`, `formats`, `audience`, `occasion`, `activityLevel`, `cost`, `mode`, `setting`, `registration`, `accessibility` (opcje taksonomii taggera), `interests` (kategorie kalendarza UM), `days`/`timeOfDay`/`weekend` (jak `facets` eventów), `district`, `travelRange`, `maxPrice`, `ageRange` (z daty urodzenia), `about` (wolny opis z ankiety) |
+| `ragProfile` | tekst pod RAG, np. `interests=[Czas wolny, Kultura] \| district=Śródmieście \| cost=Bezpłatne \| mode=Stacjonarne \| audience=Dorośli (18-64) \| … \| age=30-49 \| about=Lubię jazz…` (w opisie `\|` zamieniamy na `/`) |
 
 **Lokalny development** na wdrożonej infrze:
 - `scripts/frontend-dev.sh client` (http://localhost:8000; adres jest w callbackach Cognito i w CORS API);

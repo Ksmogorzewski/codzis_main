@@ -117,7 +117,12 @@ export function AccountCard({ me }: { me: Me }) {
         <Field
           id="account-birth-date"
           label="Data urodzenia"
-          hint={age === null ? "Opcjonalnie. Widzisz ją tylko Ty." : `${plural(age, "rok", "lata", "lat")} · widzisz ją tylko Ty.`}
+          // z daty backend liczy przedział wieku w preferencjach (onboarding.with_age); samej daty nie pokazujemy nikomu
+          hint={
+            age === null
+              ? "Opcjonalnie. Pomaga dopasować propozycje do wieku. Widzisz ją tylko Ty."
+              : `${plural(age, "rok", "lata", "lat")} · pomaga dopasować propozycje. Widzisz ją tylko Ty.`
+          }
         >
           <Input
             id="account-birth-date"
