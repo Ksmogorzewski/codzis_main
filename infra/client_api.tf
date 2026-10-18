@@ -22,7 +22,7 @@ data "archive_file" "client_api" {
   type        = "zip"
   source_dir  = "${path.module}/../src/client_api"
   output_path = "${path.module}/build/client_api.zip"
-  excludes    = ["__pycache__"]
+  excludes    = ["__pycache__", "**/__pycache__"]
 }
 
 resource "aws_cloudwatch_log_group" "client_api" {
