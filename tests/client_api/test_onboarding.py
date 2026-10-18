@@ -25,7 +25,6 @@ PREF_TO_DIMENSION = {
 VALID_ANSWERS = {
     "who": "solo_friends",
     "vibe": ["art", "chill"],
-    "discover": ["skills"],
     "district": "Mokotów",
     "travel": "nearby",
 }
@@ -48,7 +47,7 @@ def test_build_steps_has_unique_step_and_field_ids():
     field_ids = [f["id"] for s in built for f in s["fields"]]
     assert len(step_ids) == len(set(step_ids))
     assert len(field_ids) == len(set(field_ids))
-    assert step_ids[:4] == ["who", "vibe", "discover", "city"]
+    assert step_ids[:4] == ["who", "vibe", "where", "when"]
 
 
 def test_build_steps_district_options_come_from_argument():
@@ -90,7 +89,7 @@ def test_missing_required_lists_only_unanswered_required_fields():
         onboarding.missing_required({k: [v] if isinstance(v, str) else v for k, v in VALID_ANSWERS.items()}, steps())
         == []
     )
-    assert onboarding.missing_required({}, steps()) == ["who", "vibe", "discover", "district", "travel"]
+    assert onboarding.missing_required({}, steps()) == ["who", "vibe", "district", "travel"]
     assert onboarding.missing_required({**VALID_ANSWERS, "vibe": []}, steps()) == ["vibe"]
 
 
@@ -135,16 +134,15 @@ def test_validate_answers_accepts_valid_and_normalizes():
     assert answers == {
         "who": ["solo_friends"],
         "vibe": ["art"],
-        "discover": ["skills"],
         "district": ["Mokotów"],
         "travel": ["nearby"],
     }
 
 
 def test_validate_answers_skips_empty_optional_fields():
-    answers, errors = onboarding.validate_answers({**VALID_ANSWERS, "city": [], "budget": "", "when": None}, steps())
+    answers, errors = onboarding.validate_answers({**VALID_ANSWERS, "budget": "", "when": None}, steps())
     assert errors == []
-    assert "city" not in answers and "budget" not in answers and "when" not in answers
+    assert "budget" not in answers and "when" not in answers
 
 
 def test_validate_answers_not_a_dict():
@@ -154,7 +152,7 @@ def test_validate_answers_not_a_dict():
 
 def test_validate_answers_required_missing():
     _, errors = onboarding.validate_answers({}, steps())
-    assert errors == ["discover", "district", "travel", "vibe", "who"]
+    assert errors == ["district", "travel", "vibe", "who"]
 
 
 def test_validate_answers_max_select():
@@ -231,7 +229,7 @@ def test_compute_preferences_maps_onto_taxonomy():
     assert prefs["weekend"] is True
     # suma bez duplikatów, w kolejności kroków
     assert prefs["audience"] == ["Dorośli (18-64)"]
-    assert prefs["interests"] == ["Dla młodzieży i dorosłych", "Czas wolny", "Kultura", "Edukacja"]
+    assert prefs["interests"] == ["Dla młodzieży i dorosłych", "Czas wolny", "Kultura"]
     # kolejność kanoniczna jak w facets eventów
     assert prefs["days"] == onboarding.WEEKDAYS + onboarding.WEEKEND
     assert prefs["timeOfDay"] == ["rano", "popołudnie", "wieczór"]
