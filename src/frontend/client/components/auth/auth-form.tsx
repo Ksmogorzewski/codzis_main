@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertTitle } from "@/components/ui/alert";
@@ -32,13 +32,17 @@ import {
   validateAuthForm,
 } from "@/lib/auth-form";
 import { config } from "@/lib/config";
+import { afterLoginTarget } from "@/lib/login-redirect";
 import { ok } from "@/lib/result";
+
+const loginRoute = getRouteApi("/login");
 
 const safeHref = (url: string) => (/^https?:\/\//.test(url) ? url : null);
 
 /** Formularz logowania: logowanie, rejestracja z kodem z e-maila, reset hasła (Cognito przez fetch). */
 export function AuthForm() {
   const navigate = useNavigate();
+  const search = loginRoute.useSearch();
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<AuthMode>("login");
   const [name, setName] = useState("");
@@ -59,7 +63,8 @@ export function AuthForm() {
     setCode("");
   }
 
-  // Po zalogowaniu: profil z API decyduje, czy najpierw ankieta, czy od razu propozycje.
+  // Po zalogowaniu: profil z API decyduje, czy najpierw ankieta, czy od razu propozycje
+  // (albo ekran, na który ktoś wszedł bez sesji, np. zaproszenie do znajomych z QR).
   async function afterSignIn() {
     queryClient.clear(); // bez danych poprzedniego użytkownika
     try {
@@ -68,7 +73,7 @@ export function AuthForm() {
       else if (me.onboardingOutdated) {
         toast("Dodaliśmy nowe pytania – uzupełnij profil.");
         await navigate({ to: "/profil" });
-      } else await navigate({ to: "/" });
+      } else await navigate({ href: afterLoginTarget(search) });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Nie udało się wczytać profilu.");
     }

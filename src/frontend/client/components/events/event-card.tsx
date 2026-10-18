@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { SaveButton, SavesCount } from "@/components/community/save-button";
+import { FriendsLine } from "@/components/friends/friends-line";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -16,14 +17,17 @@ type Props = {
   now: Date;
   /** Miejsce na liście Popularnych (od 1); bez niego karta bez numeru. */
   rank?: string;
+  /** Podpis przycisku zapisu (na „Znajomi idą”: „Idę też”). */
+  saveLabel?: string;
 };
 
 /**
  * Karta wydarzenia (mockup 1a): zdjęcie, tytuł, cena, termin, miejsce, odległość, „Zapisanych: N”,
- * „Pasuje: …” (tylko rekomendacje), Trasa / Zapisz / Szczegóły. Ta sama karta na wszystkich listach.
+ * „Ola idzie” (znajomi, GET /api/friends/going), „Pasuje: …” (tylko rekomendacje), Trasa / Zapisz / Szczegóły.
+ * Ta sama karta na wszystkich listach.
  * Nawigacja to prawdziwe linki (Ctrl/Cmd+klik otwiera nową kartę).
  */
-export function EventCard({ card, position, now, rank }: Props) {
+export function EventCard({ card, position, now, rank, saveLabel }: Props) {
   const price = priceLabel(card);
   const when = slotLabel(card.slot, now);
   const place = [placeLabel(card) || null, card.district].filter(Boolean).join(" · ");
@@ -83,6 +87,7 @@ export function EventCard({ card, position, now, rank }: Props) {
             </span>
           )}
           <SavesCount saves={card.saves} />
+          <FriendsLine eventId={card.id} />
         </div>
         {card.reason && (
           <p className="flex gap-2 rounded-[14px] bg-secondary px-3 py-2.5 text-meta leading-snug">
@@ -100,7 +105,7 @@ export function EventCard({ card, position, now, rank }: Props) {
               </a>
             </Button>
           )}
-          <SaveButton id={card.id} saved={card.saved} saves={card.saves} className="flex-1 px-3" />
+          <SaveButton id={card.id} saved={card.saved} saves={card.saves} label={saveLabel} className="flex-1 px-3" />
           <Button asChild className="flex-1 px-3">
             <Link to={to} params={params}>
               <Icon name="info" />

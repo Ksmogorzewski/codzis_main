@@ -13,8 +13,23 @@ import {
   toggleSave,
 } from "@/lib/community";
 import { patchMyEvents } from "@/lib/my-events";
-import { attendeesKey, eventKey, eventStatsRootKey, eventsRootKey, myEventsKey, popularKey } from "@/lib/query-keys";
-import { type Attendees, type EventDetail, type EventList, type MyEvents, SaveResultSchema } from "@/lib/schemas";
+import {
+  attendeesKey,
+  eventKey,
+  eventStatsRootKey,
+  eventsRootKey,
+  friendsGoingKey,
+  myEventsKey,
+  popularKey,
+} from "@/lib/query-keys";
+import {
+  type Attendees,
+  type EventDetail,
+  type EventList,
+  type FriendsGoing,
+  type MyEvents,
+  SaveResultSchema,
+} from "@/lib/schemas";
 
 export type SaveVars = { id: string; save: boolean };
 
@@ -26,6 +41,7 @@ const keysFor = (id: string) => [
   attendeesKey(id),
   eventStatsRootKey(),
   myEventsKey(),
+  friendsGoingKey(),
 ];
 
 /**
@@ -36,6 +52,7 @@ function patchCaches(qc: QueryClient, id: string, next: (s: SaveState) => KnownS
   const patchList = (list: EventList | undefined) => list && { ...list, items: patchSaveInList(list.items, id, next) };
   qc.setQueriesData<EventList>({ queryKey: eventsRootKey() }, patchList);
   qc.setQueriesData<EventList>({ queryKey: popularKey() }, patchList);
+  qc.setQueryData<FriendsGoing>(friendsGoingKey(), (g) => g && { ...g, items: patchSaveInList(g.items, id, next) });
   qc.setQueryData<EventDetail>(eventKey(id), (d) => d && { ...d, ...next(d) });
   qc.setQueryData<MyEvents>(myEventsKey(), (list) => list && patchMyEvents(list, id, next));
   qc.setQueryData<Attendees>(attendeesKey(id), (a) => a && patchAttendees(a, next(a), currentName()));
@@ -49,8 +66,8 @@ function patchCaches(qc: QueryClient, id: string, next: (s: SaveState) => KnownS
  * PUT / DELETE /api/events/{id}/save -> {saved, saves}. Optymistycznie: stan i licznik zmieniają się
  * od razu wszędzie (na liście zapisanych mój wpis z imieniem z ID tokenu); błąd przywraca poprzedni
  * stan i pokazuje toast. Po sukcesie: wartości z serwera, toast „Zapisano jako <imię>” i odświeżenie
- * listy zapisanych, Popularnych, list Eksploruj i „Twoich” (po wypisaniu tylko oznaczenie jako
- * nieaktualne: indeks byUser jest odczytem ostatecznie spójnym, a lista już jest poprawna).
+ * listy zapisanych, Popularnych, list Eksploruj, „Znajomi idą” i „Twoich” (po wypisaniu tylko oznaczenie
+ * jako nieaktualne: indeks byUser jest odczytem ostatecznie spójnym, a lista już jest poprawna).
  */
 export function useSave() {
   const qc = useQueryClient();
@@ -82,6 +99,7 @@ export function useSave() {
       void qc.invalidateQueries({ queryKey: attendeesKey(id) });
       void qc.invalidateQueries({ queryKey: popularKey() });
       void qc.invalidateQueries({ queryKey: eventsRootKey() });
+      void qc.invalidateQueries({ queryKey: friendsGoingKey() });
       void qc.invalidateQueries({ queryKey: myEventsKey(), refetchType: save ? "active" : "none" });
     },
   });

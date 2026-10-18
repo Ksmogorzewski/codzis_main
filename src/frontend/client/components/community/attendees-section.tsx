@@ -5,7 +5,10 @@ import { useAttendees } from "@/hooks/use-attendees.query";
 import { attendeeLabel, savesLabel } from "@/lib/community";
 import { cn } from "@/lib/utils";
 
-/** „Kto się wybiera”: liczba i imiona zapisanych (najnowsi najpierw). Bez danych z API sekcja znika. */
+/**
+ * „Kto się wybiera”: liczba i imiona zapisanych (kolejność z API: ja, znajomi, reszta od najnowszych);
+ * znajomi z ikonką. Bez danych z API sekcja znika.
+ */
 export function AttendeesSection({ id }: { id: string }) {
   const attendees = useAttendees(id);
   if (attendees.isError) return null;
@@ -34,11 +37,13 @@ export function AttendeesSection({ id }: { id: string }) {
                   // imiona się powtarzają, a lista nie ma id osób - pozycja wystarcza (lista tylko do odczytu)
                   key={`${i}-${p.name ?? ""}`}
                   className={cn(
-                    "rounded-full bg-secondary px-3 py-1.5 text-base font-semibold",
-                    p.isMe && "bg-primary-soft text-primary-ink",
+                    "flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-base font-semibold",
+                    (p.isMe || p.isFriend) && "bg-primary-soft text-primary-ink",
                   )}
                 >
+                  {p.isFriend && !p.isMe && <Icon name="diversity_3" size={18} filled />}
                   {attendeeLabel(p)}
+                  {p.isFriend && !p.isMe && <span className="sr-only">(znajomy)</span>}
                 </li>
               ))}
             </ul>

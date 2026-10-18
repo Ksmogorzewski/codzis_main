@@ -2,14 +2,16 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@ta
 import { createHashHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { ApiRequestError, isNeedsOnboarding, shouldRetry } from "./lib/api";
+import { ApiRequestError, isNameRequired, isNeedsOnboarding, shouldRetry } from "./lib/api";
 import { routerAuth } from "./lib/auth";
+import { namePrompt } from "./lib/name-prompt";
 import { routeTree } from "./routeTree.gen";
 import "./styles.css";
 
 // Błędy z dowolnego zapytania lub mutacji, które zmieniają ekran:
 //   401 (sesja wygasła i nie dało się jej odświeżyć) -> logowanie,
-//   409 / code "needs_onboarding" -> ankieta profilu.
+//   409 / code "needs_onboarding" -> ankieta profilu,
+//   409 / code "name_required" (trasy znajomych, konto bez imienia) -> prośba o imię (NameDialog w _app.tsx).
 const onError = (error: unknown) => {
   if (error instanceof ApiRequestError && error.status === 401) {
     void routerAuth.signOut();
@@ -17,6 +19,8 @@ const onError = (error: unknown) => {
     void router.navigate({ to: "/login" });
   } else if (isNeedsOnboarding(error)) {
     void router.navigate({ to: "/profil" });
+  } else if (isNameRequired(error)) {
+    namePrompt.open();
   }
 };
 
