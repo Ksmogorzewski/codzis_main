@@ -135,13 +135,16 @@ output "client_api_url" {
 }
 
 output "cognito_hosted_ui" {
-  description = "Hosted UI Cognito (istnieje tylko przy włączonym logowaniu Google)"
-  value       = local.google_enabled ? "https://${local.cognito_hosted_domain}" : null
+  description = "Hosted UI Cognito portalu klienta i panelu organizatora (Authorized JavaScript origins klienta OAuth Google); domeny powstają po włączeniu Google"
+  value       = ["https://${local.cognito_hosted_domain}", "https://${local.partner_cognito_domain}"]
 }
 
-output "google_oauth_redirect_uri" {
-  description = "Gdy włączysz Google: wpisz w Google Cloud Console jako Authorized redirect URI klienta OAuth"
-  value       = "https://${local.cognito_hosted_domain}/oauth2/idpresponse"
+output "google_oauth_redirect_uris" {
+  description = "Przed włączeniem Google: wpisz oba w Google Cloud Console jako Authorized redirect URIs klienta OAuth"
+  value = [
+    "https://${local.cognito_hosted_domain}/oauth2/idpresponse",
+    "https://${local.partner_cognito_domain}/oauth2/idpresponse",
+  ]
 }
 
 output "partner_app_config" {

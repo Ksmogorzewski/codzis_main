@@ -50,6 +50,9 @@ locals {
     categories   = var.event_categories
     districts    = local.warsaw_districts
     clientPortal = "https://${var.client_domain_name}"
+    # Logowanie Google (partner_auth.tf); puste = logowanie kluczem API
+    cognitoDomain = local.google_enabled ? local.partner_cognito_domain : ""
+    clientId      = local.google_enabled ? aws_cognito_user_pool_client.partner_web[0].id : ""
   }
 }
 

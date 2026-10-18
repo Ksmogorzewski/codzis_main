@@ -1,7 +1,8 @@
 # Logowanie klientów: Cognito User Pool.
 #   - e-mail + hasło: własny formularz strony, wywołania API Cognito wprost z przeglądarki (USER_PASSWORD_AUTH)
 #   - Google (domyślnie wyłączone): Hosted UI Cognito (kod autoryzacyjny + PKCE). Włącza się samo, gdy
-#     w terraform.tfvars pojawi się google_client_id/secret - wtedy powstaje też domena Hosted UI i ustawienia OAuth.
+#     pojawi się google_client_id/secret (infra/secrets.auto.tfvars) - wtedy powstaje też domena Hosted UI
+#     i ustawienia OAuth. Ten sam klient OAuth Google loguje organizatorów (osobna pula: partner_auth.tf).
 resource "aws_cognito_user_pool" "clients" {
   name                     = "${local.name}-clients"
   username_attributes      = ["email"]
@@ -54,16 +55,10 @@ resource "aws_cognito_user_pool_domain" "clients" {
   managed_login_version = 1
 }
 
-# Klucz z Google Cloud Console (OAuth client "Web application"), redirect URI: terraform output google_oauth_redirect_uri
-resource "aws_cognito_identity_provider" "google" {
-  count = local.google_enabled ? 1 : 0
-
-  user_pool_id  = aws_cognito_user_pool.clients.id
-  provider_name = "Google"
-  provider_type = "Google"
-
-  # Pełny zestaw kluczy, które Cognito i tak ustawia dla Google - bez tego Terraform pokazuje stałą różnicę
-  provider_details = {
+locals {
+  # Klient OAuth "Web application" z Google Cloud Console, redirect URIs: terraform output google_oauth_redirect_uris.
+  # Pełny zestaw kluczy, które Cognito i tak ustawia dla Google - bez tego Terraform pokazuje stałą różnicę.
+  google_provider_details = {
     client_id                     = var.google_client_id
     client_secret                 = var.google_client_secret
     authorize_scopes              = "openid email profile"
@@ -74,13 +69,23 @@ resource "aws_cognito_identity_provider" "google" {
     token_request_method          = "POST"
     token_url                     = "https://www.googleapis.com/oauth2/v4/token"
   }
+}
+
+resource "aws_cognito_identity_provider" "google" {
+  count = local.google_enabled ? 1 : 0
+
+  user_pool_id     = aws_cognito_user_pool.clients.id
+  provider_name    = "Google"
+  provider_type    = "Google"
+  provider_details = local.google_provider_details
 
   attribute_mapping = {
     email          = "email"
     email_verified = "email_verified"
-    name           = "name"
-    picture        = "picture"
-    username       = "sub"
+    # Atrybut "name" to w portalu samo imię (pole „Imię” przy rejestracji, widoczne na listach zapisanych)
+    name     = "given_name"
+    picture  = "picture"
+    username = "sub"
   }
 }
 
