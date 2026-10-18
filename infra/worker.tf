@@ -121,6 +121,18 @@ resource "aws_iam_role_policy" "worker_task" {
         Action   = ["dynamodb:UpdateItem"]
         Resource = aws_dynamodb_table.submissions.arn
       },
+      {
+        # Zdjęcia wydarzeń w standardzie (tagger/images.py): sprawdzenie, czy plik już jest, i zapis
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject"]
+        Resource = "${aws_s3_bucket.photos.arn}/photos/events/*"
+      },
+      {
+        # Bez ListBucket brak pliku daje 403 zamiast 404 (tagger nie odróżniłby „nie ma” od „brak uprawnień”)
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = aws_s3_bucket.photos.arn
+      },
     ]
   })
 }
@@ -149,6 +161,9 @@ resource "aws_ecs_task_definition" "worker" {
       { name = "SQS_QUEUE_URL", value = aws_sqs_queue.events.url },
       { name = "DYNAMODB_TABLE", value = aws_dynamodb_table.events.name },
       { name = "SUBMISSIONS_TABLE", value = aws_dynamodb_table.submissions.name },
+      # Zdjęcia wydarzeń w standardzie: bucket zdjęć, publicznie przez CloudFront panelu pod /photos/*
+      { name = "PHOTOS_BUCKET", value = aws_s3_bucket.photos.id },
+      { name = "PHOTOS_BASE_URL", value = local.website_origin },
       { name = "AWS_REGION", value = var.region },
       { name = "AWS_DEFAULT_REGION", value = var.region }, # tego używa botocore
     ]

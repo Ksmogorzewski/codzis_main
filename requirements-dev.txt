@@ -9,6 +9,8 @@ mypy~=2.4
 # = Powertools 3.36.0 z Pydantic 2.14.1), tu te same wersje do testów.
 aws-lambda-powertools[parser]==3.36.0
 pydantic==2.14.1
+# Zdjęcia wydarzeń (tagger/images.py) - ta sama wersja co w obrazie taggera (requirements.txt).
+pillow==12.3.*
 # Testy rekomendera (tests/recommender/) na atrapie modelu, bez torcha; wersje jak w recommender/requirements.txt.
 # Testy z prawdziwym modelem (RUN_MODEL_TESTS=1) wymagają całego recommender/requirements.txt (torch CPU: patrz tam).
 numpy==2.5.4

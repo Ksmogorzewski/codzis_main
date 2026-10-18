@@ -50,6 +50,9 @@ const router = createRouter({
   defaultPreloadStaleTime: 0,
   defaultPendingMs: 150,
   defaultPendingMinMs: 250,
+  // Zmiana podstrony = łagodne przenikanie (View Transitions API, animacja w styles.css). Sam filtr w adresie
+  // (?when=, ?q=, ?cat=) - bez przejścia, lista zmienia się od razu. Bez wsparcia w przeglądarce: zwykła zmiana.
+  defaultViewTransition: { types: ({ pathChanged }) => (pathChanged ? ["podstrona"] : false) },
 });
 
 declare module "@tanstack/react-router" {

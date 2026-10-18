@@ -12,8 +12,14 @@ import { withStats } from "@/lib/community";
 import { filterByCategory } from "@/lib/categories";
 import { areaLabel, countLabel, dateTitle, dayLine, posterTitle, readAtLabel, WHEN_OPTIONS } from "@/lib/events";
 import { startLocation, useLocation } from "@/lib/location";
-import type { When } from "@/lib/schemas";
-import { DEFAULT_SEARCH, type HomeSearch, type RecommendationsParams, recommendationsParams, rememberSearch } from "@/lib/search";
+import {
+  DEFAULT_SEARCH,
+  type HomeSearch,
+  type HomeWhen,
+  type RecommendationsParams,
+  recommendationsParams,
+  rememberSearch,
+} from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { summary } from "@/lib/wizard";
 import { GRID, GridSkeleton } from "./card-skeleton";
@@ -28,11 +34,10 @@ const route = getRouteApi("/_app/");
 /** Na ekranie do 12 kart (API zwraca do 16, żeby po filtrze kategorii nadal było co pokazać). */
 const MAX_CARDS = 12;
 
-const TITLE: Record<Exclude<When, "date">, string> = {
+const TITLE: Record<Exclude<HomeWhen, "date">, string> = {
   today: "Co robimy dziś?",
   tomorrow: "Co robimy jutro?",
   weekend: "Co robimy w weekend?",
-  week: "Co robimy w tym tygodniu?",
 };
 
 
@@ -108,7 +113,7 @@ function Filters({ search, go }: { search: HomeSearch; go: (next: Partial<HomeSe
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-center">
         <WhenFilter
-          options={WHEN_OPTIONS.filter((o): o is { id: Exclude<When, "date">; label: string } => o.id !== "date")}
+          options={WHEN_OPTIONS.filter((o): o is { id: Exclude<HomeWhen, "date">; label: string } => o.id !== "date" && o.id !== "week")}
           value={params.when}
           date={params.date}
           onWhen={(when) => go({ when, date: undefined })}
@@ -127,20 +132,12 @@ function EmptyState({ search }: { search: HomeSearch }) {
     <div className="flex flex-col items-center gap-2.5 border-2 border-dashed border-input px-5 py-8 text-center">
       <Icon name="event_busy" size={40} className="text-muted-foreground" />
       <p className="text-lg font-bold">Brak propozycji dla tych filtrów</p>
-      {filtered ? (
+      {filtered && (
         <Button asChild size="sm">
           <Link to="/" search={{ ...DEFAULT_SEARCH, when: search.when }}>
             Wyczyść filtry
           </Link>
         </Button>
-      ) : (
-        search.when !== "week" && (
-          <Button asChild size="sm">
-            <Link to="/" search={{ ...DEFAULT_SEARCH, when: "week" }}>
-              Pokaż 7 dni
-            </Link>
-          </Button>
-        )
       )}
     </div>
   );

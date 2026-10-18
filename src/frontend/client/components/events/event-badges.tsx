@@ -4,9 +4,12 @@ import { settingInfo } from "@/lib/events";
 import type { Card } from "@/lib/schemas";
 import { mainTag } from "@/lib/tags";
 
-/** Naklejki na plakacie: główny temat (tags.theme[0]), od organizatora, pod dachem / plener (tags.setting), online. */
-export function EventBadges({ card, large }: { card: Card; large?: boolean }) {
-  const setting = settingInfo(card.tags.setting);
+/**
+ * Naklejki na plakacie: główny temat (tags.theme[0]), od organizatora, pod dachem / plener (tags.setting), online.
+ * Kafelek na listach (`setting={false}`) pokazuje sam temat - pod dachem / plener jest w szczegółach.
+ */
+export function EventBadges({ card, large, setting: withSetting = true }: { card: Card; large?: boolean; setting?: boolean }) {
+  const setting = withSetting ? settingInfo(card.tags.setting) : null;
   const main = mainTag(card.tags);
   const size = large ? "lg" : "default";
   const icon = large ? 18 : 16;

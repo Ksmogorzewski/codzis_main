@@ -12,7 +12,8 @@ Control flow:
              changed, but the model input is the same -> write with the existing tags (no LLM)
              new, or title/description/hints/taxonomy changed -> tag
          tag_events(prepare_records(to_tag))  -> LLM tags (tagger / DeepSeek)
-         record + tags + facets (from data) + expiresAt (TTL) -> sink.put(sanitize(record))
+         record + tags + facets (from data) + expiresAt (TTL) + photo in the standard
+             (tagger/images.py: WebP 1200x800 in the photos bucket) -> sink.put(sanitize(record))
          partner records: mark submission as published (portal status)
          source.delete(receipt_handle)   # ONLY if every record got tags;
                                          # otherwise redelivery re-tags just the rest
@@ -27,6 +28,7 @@ Env:
     DYNAMODB_TABLE  (optional, default "warsaw_events" + warning)
     SUBMISSIONS_TABLE (optional) partner portal submissions; no-op if unset
     AWS_REGION      (optional, default "eu-central-1")
+    PHOTOS_BUCKET, PHOTOS_BASE_URL (optional) photos in the standard; without them imageUrl stays the source
     DEEPSEEK_API_KEY (required by tagger.client, via env or .env)
 
 Usage:
@@ -43,6 +45,7 @@ from tagger import merge, tag_events
 from tagger.client import resolve_api_key
 from tagger.dynamodb_sink import DynamoDBSink, SubmissionStatus, sanitize
 from tagger.facets import expires_at, facets
+from tagger.images import S3Images, normalize_image
 from tagger.normalize import SOURCE_PARTNER, normalize
 from tagger.parser import apply_declared
 from tagger.prepare import prepare_record, prepare_records, tag_input_hash
@@ -86,6 +89,7 @@ def main() -> int:
     source = SQSSource()
     sink = DynamoDBSink()
     submissions = SubmissionStatus()
+    images = S3Images.from_env()
 
     for batch_no in range(1, args.max_batches + 1):
         try:
@@ -144,7 +148,7 @@ def main() -> int:
                     elif existing.get("tagInputHash") == record["tagInputHash"] and existing.get("tags"):
                         # e.g. a new date: same model input -> keep tags, no LLM call
                         record["tags"] = existing["tags"]
-                        write(sink, submissions, record, taxonomy)
+                        write(sink, submissions, record, taxonomy, images)
                         stats["reused_tags"] += 1
                     else:
                         to_tag.append(record)
@@ -162,7 +166,7 @@ def main() -> int:
                         if record["id"] not in tagged:
                             untagged.append(record["id"])
                             continue
-                        write(sink, submissions, record, taxonomy)
+                        write(sink, submissions, record, taxonomy, images)
                         stats["tagged"] += 1
 
                 if untagged:
@@ -191,8 +195,10 @@ def main() -> int:
     return 0 if all_ok else 1
 
 
-def write(sink, submissions, record: dict, taxonomy: str) -> None:
-    """Declared values over model tags, facets + TTL, upsert; partner records also update the portal status."""
+def write(sink, submissions, record: dict, taxonomy: str, images: S3Images | None = None) -> None:
+    """Declared values over model tags, facets + TTL, photo in the standard, upsert; partner records also
+    update the portal status. A photo that fails keeps the source imageUrl (never blocks the write)."""
+    record = normalize_image(record, images)
     record["tags"] = apply_declared(record.get("tags"), record.get("declared"))
     record["facets"] = facets(record)
     record["taxonomyVersion"] = taxonomy

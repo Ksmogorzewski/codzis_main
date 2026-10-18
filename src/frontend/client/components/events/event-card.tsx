@@ -34,7 +34,8 @@ const HIDDEN_WHEN_SHOWN = "group-hover/card:opacity-0 group-focus-within/card:op
  * Karta-plakat: pole w kolorze kategorii z wielką godziną w tle i tytułem w kroju plakatu (zdjęcie, jeśli jest,
  * odsłania się na polu plakatu w naturalnych kolorach; tytuł zostaje na pasku w kolorze kategorii), pod spodem miejsce, cena, odległość, „Zapisanych: N”, „Ola idzie” (znajomi,
  * GET /api/friends/going), „Pasuje: …” (tylko rekomendacje), Trasa / Zapisz / Szczegóły.
- * Pole plakatu rośnie, gdy karty w rzędzie mają różną wysokość. Ta sama karta na wszystkich listach.
+ * Pole plakatu ma stałą wysokość (tytuł maks. 3 linie, jeden temat bez pod dachem / plener), biała część wypełnia
+ * resztę karty - w rzędzie kart oba pola są równe. Ta sama karta na wszystkich listach.
  * Nawigacja to prawdziwe linki (Ctrl/Cmd+klik otwiera nową kartę).
  */
 export function EventCard({ card, position, now, rank, saveLabel }: Props) {
@@ -50,19 +51,23 @@ export function EventCard({ card, position, now, rank, saveLabel }: Props) {
   const [photoFailed, setPhotoFailed] = useState(false);
   const hasPhoto = safeUrl(card.imageUrl) !== null && !photoFailed;
   const reveal = usePhotoReveal<HTMLDivElement>(hasPhoto);
-  // pasek w kolorze kategorii pod tekstem: niewidoczny na polu plakatu, czytelny na zdjęciu
-  const onPhoto = cn("box-decoration-clone px-1.5 -mx-1.5", POSTER_FIELD[category]);
+  // Pasek w kolorze kategorii pod tekstem: niewidoczny na polu plakatu, czytelny na zdjęciu. Wszystkie paski
+  // (nadtytuł, temat, linie tytułu) mają tę samą lewą krawędź i odstęp px-2; pole ma px-2, więc tekst stoi tam,
+  // gdzie przy px-4, a paski wchodzą w margines.
+  const onPhoto = cn("box-decoration-clone px-2", POSTER_FIELD[category]);
 
   return (
     <Card ref={reveal.ref} data-active={reveal.active} className="group/card">
       {/* Stuknięcie w plakat (poza linkiem tytułu) przełącza zdjęcie; klawiatura dostaje je przez fokus tytułu. */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: zdjęcie jest ozdobą, fokus obsługuje CSS */}
+      {/* overflow-clip, nie hidden: godzina w tle wystaje poza pole, a z overflow-hidden fokus tytułu (scrollIntoView)
+          przewijał pole i zdjęcie odsłaniało się przesunięte */}
       <div
         onClick={(e) => {
           if (!(e.target instanceof Element && e.target.closest("a"))) reveal.toggle();
         }}
         className={cn(
-          "relative flex min-h-[200px] flex-1 flex-col gap-3 overflow-hidden border-b-2 border-input px-4 pt-4 pb-5",
+          "relative flex h-[232px] shrink-0 flex-col gap-2.5 overflow-clip border-b-2 border-input px-2 pt-4 pb-4",
           POSTER_FIELD[category],
         )}
       >
@@ -101,20 +106,21 @@ export function EventCard({ card, position, now, rank, saveLabel }: Props) {
             <Icon name="photo_camera" size={18} />
           </span>
         )}
-        <div className="relative flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] leading-tight font-bold tracking-[0.1em] uppercase">
+        <div className="relative flex flex-wrap items-center gap-1.5 text-[13px] font-bold tracking-[0.1em] uppercase">
           {rank && (
-            <span className="grid size-7 shrink-0 place-items-center rounded-full bg-foreground text-sm font-extrabold text-background tabular-nums">
+            <span className="ml-2 grid size-7 shrink-0 place-items-center rounded-full bg-foreground text-sm font-extrabold text-background tabular-nums">
               <span className="sr-only">Miejsce </span>
               {rank}
             </span>
           )}
-          <span className={onPhoto}>
+          {/* wysokość jak naklejka tematu (Badge: py-[5px], leading-none), żeby paski w rzędzie się zgadzały */}
+          <span className={cn(onPhoto, "py-[5px] leading-none")}>
             {CATEGORY_LABEL[category]}
             {when && ` · ${when}`}
           </span>
-          <EventBadges card={card} />
+          <EventBadges card={card} setting={false} />
         </div>
-        <h3 className="relative font-display text-[32px] leading-[0.95] font-bold text-pretty uppercase [font-stretch:68%] md:text-[34px]">
+        <h3 className="relative line-clamp-3 font-display text-[32px] leading-[1.08] font-bold text-pretty uppercase [font-stretch:68%] md:text-[34px]">
           <Link
             to={to}
             params={params}
@@ -124,10 +130,10 @@ export function EventCard({ card, position, now, rank, saveLabel }: Props) {
           </Link>
         </h3>
       </div>
-      <div className="flex flex-col gap-2 p-4">
+      <div className="flex flex-1 flex-col gap-2 p-4">
         {(place || price) && (
           <div className="flex items-baseline justify-between gap-3">
-            <span className="text-meta text-muted-foreground">{place}</span>
+            <span className="line-clamp-2 text-meta text-muted-foreground">{place}</span>
             {price && (
               <span
                 className={cn(
