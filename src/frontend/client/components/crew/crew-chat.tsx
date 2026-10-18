@@ -1,55 +1,65 @@
-import { type FormEvent, useEffect, useReducer, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { errorText } from "@/components/layout/route-error";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
-import { type ChatMessageInput, chatReducer, initialChat, timeline } from "@/lib/crew-chat";
-import { DEMO_CREW, demoScript } from "@/lib/crew-demo";
+import { useSendMessage } from "@/hooks/use-send-message.mutation";
+import { currentDisplayName } from "@/lib/auth";
+import { authorLabel, MAX_MESSAGE, type MeetingInfo } from "@/lib/crew-chat";
+import type { Crew } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
-import { ChatMessage, TypingIndicator } from "./chat-message";
+import { ChatMessage, PendingMessage } from "./chat-message";
 import { ColorCard } from "./color-card";
 
 type Props = {
-  /** Pozostali członkowie ekipy (bez mnie): imiona zapisanych, uzupełnione demo. */
-  members: string[];
-  /** Wiadomości, które już są w czacie (DEMO: demoInbox - ta sama rozmowa co na zakładce „Twoje”). */
-  seed: ChatMessageInput[];
-  /** Podpis moich wiadomości (ownLabel). */
-  myLabel: string;
-  category: string;
-  place: string | null;
-  when: string | null;
+  id: string;
+  /** Moja ekipa z wiadomościami (hooks/use-crew.query.ts - odpytywanie co 3 s). */
+  crew: Crew;
+  /** Dane wydarzenia do kart Wodzireja (punkt i czas zbiórki). */
+  info: MeetingInfo;
 };
 
-// Czat mikro-ekipy wydarzenia (mockup_czatu_warsawnow_2). Ekran: components/crew/crew-chat-screen.tsx.
-// DEMO: wiadomości i odpowiedzi to scenariusz z lib/crew-demo.ts odtwarzany lokalnie (bez backendu).
-export function CrewChat({ members, seed, myLabel, category, place, when }: Props) {
-  // Scenariusz liczony raz przy wejściu: zmiana listy zapisanych w tle nie przestawia rozmowy.
-  const [plan] = useState(() => ({
-    seed,
-    steps: timeline(demoScript({ members, category, place, when })),
-  }));
-  const [state, dispatch] = useReducer(chatReducer, plan.seed, initialChat);
+// Bliżej dołu niż tyle px = czytam najnowsze, więc nowa wiadomość przewija czat; wyżej - czytam historię.
+const STICK_PX = 80;
+
+// Czat mikro-ekipy wydarzenia (mockup_czatu_warsawnow_2), ekran: components/crew/crew-chat-screen.tsx.
+// Dopóki nic nie napiszę (crew.answered), czat zasłania lodołamacz - pierwsza wiadomość to odpowiedź na niego.
+export function CrewChat({ id, crew, info }: Props) {
+  const send = useSendMessage(id);
   const [text, setText] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
   const [cardOpen, setCardOpen] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
   const openCardRef = useRef<HTMLButtonElement>(null);
-
-  // Po odblokowaniu: „X pisze…” i odpowiedzi ekipy w czasie (DEMO; docelowo wiadomości z API).
-  useEffect(() => {
-    if (state.locked) return;
-    const timers = plan.steps.map(({ at, action }) => setTimeout(() => dispatch(action), at));
-    return () => timers.forEach(clearTimeout);
-  }, [state.locked, plan]);
+  const locked = !crew.answered && pending === null;
+  const now = new Date();
 
   useEffect(() => {
     const log = logRef.current;
-    if (log) log.scrollTop = log.scrollHeight;
-  }, [state.messages.length, state.typing]);
+    if (log && stick.current) log.scrollTop = log.scrollHeight;
+  }, [crew.messages.length, pending]);
 
-  const send = (e: FormEvent) => {
+  const onScroll = () => {
+    const log = logRef.current;
+    if (log) stick.current = log.scrollHeight - log.scrollTop - log.clientHeight < STICK_PX;
+  };
+
+  const submit = (e: FormEvent) => {
     e.preventDefault();
-    dispatch({ type: "send", text, author: myLabel });
+    const value = text.trim();
+    if (!value || pending !== null) return;
+    stick.current = true;
+    setPending(value);
     setText("");
+    send.mutate(value, {
+      onSettled: () => setPending(null),
+      onError: (error) => {
+        setText((current) => current || value); // tekst wraca do pola, jeśli nie wpisano nic nowego
+        toast.error(errorText(error, "Nie udało się wysłać wiadomości. Spróbuj ponownie."));
+      },
+    });
   };
 
   const closeCard = () => {
@@ -63,22 +73,23 @@ export function CrewChat({ members, seed, myLabel, category, place, when }: Prop
       <div className="relative min-h-0 flex-1 bg-secondary">
         <div
           ref={logRef}
+          onScroll={onScroll}
           role="log"
           aria-live="polite"
           aria-label="Wiadomości ekipy"
           className="flex h-full flex-col gap-3 overflow-y-auto overscroll-contain p-4"
         >
-          {state.messages.map((m) => (
-            <ChatMessage key={m.id} message={m} />
+          {crew.messages.map((m) => (
+            <ChatMessage key={m.id} message={m} crew={crew} info={info} now={now} />
           ))}
-          {state.typing && <TypingIndicator who={state.typing} />}
+          {pending !== null && <PendingMessage text={pending} label={authorLabel({ name: currentDisplayName(), isMe: true })} />}
         </div>
 
         <div
-          aria-hidden={!state.locked}
+          aria-hidden={!locked}
           className={cn(
             "absolute inset-0 z-10 flex items-center justify-center bg-overlay p-6 transition-opacity duration-250",
-            !state.locked && "pointer-events-none opacity-0",
+            !locked && "pointer-events-none opacity-0",
           )}
         >
           <div
@@ -86,7 +97,7 @@ export function CrewChat({ members, seed, myLabel, category, place, when }: Prop
             aria-labelledby="icebreaker-title"
             className={cn(
               "flex w-full max-w-md flex-col items-center gap-3 rounded-2xl border bg-card px-5 py-6 text-center shadow-lg transition-transform duration-250",
-              !state.locked && "translate-y-4",
+              !locked && "translate-y-4",
             )}
           >
             <span className="flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary-ink">
@@ -96,7 +107,7 @@ export function CrewChat({ members, seed, myLabel, category, place, when }: Prop
               Lodołamacz
             </h2>
             <p className="leading-snug text-pretty">
-              Zanim dołączysz, odpowiedz: <strong>{DEMO_CREW.icebreaker}</strong>
+              Zanim dołączysz, odpowiedz: <strong>{crew.icebreaker}</strong>
             </p>
             <p className="text-meta text-muted-foreground">Napisz odpowiedź na dole, aby odblokować czat.</p>
           </div>
@@ -104,7 +115,7 @@ export function CrewChat({ members, seed, myLabel, category, place, when }: Prop
       </div>
 
       <div className="border-t bg-card">
-        {state.beacon && (
+        {!locked && crew.members.length > 1 && (
           <div className="px-4 pt-3">
             <Button
               ref={openCardRef}
@@ -118,17 +129,25 @@ export function CrewChat({ members, seed, myLabel, category, place, when }: Prop
             </Button>
           </div>
         )}
-        <form onSubmit={send} className="flex gap-2 px-4 py-3">
+        <form onSubmit={submit} className="flex gap-2 px-4 py-3">
           <Input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={state.locked ? "Odpowiedz na lodołamacz…" : "Napisz wiadomość…"}
+            placeholder={locked ? "Odpowiedz na lodołamacz…" : "Napisz wiadomość…"}
             aria-label="Wiadomość"
+            maxLength={MAX_MESSAGE}
             enterKeyHint="send"
             autoComplete="off"
             className="h-12 text-base"
           />
-          <Button type="submit" size="icon" className="size-12 rounded-md" aria-label="Wyślij">
+          <Button
+            type="submit"
+            size="icon"
+            className="size-12 rounded-md"
+            aria-label="Wyślij"
+            disabled={pending !== null}
+            aria-busy={pending !== null || undefined}
+          >
             <Icon name="send" size={22} filled />
           </Button>
         </form>

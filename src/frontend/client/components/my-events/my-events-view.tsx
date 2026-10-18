@@ -1,12 +1,9 @@
-import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useRef } from "react";
-import { toast } from "sonner";
-import { DemoNote } from "@/components/crew/demo-note";
+import { getRouteApi, Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMyEvents } from "@/hooks/use-my-events.query";
-import { inboxStore, scheduleDemoArrival } from "@/lib/crew-inbox";
 import { eventCountLabel } from "@/lib/events";
 import { groupMyEvents } from "@/lib/my-events";
 import type { MyEvent } from "@/lib/schemas";
@@ -23,7 +20,6 @@ export function MyEventsView() {
   const mine = useMyEvents();
   const { upcoming, past } = groupMyEvents((mine.data ?? initial).items);
   const now = new Date();
-  useDemoArrival(upcoming);
 
   return (
     <>
@@ -35,7 +31,6 @@ export function MyEventsView() {
         <EmptyState />
       ) : (
         <>
-          <DemoNote className="rounded-xl bg-warning-soft px-3 py-2" />
           <Section id="upcoming" title="Nadchodzące" items={upcoming} now={now}>
             <p className="text-meta text-muted-foreground">
               Nic nie czeka w kalendarzu.{" "}
@@ -88,28 +83,6 @@ function EmptyState() {
       </Button>
     </div>
   );
-}
-
-/**
- * DEMO: raz na sesję strony, chwilę po wejściu na „Twoje”, w czacie najbliższego wydarzenia „przychodzi”
- * nowa wiadomość (lib/crew-inbox.ts) - plakietki rosną, a toast prowadzi do czatu. Bez powiadomień przeglądarki.
- */
-function useDemoArrival(upcoming: MyEvent[]) {
-  const navigate = useNavigate();
-  const titles = useRef(new Map<string, string>());
-  titles.current = new Map(upcoming.map((c) => [c.id, c.title]));
-  const ids = upcoming.map((c) => c.id).join(",");
-
-  useEffect(() => {
-    if (!ids) return;
-    return scheduleDemoArrival(inboxStore, ids.split(","), (id) => {
-      toast(`Nowa wiadomość w czacie: ${titles.current.get(id) ?? "Twoja ekipa"}`, {
-        icon: <Icon name="forum" />,
-        duration: 8000,
-        action: { label: "Otwórz", onClick: () => void navigate({ to: "/wydarzenie/$id/ekipa", params: { id } }) },
-      });
-    });
-  }, [ids, navigate]);
 }
 
 /** Szkielet listy na czas pierwszego ładowania. */

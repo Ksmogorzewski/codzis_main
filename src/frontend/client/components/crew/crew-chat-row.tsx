@@ -1,25 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { UnreadBadge } from "@/components/layout/nav-badge";
 import { Icon } from "@/components/ui/icon";
-import { attendeesQueryOptions } from "@/hooks/use-attendees.query";
-import { authorOf, crewMembers, memberNames } from "@/lib/crew-chat";
-import { DEMO_CREW, demoInbox } from "@/lib/crew-demo";
-import { unreadCount, useInbox } from "@/lib/crew-inbox";
+import { useMyCrews } from "@/hooks/use-my-crews.query";
+import { CREW_CAPACITY, messagePreview } from "@/lib/crew-chat";
 import { cn } from "@/lib/utils";
 
 /**
- * Wiersz „Czat ekipy” na zakładce „Twoje”: ostatnia wiadomość, liczba nieprzeczytanych, wejście na czat.
- * DEMO: wiadomości to scenariusz z lib/crew-demo.ts (ten sam, który pokaże czat), stan przeczytanych
- * z lib/crew-inbox.ts. Imiona ekipy tylko z listy zapisanych, jeśli już jest w pamięci (bez zapytania
- * na każde wydarzenie listy); inaczej imiona z demo.
+ * Wiersz „Czat ekipy” na zakładce „Twoje”: ostatnia wiadomość, liczba nieprzeczytanych i wejście na czat
+ * (wszystkie wiersze z jednego GET /api/me/crews). Bez ekipy (czatu jeszcze nie otwierałem) - zachęta do wejścia.
  */
 export function CrewChatRow({ id }: { id: string }) {
-  const inbox = useInbox();
-  const attendees = useQuery({ ...attendeesQueryOptions(id), enabled: false });
-  const members = memberNames(crewMembers(attendees.data?.people, DEMO_CREW.names, DEMO_CREW.capacity - 1));
-  const last = demoInbox(members, id, inbox[id]?.arrived ?? 0).at(-1);
-  const unread = unreadCount(inbox, id);
+  const mine = useMyCrews();
+  const crew = mine.data?.items.find((c) => c.eventId === id);
+  const unread = crew?.unread ?? 0;
+  const preview = crew?.last ? messagePreview(crew.last) : mine.data ? `Wejdź i dołącz do ekipy (do ${CREW_CAPACITY} osób)` : null;
 
   return (
     <Link
@@ -32,9 +26,9 @@ export function CrewChatRow({ id }: { id: string }) {
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-base font-bold">Czat ekipy</span>
-        {last && (
+        {preview && (
           <span className={cn("truncate text-meta text-muted-foreground", unread > 0 && "font-semibold text-foreground")}>
-            {`${authorOf(last)}: ${last.text}`}
+            {preview}
           </span>
         )}
       </span>

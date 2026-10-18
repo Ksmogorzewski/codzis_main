@@ -2,6 +2,7 @@
 
 from aws_lambda_powertools.event_handler.router import APIGatewayHttpRouter
 
+import crews
 import events
 import friends
 import profiles
@@ -32,10 +33,11 @@ def put_save(id: str) -> dict:
 
 @router.delete("/api/events/<id>/save")
 def delete_save(id: str) -> dict:
-    """Wypisanie. Działa też dla wydarzeń, które już wygasły; ponowne nic nie zmienia."""
+    """Wypisanie (i wyjście z ekipy czatu). Działa też dla wydarzeń, które już wygasły; ponowne nic nie zmienia."""
     user_id = common.claims(router)["sub"]
     event_id = common.path_id(id, EVENT_NOT_FOUND)
     store.unsave(event_id, user_id)
+    crews.leave(event_id, user_id, common.now())
     return {"saved": False, "saves": store.saves_of(event_id)}
 
 

@@ -1,5 +1,5 @@
 // Pięć miejsc aplikacji: w nagłówku na desktopie, w dolnym pasku zakładek na telefonie.
-// „Twoje” ma plakietkę z liczbą nieprzeczytanych wiadomości w czatach ekip (lib/crew-inbox.ts),
+// „Twoje” ma plakietkę z liczbą nieprzeczytanych wiadomości w czatach ekip (hooks/use-crew-unread.ts),
 // „Znajomi” - z liczbą zaproszeń do mnie (hooks/use-friend-invites.query.ts).
 // Eksploruj nie ma pozycji w menu (trasa /eksploruj zostaje: link „Zobacz wszystkie wydarzenia” na Dla Ciebie).
 

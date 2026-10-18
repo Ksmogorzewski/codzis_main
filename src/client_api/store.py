@@ -33,10 +33,11 @@ MAX_ATTENDEES = 100
 POPULAR_FETCH = 200  # zapas z indeksu bySaves (część wydarzeń jest poza oknem albo wygasła)
 BATCH_GET_MAX = 100  # limit BatchGetItem
 
-# Pola rekordu v1 potrzebne do kart (bez długiego `text`) - mniej danych w pamięci kontenera
+# Pola rekordu v1 potrzebne do kart (bez długiego `text`) - mniej danych w pamięci kontenera;
+# expiresAt (TTL taggera: dzień po końcu wydarzenia) wyznacza też TTL czatu ekipy (crews.expires_at)
 CARD_FIELDS = [
     "id", "title", "lead", "url", "imageUrl", "origin", "source", "kind", "partnerName", "district",
-    "venue", "location", "online", "occurrences", "schedule", "attributes", "tags", "importedAt",
+    "venue", "location", "online", "occurrences", "schedule", "attributes", "tags", "importedAt", "expiresAt",
 ]  # fmt: skip
 
 dynamodb = boto3.resource("dynamodb", config=AWS_CONFIG)
