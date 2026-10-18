@@ -49,6 +49,11 @@ describe("adresy Hosted UI", () => {
     });
   });
 
+  it("własny zakres, gdy aplikacja go podaje", () => {
+    const url = new URL(authorizeUrl({ ...app, scope: "openid email profile aws.cognito.signin.user.admin" }, "s", "c"));
+    expect(url.searchParams.get("scope")).toBe("openid email profile aws.cognito.signin.user.admin");
+  });
+
   it("wylogowanie z Hosted UI wraca na redirectUri", () => {
     const url = new URL(logoutUrl(app));
     expect(url.origin + url.pathname).toBe("https://warsawnow.auth.eu-central-1.amazoncognito.com/logout");

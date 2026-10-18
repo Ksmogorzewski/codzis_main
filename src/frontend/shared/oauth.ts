@@ -8,6 +8,7 @@ export type OAuthApp = {
   domain: string; // domena Hosted UI, np. warsawnow.auth.eu-central-1.amazoncognito.com
   clientId: string;
   redirectUri: string; // dokładnie jak w callback_urls i logout_urls klienta aplikacji (Terraform)
+  scope?: string; // domyślnie "openid email profile"; musi być w allowed_oauth_scopes klienta aplikacji
 };
 
 export type OAuthTokens = { idToken: string; accessToken: string; refreshToken?: string; expiresIn: number };
@@ -41,7 +42,7 @@ export function authorizeUrl(app: OAuthApp, state: string, challenge: string): s
     response_type: "code",
     client_id: app.clientId,
     redirect_uri: app.redirectUri,
-    scope: "openid email profile",
+    scope: app.scope ?? "openid email profile",
     identity_provider: "Google",
     state,
     code_challenge: challenge,

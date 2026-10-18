@@ -5,7 +5,7 @@
 // Sesja w localStorage pod tym samym kluczem co w poprzedniej wersji portalu (zalogowani zostają zalogowani).
 import { finishSignIn, logoutUrl, type OAuthApp, type SignInFailure, startSignIn } from "../../shared/oauth";
 import { familyNameError, nameError, normalizeName } from "./auth-form";
-import { config } from "./config";
+import { config, loadConfig } from "./config";
 import { err, ok, type Result } from "./result";
 import { readJson, writeJson } from "./storage";
 
@@ -312,13 +312,18 @@ export const confirmForgotPassword = (email: string, code: string, password: str
 // --- Google (Hosted UI + PKCE) ---
 
 /** Przycisk Google tylko, gdy Terraform włączył logowanie Google (google_client_id) i podał domenę Hosted UI. */
-export const googleAvailable = () => config().googleEnabled && config().cognitoDomain !== "";
+export const googleAvailable = () => {
+  const r = loadConfig(); // bez config.js po prostu bez Google (błąd konfiguracji pokazuje __root.tsx)
+  return r.error === null && r.data.googleEnabled && r.data.cognitoDomain !== "";
+};
 
 const googleApp = (): OAuthApp => ({
   domain: config().cognitoDomain,
   clientId: config().clientId,
   // Strona główna: musi być na liście callback_urls i logout_urls (infra/client_auth.tf)
   redirectUri: `${window.location.origin}/`,
+  // aws.cognito.signin.user.admin: access token pozwala uzupełnić imię kontu Google bez imienia (setMissingName)
+  scope: "openid email profile aws.cognito.signin.user.admin",
 });
 
 /** Przekierowanie do Google; powrót na stronę główną z ?code=… (obsługuje googleSignInResult). */

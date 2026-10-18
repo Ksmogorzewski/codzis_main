@@ -104,10 +104,11 @@ resource "aws_cognito_user_pool_client" "web" {
   # OAuth (Hosted UI) tylko dla logowania Google; e-mail + hasło go nie potrzebuje
   allowed_oauth_flows_user_pool_client = local.google_enabled
   allowed_oauth_flows                  = local.google_enabled ? ["code"] : null
-  allowed_oauth_scopes                 = local.google_enabled ? ["openid", "email", "profile"] : null
-  callback_urls                        = local.google_enabled ? local.client_app_urls : null
-  logout_urls                          = local.google_enabled ? local.client_app_urls : null
-  supported_identity_providers         = local.google_enabled ? ["COGNITO", "Google"] : ["COGNITO"]
+  # aws.cognito.signin.user.admin: konto Google bez imienia uzupełnia je w portalu (UpdateUserAttributes)
+  allowed_oauth_scopes         = local.google_enabled ? ["openid", "email", "profile", "aws.cognito.signin.user.admin"] : null
+  callback_urls                = local.google_enabled ? local.client_app_urls : null
+  logout_urls                  = local.google_enabled ? local.client_app_urls : null
+  supported_identity_providers = local.google_enabled ? ["COGNITO", "Google"] : ["COGNITO"]
 
   id_token_validity      = 60
   access_token_validity  = 60

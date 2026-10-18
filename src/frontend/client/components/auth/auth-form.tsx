@@ -35,7 +35,7 @@ import {
   validateAuthForm,
 } from "@/lib/auth-form";
 import { config } from "@/lib/config";
-import { afterLoginTarget, rememberTarget } from "@/lib/login-redirect";
+import { afterLoginTarget, rememberGoogleTarget, rememberTarget } from "@/lib/login-redirect";
 import { ok } from "@/lib/result";
 
 const loginRoute = getRouteApi("/login");
@@ -154,11 +154,13 @@ export function AuthForm({ initialError = null }: { initialError?: string | null
     setBusy(false);
   }
 
-  // Przekierowanie do Google; po powrocie sesję zapisuje strażnik tras (lib/auth.ts: googleSignInResult).
+  // Przekierowanie do Google; po powrocie sesję zapisuje strażnik tras (lib/auth.ts: googleSignInResult),
+  // a ekran z ?redirect=… (np. zaproszenie z QR) czeka w sessionStorage (lib/login-redirect.ts).
   async function onGoogle() {
     setBusy(true);
     setError(null);
     setGoogleError(null);
+    rememberGoogleTarget(search);
     try {
       await signInWithGoogle();
     } catch {

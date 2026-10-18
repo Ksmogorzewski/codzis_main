@@ -45,3 +45,19 @@ export function takeTarget(store: TargetStore = sessionTarget): string | null {
   store.write(null);
   return path;
 }
+
+// Logowanie Google wychodzi ze strony (Hosted UI) i wraca na stronę główną bez ?redirect=…: ekran czeka
+// w sessionStorage tej karty, a strażnik tras (_app.tsx) prowadzi tam po powrocie (nowe konto - przez ankietę).
+const GOOGLE_TARGET_KEY = "warsawnow.after-google";
+
+const googleTarget: TargetStore = {
+  read: () => readJson<unknown>("session", GOOGLE_TARGET_KEY),
+  write: (value) => writeJson("session", GOOGLE_TARGET_KEY, value),
+};
+
+/** Przed przekierowaniem do Google: zapamiętuje ekran z ?redirect=… (strony głównej nie trzeba). */
+export const rememberGoogleTarget = (search: LoginSearch, store: TargetStore = googleTarget): void =>
+  rememberTarget(search.redirect ?? null, store);
+
+/** Po powrocie z Google: zapamiętany ekran (jednorazowo) albo null. */
+export const takeGoogleTarget = (store: TargetStore = googleTarget): string | null => takeTarget(store);
