@@ -169,6 +169,7 @@ resource "aws_lambda_function" "recommender" {
       INDEX_KEY              = "recommender/index.npz"
       DEEPSEEK_API_KEY_PARAM = aws_ssm_parameter.deepseek_api_key.name
       LLM_ENABLED            = tostring(var.recommender_llm_enabled)
+      LLM_TIMEOUT            = "20"  # limit jednego wywołania DeepSeek (inaczej domyślne 60 s)
       OMP_NUM_THREADS        = "2"
     }
   }
