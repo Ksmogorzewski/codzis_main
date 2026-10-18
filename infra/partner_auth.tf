@@ -2,7 +2,7 @@
 # (pierwsze logowanie + GET /me zakłada konto organizatora; partnerId = sub, nazwa = imię i nazwisko z Google).
 # Osobna pula, bo autoryzator REST API przepuszcza każdy token swojej puli - token z portalu klienta
 # nie otworzy API partnera. Włącza się razem z Google dla klientów (ten sam klient OAuth Google);
-# bez google_client_id panel loguje jak dotąd kluczem API (api.tf).
+# bez sekretu Google (client_auth.tf) panel loguje jak dotąd kluczem API (api.tf).
 resource "aws_cognito_user_pool" "partners" {
   count = local.google_enabled ? 1 : 0
 

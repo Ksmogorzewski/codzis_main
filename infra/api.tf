@@ -1,6 +1,6 @@
 # REST API (v1) - tylko ono obsługuje API keys + usage plans.
 # Ruch z przeglądarki idzie przez CloudFront (ta sama domena), więc bez CORS.
-# Logowanie: z Google (google_client_id) token Cognito puli partnerów (partner_auth.tf), bez Google klucz API.
+# Logowanie: z Google (sekret codzis/google-oauth, client_auth.tf) token Cognito puli partnerów (partner_auth.tf), bez Google klucz API.
 resource "aws_api_gateway_rest_api" "api" {
   name = "${local.name}-api"
 

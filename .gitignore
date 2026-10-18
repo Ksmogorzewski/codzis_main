@@ -2,7 +2,7 @@
 .terraform/
 *.tfstate
 *.tfstate.*
-# Wspólna konfiguracja deployu (bez sekretów). Sekrety, np. google_client_secret, w infra/secrets.auto.tfvars
+# Wspólna konfiguracja deployu (bez sekretów). Lokalne sekrety Terraforma w infra/secrets.auto.tfvars
 infra/secrets.auto.tfvars
 infra/build/
 

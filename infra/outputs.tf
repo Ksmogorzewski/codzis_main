@@ -166,3 +166,13 @@ output "recommender_repository_url" {
 output "recommender_function" {
   value = aws_lambda_function.recommender.function_name
 }
+
+output "google_oauth_secret" {
+  description = "Sekret AWS Secrets Manager z klientem OAuth Google (JSON: client_id, client_secret)"
+  value       = local.google_secret_name
+}
+
+output "google_login_enabled" {
+  description = "Czy logowanie Google jest włączone (sekret istnieje i ma prawdziwy client_id)"
+  value       = local.google_enabled
+}

@@ -177,18 +177,6 @@ variable "partner_cognito_domain_prefix" {
   default     = "warsawnow-partner"
 }
 
-variable "google_client_id" {
-  description = "OAuth client ID z Google Cloud Console - logowanie Google w portalu klienta i w panelu organizatora; puste = klient loguje się e-mailem, partner kluczem API"
-  type        = string
-  default     = ""
-}
-
-variable "google_client_secret" {
-  description = "OAuth client secret z Google Cloud Console (w infra/secrets.auto.tfvars; trafia do state'u Terraforma)"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
 
 # --- rekomendacje (RAG) ---
 
@@ -244,7 +232,6 @@ locals {
   client_domains        = concat([var.client_domain_name], var.client_domain_aliases)
   client_origins        = [for d in local.client_domains : "https://${d}"]
   client_app_urls       = concat([for o in local.client_origins : "${o}/"], [for o in var.client_dev_origins : "${o}/"])
-  google_enabled        = var.google_client_id != ""
   cognito_hosted_domain = "${var.cognito_domain_prefix}.auth.${var.region}.amazoncognito.com"
   # panel organizatora: adresy powrotu po logowaniu Google (strona główna panelu)
   partner_app_urls       = concat([for o in local.website_origins : "${o}/"], [for o in var.partner_dev_origins : "${o}/"])

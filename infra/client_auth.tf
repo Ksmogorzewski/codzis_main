@@ -1,7 +1,7 @@
 # Logowanie klientów: Cognito User Pool.
 #   - e-mail + hasło: własny formularz strony, wywołania API Cognito wprost z przeglądarki (USER_PASSWORD_AUTH)
 #   - Google (domyślnie wyłączone): Hosted UI Cognito (kod autoryzacyjny + PKCE). Włącza się samo, gdy
-#     pojawi się google_client_id/secret (infra/secrets.auto.tfvars) - wtedy powstaje też domena Hosted UI
+#     w AWS Secrets Manager jest sekret z klientem OAuth Google (niżej) - wtedy powstaje też domena Hosted UI
 #     i ustawienia OAuth. Ten sam klient OAuth Google loguje organizatorów (osobna pula: partner_auth.tf).
 resource "aws_cognito_user_pool" "clients" {
   name                     = "${local.name}-clients"
@@ -55,12 +55,35 @@ resource "aws_cognito_user_pool_domain" "clients" {
   managed_login_version = 1
 }
 
+# Klient OAuth "Web application" z Google Cloud Console (redirect URIs: terraform output google_oauth_redirect_uris)
+# w AWS Secrets Manager - poza gitem i plikami; Terraform go tylko czyta, nie tworzy (README, „Logowanie”):
+#   aws secretsmanager create-secret --name codzis/google-oauth \
+#     --secret-string '{"client_id":"….apps.googleusercontent.com","client_secret":"…"}'
+# Bez sekretu (albo z client_id = CHANGE_ME, złym JSON-em) logowanie Google jest wyłączone - nic się nie psuje.
+data "aws_secretsmanager_secrets" "google_oauth" {
+  filter {
+    name   = "name"
+    values = [local.google_secret_name]
+  }
+}
+
+data "aws_secretsmanager_secret_version" "google_oauth" {
+  count     = contains(data.aws_secretsmanager_secrets.google_oauth.names, local.google_secret_name) ? 1 : 0
+  secret_id = local.google_secret_name
+}
+
 locals {
-  # Klient OAuth "Web application" z Google Cloud Console, redirect URIs: terraform output google_oauth_redirect_uris.
+  google_secret_name = "${local.name}/google-oauth"
+  google_oauth       = try(jsondecode(data.aws_secretsmanager_secret_version.google_oauth[0].secret_string), {})
+  # client_id jest publiczny (w adresach logowania); jawny, bo od niego zależy count zasobów Google
+  google_client_id     = try(nonsensitive(local.google_oauth.client_id), "")
+  google_client_secret = try(local.google_oauth.client_secret, "")
+  google_enabled       = local.google_client_id != "" && local.google_client_id != "CHANGE_ME"
+
   # Pełny zestaw kluczy, które Cognito i tak ustawia dla Google - bez tego Terraform pokazuje stałą różnicę.
   google_provider_details = {
-    client_id                     = var.google_client_id
-    client_secret                 = var.google_client_secret
+    client_id                     = local.google_client_id
+    client_secret                 = local.google_client_secret
     authorize_scopes              = "openid email profile"
     attributes_url                = "https://people.googleapis.com/v1/people/me?personFields="
     attributes_url_add_attributes = "true"
