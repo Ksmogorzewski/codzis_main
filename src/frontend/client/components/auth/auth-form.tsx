@@ -181,7 +181,7 @@ export function AuthForm({ initialError = null }: { initialError?: string | null
 
   return (
     <form className="flex w-full max-w-[400px] flex-col gap-4" onSubmit={onSubmit} noValidate>
-      <h2 className="mb-1 text-[28px] font-extrabold tracking-[-0.02em]">{AUTH_TITLES[mode]}</h2>
+      <h2 className="mb-1 font-display text-[30px] leading-none font-extrabold tracking-[-0.01em] [font-stretch:90%]">{AUTH_TITLES[mode]}</h2>
       {info && (
         <p role="status" className="text-base text-muted-foreground">
           {info}
@@ -285,7 +285,7 @@ export function AuthForm({ initialError = null }: { initialError?: string | null
         </Alert>
       )}
 
-      <Button type="submit" variant="brand" size="lg" className="mt-1 h-[58px] text-lg" disabled={busy}>
+      <Button type="submit" size="lg" className="mt-1 text-lg" disabled={busy}>
         {busy ? "Chwileczkę…" : AUTH_SUBMIT[mode]}
       </Button>
 
@@ -325,9 +325,9 @@ export function AuthForm({ initialError = null }: { initialError?: string | null
       )}
 
       {partnerHref && (
-        <p className="border-t pt-4 text-center text-meta text-muted-foreground">
+        <p className="border-t-2 border-input pt-4 text-center text-meta text-muted-foreground">
           Organizujesz wydarzenia?{" "}
-          <a className="font-bold text-brand-ink underline-offset-4 hover:underline" href={partnerHref}>
+          <a className="font-bold text-foreground underline decoration-2 underline-offset-4 hover:text-brand-ink" href={partnerHref}>
             Panel organizatora
           </a>
         </p>

@@ -72,7 +72,7 @@ function Section({ id, title, items, now, children }: SectionProps) {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-input px-5 py-8 text-center">
+    <div className="flex flex-col items-center gap-2.5 border-2 border-dashed border-input px-5 py-8 text-center">
       <Icon name="event_available" size={40} className="text-muted-foreground" />
       <p className="text-lg font-bold">Nie masz jeszcze zapisów</p>
       <p className="max-w-md text-meta text-muted-foreground">
@@ -92,7 +92,7 @@ export function MyEventsSkeleton() {
       <Skeleton className="h-10 w-[60%]" />
       <div className={LIST} aria-hidden="true">
         {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-[232px] rounded-2xl" />
+          <Skeleton key={i} className="h-[232px]" />
         ))}
       </div>
     </>

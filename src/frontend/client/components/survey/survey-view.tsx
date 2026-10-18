@@ -108,7 +108,7 @@ export function SurveyView({ me, steps }: Props) {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <p className="text-meta font-bold tracking-[0.04em] text-brand-ink uppercase">Twój profil</p>
-        <h1 className="text-3xl leading-[1.1] font-extrabold tracking-[-0.03em] text-balance md:text-[42px]">
+        <h1 className="max-w-[18ch] font-display text-[44px] leading-[0.92] font-black text-balance uppercase [font-stretch:62%] md:text-[72px]">
           Dopasujmy Warszawę do Ciebie
         </h1>
         <p className="text-[17px] leading-[1.45] text-muted-foreground">
@@ -133,10 +133,10 @@ export function SurveyView({ me, steps }: Props) {
           aria-valuemin={0}
           aria-valuemax={steps.length}
           aria-valuenow={filled}
-          className="h-3 overflow-hidden rounded-full bg-secondary"
+          className="h-3 overflow-hidden border-2 border-input bg-card"
         >
           <div
-            className="h-full rounded-full bg-success transition-[width] duration-[250ms] ease-[cubic-bezier(.2,.8,.2,1)]"
+            className="h-full bg-success transition-[width] duration-[250ms] ease-[cubic-bezier(.2,.8,.2,1)]"
             style={{ width: `${steps.length ? (filled / steps.length) * 100 : 0}%` }}
           />
         </div>
@@ -153,13 +153,13 @@ export function SurveyView({ me, steps }: Props) {
               key={s.id}
               onClick={() => setOpen(i)}
               className={cn(
-                "flex min-h-[190px] flex-col gap-3 rounded-2xl border-2 bg-card p-4 text-left text-foreground outline-none transition-[border-color,transform] duration-200 focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[.98] md:min-h-[220px]",
-                done && "border-success",
-                bad && "border-brand",
+                "flex min-h-[190px] flex-col gap-3 border-2 border-input bg-card p-4 text-left text-foreground outline-none transition-[background-color,border-color,transform] duration-200 focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[.98] md:min-h-[220px]",
+                done && "bg-success-soft",
+                bad && "border-brand bg-brand-soft",
               )}
             >
               <span className="flex items-start justify-between">
-                <span className="grid size-14 place-items-center rounded-xl bg-primary-soft text-primary-ink">
+                <span className="grid size-14 place-items-center bg-foreground text-background">
                   <Icon name={s.icon} size={32} filled />
                 </span>
                 {bad ? (
@@ -193,7 +193,7 @@ export function SurveyView({ me, steps }: Props) {
                 {!bad &&
                   done &&
                   chips.slice(0, MAX_TILE_CHIPS).map((label) => (
-                    <Badge key={label} variant="success" className="text-sm">
+                    <Badge key={label} variant="surface" className="text-sm">
                       {label}
                     </Badge>
                   ))}

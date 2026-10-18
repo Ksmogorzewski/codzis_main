@@ -21,7 +21,7 @@ export function NewQuestionsBanner() {
   return (
     <section
       aria-label="Nowe pytania w profilu"
-      className="flex flex-col gap-3 rounded-2xl border bg-card px-4 py-3 text-card-foreground sm:flex-row sm:items-center"
+      className="flex flex-col gap-3 border-2 border-input bg-card px-4 py-3 text-card-foreground sm:flex-row sm:items-center"
     >
       <p className="flex flex-1 items-start gap-3 text-base">
         <Icon name="tune" size={22} className="mt-px text-brand-ink" />

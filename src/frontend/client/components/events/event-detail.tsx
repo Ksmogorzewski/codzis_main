@@ -18,6 +18,7 @@ import {
   mapsUrl,
   outboundLink,
   placeLabel,
+  posterTime,
   priceLabel,
   readAtLabel,
   safeUrl,
@@ -31,9 +32,11 @@ import { destinationOf, districtOf, mapsEmbedUrl, originOf } from "@/lib/maps";
 import type { Card as CardData, EventDetail } from "@/lib/schemas";
 import { lastSearch } from "@/lib/search";
 import { tagChips } from "@/lib/tags";
+import { cn } from "@/lib/utils";
 import { DetailSkeleton } from "./detail-skeleton";
 import { EventBadges } from "./event-badges";
 import { EventImage } from "./event-image";
+import { POSTER_FIELD, POSTER_SHADE } from "./poster-tone";
 import { RouteMap } from "./route-map";
 
 const route = getRouteApi("/_app/wydarzenie/$id");
@@ -46,14 +49,14 @@ function BackLink() {
   const canGoBack = useCanGoBack();
   if (canGoBack) {
     return (
-      <Button variant="secondary" size="sm" className={backClass} onClick={() => router.history.back()}>
+      <Button variant="outline" size="sm" className={backClass} onClick={() => router.history.back()}>
         <Icon name="chevron_left" size={22} />
         Wróć
       </Button>
     );
   }
   return (
-    <Button asChild variant="secondary" size="sm" className={backClass}>
+    <Button asChild variant="outline" size="sm" className={backClass}>
       <Link to="/" search={lastSearch()}>
         <Icon name="chevron_left" size={22} />
         Dla Ciebie
@@ -65,7 +68,7 @@ function BackLink() {
 function Fact({ label, children, wide }: { label: string; children: ReactNode; wide?: boolean }) {
   return (
     <div className={wide ? "col-span-full flex flex-col gap-0.5" : "flex flex-col gap-0.5"}>
-      <dt className="text-sm font-semibold text-muted-foreground">{label}</dt>
+      <dt className="text-[13px] font-bold tracking-[0.1em] text-muted-foreground uppercase">{label}</dt>
       <dd className="text-lg font-bold">{children}</dd>
     </div>
   );
@@ -75,7 +78,7 @@ function NotFound() {
   return (
     <>
       <BackLink />
-      <div className="flex flex-col items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-input px-5 py-8 text-center">
+      <div className="flex flex-col items-center gap-2.5 border-2 border-dashed border-input px-5 py-8 text-center">
         <Icon name="search_off" size={40} className="text-muted-foreground" />
         <h1 className="text-lg font-bold">Nie znaleziono tego wydarzenia</h1>
         <p className="max-w-md text-meta text-muted-foreground">
@@ -121,6 +124,8 @@ function Detail({ card, builtAt, detail }: DetailProps) {
   const description = detail?.text || card.lead;
   const dates = detail ? upcoming(detail.occurrences, now) : [];
   const chips = tagChips(card.tags);
+  const category = categoryOf(card.tags);
+  const clock = posterTime(card.slot);
   const distance = card.online
     ? "Online"
     : (dist ?? (status === "denied" ? "Włącz lokalizację, aby zobaczyć" : card.location ? "—" : "Brak współrzędnych"));
@@ -128,24 +133,41 @@ function Detail({ card, builtAt, detail }: DetailProps) {
   return (
     <article className="flex flex-col gap-4 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4 motion-safe:duration-[250ms]">
       <BackLink />
-      <EventImage id={card.id} imageUrl={card.imageUrl} stripe={14} className="h-60 rounded-2xl md:h-[360px]">
-        <EventBadges card={card} large />
-      </EventImage>
-
-      <header className="flex flex-col gap-1.5">
-        <p className="text-meta font-bold tracking-[0.05em] text-brand-ink uppercase">
-          {CATEGORY_LABEL[categoryOf(card.tags)]}
-        </p>
-        <h1 className="text-3xl leading-[1.1] font-extrabold tracking-[-0.03em] text-balance md:text-[42px]">
+      {/* Nagłówek-plakat w kolorze kategorii, jak karta na liście; zdjęcie (jeśli jest) pod nim w naturalnych kolorach. */}
+      <header
+        className={cn(
+          "relative flex flex-col gap-3 overflow-hidden border-2 border-input px-5 pt-5 pb-6 md:px-8 md:pt-7 md:pb-9",
+          POSTER_FIELD[category],
+        )}
+      >
+        {clock && (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute -right-3 -bottom-12 font-display text-[180px] leading-none font-black tracking-[-0.02em] select-none [font-stretch:60%] md:-bottom-20 md:text-[300px]",
+              POSTER_SHADE[category],
+            )}
+          >
+            {clock}
+          </span>
+        )}
+        <div className="relative flex flex-wrap items-center gap-x-2.5 gap-y-2 text-[13px] leading-tight font-bold tracking-[0.1em] uppercase md:text-sm">
+          <span>
+            {CATEGORY_LABEL[category]}
+            {when && ` · ${when}`}
+          </span>
+          <EventBadges card={card} large />
+        </div>
+        <h1 className="relative max-w-[16ch] font-display text-[44px] leading-[0.92] font-black text-pretty uppercase [font-stretch:62%] md:text-[76px]">
           {card.title}
         </h1>
         {(place || card.district) && (
-          <p className="text-[17px] text-muted-foreground">{[place, card.district].filter(Boolean).join(" · ")}</p>
+          <p className="relative text-[17px] font-semibold">{[place, card.district].filter(Boolean).join(" · ")}</p>
         )}
         {chips.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1.5" aria-label="Tagi">
+          <div className="relative mt-1 flex flex-wrap gap-1.5" aria-label="Tagi">
             {chips.map((chip) => (
-              <Badge key={chip} variant="secondary" size="lg">
+              <Badge key={chip} variant="surface" size="lg" className="tracking-[0.06em] uppercase">
                 {chip}
               </Badge>
             ))}
@@ -153,21 +175,17 @@ function Detail({ card, builtAt, detail }: DetailProps) {
         )}
       </header>
 
+      <EventImage imageUrl={card.imageUrl} category={category} className="h-60 border-2 border-input md:h-[400px]" />
+
       <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-6">
           {/* Opis z API jest już tekstem (HTML usuwa backend) - bez dangerouslySetInnerHTML. */}
           {description && <p className="text-lg leading-relaxed text-pretty whitespace-pre-line">{description}</p>}
           {card.reason && (
             <Card className="gap-3 p-5">
-              <h2 className="flex items-center gap-2 text-xl font-extrabold">
-                <Icon name="recommend" size={24} filled className="text-brand-ink" />
-                Dlaczego to polecamy
-              </h2>
-              <p className="flex items-start gap-2.5 text-[17px] leading-snug">
-                <Icon name="check_circle" size={22} filled className="text-primary-ink" />
-                <span>
-                  <b className="text-primary-ink">Pasuje:</b> {card.reason}
-                </span>
+              <h2 className="font-display text-2xl leading-none font-extrabold [font-stretch:90%]">Dlaczego to polecamy</h2>
+              <p className="text-[17px] leading-snug">
+                <b>Pasuje:</b> {card.reason}
               </p>
             </Card>
           )}

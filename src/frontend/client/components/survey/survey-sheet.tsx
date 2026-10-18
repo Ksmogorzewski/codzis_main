@@ -32,22 +32,22 @@ function OptionCard({ field, option, on, dim, onPick }: OptionProps & { dim: boo
       aria-pressed={on}
       onClick={() => onPick(field, option)}
       className={cn(
-        "flex min-h-[68px] items-center gap-3.5 rounded-xl border-2 bg-card px-3.5 py-3 text-left text-foreground transition-[background-color,border-color,opacity] duration-200 hover:border-input",
+        "flex min-h-[68px] items-center gap-3.5 border-2 bg-card px-3.5 py-3 text-left text-foreground transition-[background-color,border-color,opacity] duration-200 hover:border-input",
         focusRing,
-        on && "border-primary bg-primary-soft hover:border-primary",
+        on && "border-input bg-primary-soft",
         dim && "opacity-45",
       )}
     >
       <span
         className={cn(
-          "grid size-[46px] shrink-0 place-items-center rounded-[14px] bg-secondary text-primary-ink transition-colors duration-200",
-          on && "bg-primary text-primary-foreground",
+          "grid size-[46px] shrink-0 place-items-center bg-secondary text-foreground transition-colors duration-200",
+          on && "bg-foreground text-background",
         )}
       >
         <Icon name={option.icon ?? "radio_button_checked"} size={26} filled />
       </span>
       <span className="flex-1 text-[17px] leading-[1.3] font-semibold">{option.label}</span>
-      <Icon name={check} size={26} filled className={on ? "text-primary-ink" : "text-input"} />
+      <Icon name={check} size={26} filled className={on ? "text-foreground" : "text-muted-foreground"} />
     </button>
   );
 }
@@ -66,9 +66,9 @@ function OptionChip({ field, option, on, onPick }: OptionProps) {
       aria-pressed={on}
       onClick={() => onPick(field, option)}
       className={cn(
-        "inline-flex min-h-11 items-center rounded-full border-[1.5px] border-input bg-card px-4 text-base font-semibold text-foreground transition-[background-color,border-color,color] duration-200 hover:border-foreground",
+        "inline-flex min-h-11 items-center border-2 border-border bg-card px-4 text-base font-semibold text-foreground transition-[background-color,border-color,color] duration-200 hover:border-input",
         focusRing,
-        on && "border-primary bg-primary text-primary-foreground hover:border-primary",
+        on && "border-input bg-foreground text-background",
       )}
     >
       {option.label}
@@ -136,7 +136,7 @@ export function SurveySheet({ step, index, total, answers, onApply, onSkip, onCl
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="px-5 pt-2.5">
-        <div aria-hidden="true" className="mb-2.5 h-[5px] w-11 self-center rounded-full bg-input" />
+        <div aria-hidden="true" className="mb-2.5 h-[5px] w-11 self-center bg-input md:hidden" />
         <div className="flex min-h-11 items-center pr-14">
           <span className="text-meta font-bold tracking-[0.05em] text-brand-ink uppercase">
             Kafelek {index + 1} z {total}

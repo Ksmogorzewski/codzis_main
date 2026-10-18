@@ -61,7 +61,7 @@ function Filters({ search, params: { when, date }, districts, go }: FiltersProps
           <select
             value={search.district ?? ""}
             onChange={(e) => go({ district: e.target.value || undefined })}
-            className="h-11 w-full appearance-none rounded-full border-[1.5px] border-input bg-card pr-10 pl-11 text-base font-semibold text-foreground outline-none transition-[border-color,box-shadow] duration-150 hover:border-foreground focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary-soft"
+            className="h-11 w-full appearance-none border-2 border-input bg-card pr-10 pl-11 text-base font-semibold text-foreground outline-none transition-[border-color,box-shadow] duration-150 hover:border-foreground focus-visible:ring-3 focus-visible:ring-ring"
           >
             <option value="">Cała Warszawa</option>
             {districts.map((d) => (
@@ -96,7 +96,7 @@ function Filters({ search, params: { when, date }, districts, go }: FiltersProps
 
 function EmptyState({ filtered, when }: { filtered: boolean; when: ExploreSearch["when"] }) {
   return (
-    <div className="flex flex-col items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-input px-5 py-8 text-center">
+    <div className="flex flex-col items-center gap-2.5 border-2 border-dashed border-input px-5 py-8 text-center">
       <Icon name="event_busy" size={40} className="text-muted-foreground" />
       <p className="text-lg font-bold">Nic nie znaleźliśmy dla tych filtrów</p>
       {filtered ? (

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 const enter = "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200";
 const bubble = "flex max-w-[82%] flex-col gap-1 px-4 py-3 text-base leading-snug text-pretty wrap-anywhere";
-const mineBubble = "self-end rounded-[20px_20px_6px_20px] bg-primary text-primary-foreground";
+const mineBubble = "self-end bg-primary text-primary-foreground";
 const author = "text-[13px] font-bold";
 
 type Props = { message: CrewMessage; crew: Pick<Crew, "capacity" | "icebreaker">; info: MeetingInfo; now: Date };
@@ -16,7 +16,7 @@ export function ChatMessage({ message, crew, info, now }: Props) {
   if (message.kind === "user") {
     const mine = message.isMe;
     return (
-      <div className={cn(bubble, enter, mine ? mineBubble : "self-start rounded-[20px_20px_20px_6px] border bg-card")}>
+      <div className={cn(bubble, enter, mine ? mineBubble : "self-start border-2 border-input bg-card")}>
         <span className={cn(author, mine ? "text-primary-foreground/80" : "text-muted-foreground")}>{authorLabel(message)}</span>
         <span className="whitespace-pre-line">{message.text}</span>
         <span className={cn("self-end text-xs", mine ? "text-primary-foreground/70" : "text-muted-foreground")}>{time}</span>
@@ -27,7 +27,7 @@ export function ChatMessage({ message, crew, info, now }: Props) {
   const notice = noticeText(message);
   if (notice) {
     return (
-      <p className={cn(enter, "self-center rounded-full bg-card px-3 py-1 text-center text-meta text-muted-foreground")}>
+      <p className={cn(enter, "self-center bg-card px-3 py-1 text-center text-meta text-muted-foreground")}>
         {notice} · {time}
       </p>
     );
@@ -36,7 +36,7 @@ export function ChatMessage({ message, crew, info, now }: Props) {
   const card = hostCard(message, crew, info);
   if (!card) return null; // rodzaj, którego ta wersja frontu nie zna (nowszy backend)
   return (
-    <div className={cn(enter, "flex flex-col gap-2 rounded-2xl border border-primary-soft bg-primary-soft px-4 py-3 leading-snug")}>
+    <div className={cn(enter, "flex flex-col gap-2 border-2 border-input bg-secondary px-4 py-3 leading-snug")}>
       <div className="flex items-center gap-2 text-meta font-bold text-primary-ink">
         <Icon name="record_voice_over" size={22} />
         {HOST}

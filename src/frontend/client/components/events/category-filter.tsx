@@ -1,5 +1,7 @@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { CATEGORIES, CATEGORY_LABEL, type Category } from "@/lib/categories";
+import { cn } from "@/lib/utils";
+import { POSTER_SWATCH } from "./poster-tone";
 
 const isCategory = (v: string): v is Category => (CATEGORIES as readonly string[]).includes(v);
 
@@ -16,6 +18,7 @@ export function CategoryFilter({ value, onChange }: { value: Category; onChange:
     >
       {CATEGORIES.map((id) => (
         <ToggleGroupItem key={id} value={id}>
+          {id !== "all" && <span aria-hidden="true" className={cn("size-3.5", POSTER_SWATCH[id])} />}
           {CATEGORY_LABEL[id]}
         </ToggleGroupItem>
       ))}

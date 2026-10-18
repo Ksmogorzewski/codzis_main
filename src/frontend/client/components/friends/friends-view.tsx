@@ -90,8 +90,8 @@ function Going() {
         <p className="text-meta text-muted-foreground">Nie udało się wczytać wydarzeń znajomych.</p>
       ) : !items ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2" aria-hidden="true">
-          <Skeleton className="h-[360px] rounded-2xl" />
-          <Skeleton className="hidden h-[360px] rounded-2xl sm:block" />
+          <Skeleton className="h-[360px]" />
+          <Skeleton className="hidden h-[360px] sm:block" />
         </div>
       ) : items.length > 0 ? (
         <ul className={cn(GRID, "md:grid-cols-2")}>
@@ -102,7 +102,7 @@ function Going() {
           ))}
         </ul>
       ) : (
-        <p className="rounded-2xl border-[1.5px] border-dashed border-input px-5 py-6 text-center text-meta text-muted-foreground">
+        <p className="rounded-2xl border-2 border-dashed border-input px-5 py-6 text-center text-meta text-muted-foreground">
           Twoi znajomi nie mają jeszcze zapisów na najbliższe dni.{" "}
           <Link to="/" className="font-bold text-brand-ink underline-offset-4 hover:underline">
             Zaproponuj coś
@@ -116,7 +116,7 @@ function Going() {
 const Initial = ({ name }: { name: string }) => (
   <span
     aria-hidden="true"
-    className="grid size-11 shrink-0 place-items-center rounded-full bg-primary-soft text-lg font-extrabold text-primary-ink"
+    className="grid size-11 shrink-0 place-items-center bg-foreground text-lg font-extrabold text-background"
   >
     {name.trim().charAt(0).toUpperCase() || "?"}
   </span>
@@ -248,8 +248,8 @@ export function FriendsSkeleton() {
     <>
       <Skeleton className="h-10 w-[40%]" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2" aria-hidden="true">
-        <Skeleton className="h-[360px] rounded-2xl" />
-        <Skeleton className="h-[360px] rounded-2xl" />
+        <Skeleton className="h-[360px]" />
+        <Skeleton className="h-[360px]" />
       </div>
     </>
   );
@@ -263,7 +263,7 @@ export function FriendsRouteError(props: ErrorComponentProps) {
 
 export function NameNeeded() {
   return (
-    <div className="flex flex-col items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-input px-5 py-8 text-center">
+    <div className="flex flex-col items-center gap-2.5 border-2 border-dashed border-input px-5 py-8 text-center">
       <Icon name="badge" size={40} className="text-muted-foreground" />
       <p className="text-lg font-bold">Podaj imię, żeby dodawać znajomych</p>
       <p className="max-w-md text-meta text-muted-foreground">Znajomi zobaczą tylko Twoje imię — nigdy e-mail.</p>

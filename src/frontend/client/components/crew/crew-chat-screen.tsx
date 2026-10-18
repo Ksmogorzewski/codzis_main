@@ -23,9 +23,9 @@ const route = getRouteApi("/_app/wydarzenie/$id_/ekipa");
 // obszarem). Desktop: karta w treści strony na wysokość okna minus nagłówek i odstępy <main>.
 const shell =
   "fixed inset-0 z-30 flex flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] " +
-  "md:static md:z-auto md:mx-auto md:h-[calc(100dvh-10.5rem)] md:min-h-[520px] md:w-full md:max-w-[720px] md:rounded-2xl md:border md:bg-card md:p-0";
+  "md:static md:z-auto md:mx-auto md:h-[calc(100dvh-10.5rem)] md:min-h-[520px] md:w-full md:max-w-[720px] md:border md:bg-card md:p-0";
 
-const loading = <Skeleton className="m-4 flex-1 rounded-2xl" />;
+const loading = <Skeleton className="m-4 flex-1" />;
 
 export function CrewChatScreen() {
   const { id } = route.useParams();
@@ -112,7 +112,7 @@ function TopBar({ id, card, crew }: { id: string; card: Card | null; crew: Crew 
 function JoinGate({ id }: { id: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-secondary p-6 text-center">
-      <span className="flex size-14 items-center justify-center rounded-full bg-primary-soft text-primary-ink">
+      <span className="flex size-14 items-center justify-center bg-foreground text-background">
         <Icon name="lock" size={28} />
       </span>
       <h2 className="text-title font-bold">Czat jest dla zapisanych</h2>

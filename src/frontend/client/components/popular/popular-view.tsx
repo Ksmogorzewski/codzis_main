@@ -12,7 +12,7 @@ const route = getRouteApi("/_app/popularne");
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-input px-5 py-8 text-center">
+    <div className="flex flex-col items-center gap-2.5 border-2 border-dashed border-input px-5 py-8 text-center">
       <Icon name="bookmark_add" size={40} className="text-muted-foreground" />
       <p className="text-lg font-bold">Jeszcze nikt się nie zapisał — bądź pierwszy</p>
       <p className="max-w-md text-meta text-muted-foreground">Zapisz się na wydarzenie z najbliższych 7 dni, a pojawi się tutaj.</p>

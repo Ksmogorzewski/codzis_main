@@ -39,8 +39,8 @@ export function TabBar() {
               >
                 <span
                   className={cn(
-                    "relative grid h-8 w-14 place-items-center rounded-full transition-colors duration-200",
-                    on && "bg-primary-soft",
+                    "relative grid h-8 w-14 place-items-center transition-colors duration-200",
+                    on && "bg-secondary",
                   )}
                 >
                   <Icon name={item.icon} size={22} filled={on} />

@@ -3,10 +3,12 @@ import { SaveButton } from "@/components/community/save-button";
 import { CrewChatRow } from "@/components/crew/crew-chat-row";
 import { FriendsLine } from "@/components/friends/friends-line";
 import { EventImage } from "@/components/events/event-image";
+import { POSTER_FIELD } from "@/components/events/poster-tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { categoryOf } from "@/lib/categories";
 import { placeLabel, slotLabel } from "@/lib/events";
 import { pastSlotLabel } from "@/lib/my-events";
 import type { MyEvent } from "@/lib/schemas";
@@ -21,6 +23,7 @@ type Props = { card: MyEvent; now: Date };
 export function MyEventItem({ card, now }: Props) {
   const when = card.past ? pastSlotLabel(card.slot, now) : slotLabel(card.slot, now);
   const place = [placeLabel(card) || null, card.district].filter(Boolean).join(" · ");
+  const category = categoryOf(card.tags);
   const to = "/wydarzenie/$id" as const;
   const params = { id: card.id };
 
@@ -29,13 +32,15 @@ export function MyEventItem({ card, now }: Props) {
       <div className="flex gap-3 p-4">
         {/* Miniatura to drugi link w to samo miejsce: tylko dla myszy, bez fokusu i czytnika. */}
         <Link to={to} params={params} tabIndex={-1} aria-hidden="true" className="shrink-0">
-          <EventImage
-            id={card.id}
-            imageUrl={card.imageUrl}
-            stripe={10}
-            lazy
-            className={cn("size-20 rounded-xl", card.past && "opacity-70")}
-          />
+          <div className={cn("relative size-20 overflow-hidden", POSTER_FIELD[category], card.past && "opacity-70")}>
+            <EventImage
+              imageUrl={card.imageUrl}
+              category={category}
+              duotone
+              lazy
+              className="absolute inset-0 size-full"
+            />
+          </div>
         </Link>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <CardTitle className="line-clamp-2 text-base leading-snug md:text-title">

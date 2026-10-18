@@ -169,14 +169,14 @@ function Avatar({ url, first, last }: { url: string | null; first: string | null
         height={80}
         referrerPolicy="no-referrer"
         onError={() => setBroken(true)}
-        className="size-20 shrink-0 rounded-full bg-secondary object-cover"
+        className="size-20 shrink-0 bg-secondary object-cover"
       />
     );
   }
   return (
     <span
       aria-hidden="true"
-      className="grid size-20 shrink-0 place-items-center rounded-full bg-primary-soft text-2xl font-extrabold text-primary-ink"
+      className="grid size-20 shrink-0 place-items-center bg-foreground text-2xl font-extrabold text-background"
     >
       {avatarInitials(first, last)}
     </span>

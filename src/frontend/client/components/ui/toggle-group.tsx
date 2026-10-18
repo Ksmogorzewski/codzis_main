@@ -6,23 +6,23 @@ import { cn } from "@/lib/utils";
 const toggleGroupVariants = cva("flex", {
   variants: {
     variant: {
-      // segment czasu: szara szyna, wybrany element jako uniesiona "płytka"
-      segment: "w-fit gap-0.5 rounded-[14px] bg-secondary p-1",
-      // kategorie: osobne pigułki
-      pill: "gap-1.5",
+      // czas (Dziś / Jutro…): słowa w kroju plakatu, wybrane w odwróconym kolorze
+      segment: "w-fit gap-1",
+      // kategorie: tekst z kwadratem koloru, wybrana podkreślona
+      pill: "gap-x-1 gap-y-1",
     },
   },
   defaultVariants: { variant: "segment" },
 });
 
 const toggleItemVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap font-semibold outline-none transition-[color,background-color,border-color,box-shadow] duration-200 focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap outline-none transition-[color,background-color,border-color,text-decoration-color] duration-200 focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
         segment:
-          "h-11 rounded-[10px] px-3 text-meta text-muted-foreground hover:text-foreground data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-[0_1px_3px_rgb(10_14_30/0.15)]",
-        pill: "h-11 rounded-full border-[1.5px] border-input bg-card px-4 text-base text-foreground hover:border-foreground data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground",
+          "h-12 border-2 border-transparent px-3.5 font-display text-lg font-bold text-foreground [font-stretch:90%] hover:border-input data-[state=on]:border-input data-[state=on]:bg-foreground data-[state=on]:text-background md:px-4 md:text-xl",
+        pill: "h-11 px-2.5 text-[17px] font-semibold text-foreground decoration-transparent underline decoration-[3px] underline-offset-[7px] hover:decoration-border data-[state=on]:decoration-foreground",
       },
     },
     defaultVariants: { variant: "segment" },

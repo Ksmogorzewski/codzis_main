@@ -9,6 +9,8 @@ import {
   dayLine,
   mapsUrl,
   outboundLink,
+  posterTime,
+  posterTitle,
   priceLabel,
   readAtLabel,
   safeUrl,
@@ -38,6 +40,24 @@ describe("events", () => {
     expect(slotLabel({ recurring: true, date: "2026-10-19", day: "monday", start: "16:00", end: null }, NOW)).toBe("Pon 19.10, 16:00 · co tydzień");
     expect(slotLabel({ recurring: true, date: null, day: null, start: null, end: null }, NOW)).toBe("Zajęcia cykliczne");
     expect(slotLabel(null, NOW)).toBeNull();
+  });
+
+  it("plakat karty: godzina startu po warszawsku, bez godziny dla całego dnia i wielodniowych", () => {
+    expect(posterTime({ start: "2026-10-17T19:00:00+02:00", end: "2026-10-17T21:00:00+02:00", allDay: false })).toBe("19:00");
+    expect(posterTime({ start: "2026-10-18T08:05:00Z", end: null, allDay: false })).toBe("10:05");
+    expect(posterTime({ start: "2026-10-24T00:00:00+02:00", end: null, allDay: true })).toBeNull();
+    expect(posterTime({ start: "2026-10-01T10:00:00+02:00", end: "2026-11-15T18:00:00+01:00", allDay: false })).toBeNull();
+    expect(posterTime({ recurring: true, date: "2026-10-19", day: "monday", start: "16:00", end: null })).toBe("16:00");
+    expect(posterTime({ recurring: true, date: null, day: null, start: null, end: null })).toBeNull();
+    expect(posterTime(null)).toBeNull();
+  });
+
+  it("plakat nagłówka: mała linia i wielkie słowo", () => {
+    expect(posterTitle("Co robimy dziś?")).toEqual({ lead: "Co robimy", big: "dziś?" });
+    expect(posterTitle("Co robimy w weekend?")).toEqual({ lead: "Co robimy w", big: "weekend?" });
+    expect(posterTitle("Co robimy w tym tygodniu?")).toEqual({ lead: "Co robimy w", big: "tym tygodniu?" });
+    expect(posterTitle(dateTitle("2026-10-30", NOW))).toEqual({ lead: "Co robimy w", big: "pt 30.10?" });
+    expect(posterTitle("Inny tytuł")).toEqual({ lead: "", big: "Inny tytuł" });
   });
 
   it("cena: zadeklarowana, potem koszt z tagów", () => {
