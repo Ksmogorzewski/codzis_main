@@ -205,11 +205,23 @@ def test_attendees_mark_friends_first(api):
 
     _, body = call(api, "GET /api/events/{id}/attendees", claims=ALA, path={"id": "e1"})
     assert body["people"] == [
-        {"name": "Ala", "isMe": True, "isFriend": False},
-        {"name": "Kuba", "isMe": False, "isFriend": True},
-        {"name": "Ola", "isMe": False, "isFriend": True},
-        {"name": "Zosia", "isMe": False, "isFriend": False},
-        {"name": "Bartek", "isMe": False, "isFriend": False},
+        {"userId": "user-1", "name": "Ala", "isMe": True, "isFriend": False},
+        {"userId": "user-3", "name": "Kuba", "isMe": False, "isFriend": True},
+        {"userId": "user-2", "name": "Ola", "isMe": False, "isFriend": True},
+        {"userId": "user-5", "name": "Zosia", "isMe": False, "isFriend": False},
+        {"userId": "user-4", "name": "Bartek", "isMe": False, "isFriend": False},
+    ]
+
+
+def test_attendees_same_names_are_different_people(api):
+    befriend(api, ALA, OLA)
+    save(api, "e1", OLA)
+    save(api, "e1", OLA2)
+
+    _, body = call(api, "GET /api/events/{id}/attendees", claims=ALA, path={"id": "e1"})
+    assert sorted((p["userId"], p["name"], p["isFriend"]) for p in body["people"]) == [
+        ("user-2", "Ola", True),
+        ("user-7", "Ola", False),
     ]
 
 

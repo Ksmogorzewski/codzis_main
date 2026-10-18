@@ -15,10 +15,11 @@ rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za 
     GET    /api/events/{id}             -> Card + {"text" (bez HTML), "occurrences", "importedAt"}; 404
     PUT    /api/events/{id}/save        -> {"saved": true, "saves"}  (idempotentnie; 404 gdy brak wydarzenia)
     DELETE /api/events/{id}/save        -> {"saved": false, "saves"} (idempotentnie)
-    GET    /api/events/{id}/attendees   -> {"saves", "saved", "people": [{"name", "isMe", "isFriend"}]}
+    GET    /api/events/{id}/attendees   -> {"saves", "saved", "people": [{"userId", "name", "isMe", "isFriend"}]}
                                            (najpierw ja, potem znajomi, potem reszta - w grupach najnowsi
                                            najpierw; isFriend tylko dla wydarzeń z nadchodzącym terminem,
-                                           inaczej false; maks. 100 najnowszych; bez imienia "Ktoś"; nigdy e-maili)
+                                           inaczej false; maks. 100 najnowszych; bez imienia "Ktoś"; nigdy e-maili;
+                                           userId = sub z Cognito, dane testowe "seed-<n>" - tożsamość osoby)
     GET    /api/popular                 -> {"window": {"from", "to"}, "items": [Card]}
                                            (dziś + 6 dni, saves > 0, malejąco, maks. 20)
     GET    /api/me/events               -> {"items": [Card + {"past", "savedAt"}]}  zakładka „Twoje”: moje zapisy
@@ -235,14 +236,19 @@ def delete_save(claims: dict, event_id: str) -> dict:
 
 
 def get_attendees(claims: dict, event_id: str) -> dict:
-    """Lista zapisanych: tylko imiona (nigdy e-maile), najnowsi najpierw."""
+    """Lista zapisanych: userId i imię (nigdy e-maile), najnowsi najpierw."""
     rows = store.attendees(event_id)
     me = claims["sub"]
     item = store.all_events().get(event_id) if rows else None
     # znajomi widzą tylko nadchodzące zapisy - na minionych wydarzeniach nikt nie jest oznaczony
     mine = friends.friend_ids(me) if item and _upcoming(events.next_slot(item, now=_now())) else {}
     people = [
-        {"name": row.get("name") or ANONYMOUS, "isMe": row["userId"] == me, "isFriend": row["userId"] in mine}
+        {
+            "userId": row["userId"],
+            "name": row.get("name") or ANONYMOUS,
+            "isMe": row["userId"] == me,
+            "isFriend": row["userId"] in mine,
+        }
         for row in rows
     ]
     people.sort(key=lambda p: 0 if p["isMe"] else 1 if p["isFriend"] else 2)  # stabilnie: w grupie najnowsi

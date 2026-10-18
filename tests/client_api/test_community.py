@@ -172,7 +172,7 @@ def test_save_never_falls_back_to_email(api, attendance_table, users_table):
     item = attendance_table.get_item(Key={"eventId": "today", "userId": "user-3"})["Item"]
     assert "name" not in item
     _, body = call(api, "GET /api/events/{id}/attendees", claims=NONAME, path={"id": "today"})
-    assert body["people"] == [{"name": "Ktoś", "isMe": True, "isFriend": False}]
+    assert body["people"] == [{"userId": "user-3", "name": "Ktoś", "isMe": True, "isFriend": False}]
 
 
 def test_save_name_claim_wins_over_display_name(api, attendance_table, users_table):
@@ -195,7 +195,7 @@ def test_attendees_read_is_consistent(api, monkeypatch):
     monkeypatch.setattr(client, "query", spy)
     save(api, "today")
     _, body = call(api, "GET /api/events/{id}/attendees", claims=ALA, path={"id": "today"})
-    assert body["people"] == [{"name": "Ala", "isMe": True, "isFriend": False}]
+    assert body["people"] == [{"userId": "user-1", "name": "Ala", "isMe": True, "isFriend": False}]
     assert calls and all(c.get("ConsistentRead") is True for c in calls if "IndexName" not in c)
 
 
@@ -226,8 +226,8 @@ def test_attendees_newest_first_without_emails(api, attendance_table):
         "saves": 2,
         "saved": False,
         "people": [
-            {"name": "Ktoś", "isMe": False, "isFriend": False},
-            {"name": "Ala", "isMe": False, "isFriend": False},
+            {"userId": "user-3", "name": "Ktoś", "isMe": False, "isFriend": False},
+            {"userId": "user-1", "name": "Ala", "isMe": False, "isFriend": False},
         ],
     }
     # własny wpis zawsze na górze
