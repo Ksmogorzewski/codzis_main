@@ -5,6 +5,8 @@
 Hackathon Otwarte Dane Warszawa 2026, wyzwanie 3 „Warszawa: Twój ruch!”.
 Działa na żywo: **[portal.waw-out.pl](https://portal.waw-out.pl)**.
 
+**Konto testowe dla jury:** login `w4r54wn0w@gmail.com`, hasło `1qaz@WSX` (konto demonstracyjne, bez danych osobowych).
+
 ---
 
 ## Problem
