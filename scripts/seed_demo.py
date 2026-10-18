@@ -80,6 +80,19 @@ def in_week(event: dict, week: tuple[datetime, datetime]) -> bool:
     return False
 
 
+def is_upcoming(event: dict, now: datetime) -> bool:
+    """Najbliższy termin jeszcze przed nami (zajęcia cykliczne z grafikiem liczą się zawsze)."""
+    if event.get("kind") == "recurring":
+        return bool(event.get("schedule"))
+    for occ in event.get("occurrences") or []:
+        try:
+            if datetime.fromisoformat(occ["start"]) > now:
+                return True
+        except (KeyError, ValueError):
+            continue
+    return False
+
+
 def scan_all(table, **kwargs) -> list[dict]:
     items: list[dict] = []
     while True:
@@ -273,15 +286,19 @@ def friend_saves(attendance_table, uid: str, event_ids: set[str]) -> set[str]:
     return {r["eventId"] for r in rows} & event_ids
 
 
-def planned_saves(dynamodb, attendance: str, events: list[dict], plan: list[dict]) -> dict[str, set[str]]:
-    """Zapisy znajomych w oknie: istniejące + z planu; jeśli brak, jeden dodatkowy (deterministycznie)."""
+def planned_saves(
+    dynamodb, attendance: str, events: list[dict], plan: list[dict], now: datetime
+) -> dict[str, set[str]]:
+    """Zapisy znajomych w oknie: istniejące + z planu; bez nadchodzącego zapisu jeden dodatkowy (deterministycznie)."""
     event_ids = {e["id"] for e in events}
+    upcoming = [e for e in events if is_upcoming(e, now)]
+    upcoming_ids = {e["id"] for e in upcoming}
     result = {}
     for n, (uid, _) in enumerate(friend_ids(), start=1):
         saves = friend_saves(dynamodb.Table(attendance), uid, event_ids)
         saves |= {p["eventId"] for p in plan if p["userId"] == uid}
-        if not saves and events:
-            saves = {events[(n - 1) % len(events)]["id"]}
+        if upcoming and not saves & upcoming_ids:
+            saves.add(upcoming[(n - 1) % len(upcoming)]["id"])
         result[uid] = saves
     return result
 
@@ -309,12 +326,16 @@ def apply_friends(dynamodb, client, args, events, plan, own: tuple[str, str], no
         created += put_friend_row(table, sub, uid, name, since)
         created += put_friend_row(table, uid, sub, own_name, since)
     print(f"Znajomi: dodano rekordów: {created} (pominięto istniejące: {2 * FRIEND_COUNT - created})")
-    # Każdy znajomy ma mieć zapis na wydarzenie z okna (inaczej „znajomi wybierają się” byłoby puste).
+    # Każdy znajomy ma mieć zapis na wydarzenie, które jeszcze się nie zaczęło
+    # (inaczej „Znajomi idą” byłoby puste, gdy jedyny zapis już się skończył).
     extra = 0
+    upcoming = [e for e in events if is_upcoming(e, now)]
     for n, (uid, name) in enumerate(friend_ids(), start=1):
-        if friend_saves(dynamodb.Table(args.attendance_table), uid, {e["id"] for e in events}):
+        if not upcoming:
+            break
+        if friend_saves(dynamodb.Table(args.attendance_table), uid, {e["id"] for e in upcoming}):
             continue
-        event = events[(n - 1) % len(events)]
+        event = upcoming[(n - 1) % len(upcoming)]
         row = {"eventId": event["id"], "userId": uid, "name": name, "savedAt": since}
         extra += save_one(client, args.attendance_table, args.stats_table, row)
     print(f"Znajomi: dopisano zapisów: {extra}")
@@ -415,7 +436,7 @@ def main(argv: list[str] | None = None, cognito=None) -> int:
             apply_friends(dynamodb, client, args, events, plan, own, datetime.now(UTC))
     else:
         if own:
-            print_friends_plan(planned_saves(dynamodb, args.attendance_table, events, plan))
+            print_friends_plan(planned_saves(dynamodb, args.attendance_table, events, plan, datetime.now(UTC)))
         print("Dry-run: nic nie zapisano. Użyj --apply, żeby zapisać.")
     return 0
 

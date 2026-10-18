@@ -1,7 +1,8 @@
 import importlib.util
 from collections import Counter
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import boto3
 import pytest
@@ -240,3 +241,16 @@ def test_delete_removes_only_seed_friendships(aws, cognito):
         db.Table(FRIENDS).put_item(Item=item)
     run("--friends-table", FRIENDS, "--delete")
     assert friend_rows(db) == sorted(real, key=lambda r: (r["userId"], r["sk"]))
+
+
+def test_friend_with_only_past_save_gets_upcoming_save(aws):
+    db, client = aws
+    events = seed.pick_events(db.Table(EVENTS), seed.week_bounds(WEEK_DAY))
+    now = datetime(2026, 10, 20, 20, 0, tzinfo=seed.WARSAW)  # in-1 (18:00) już się zaczęło
+    past = {"eventId": "in-1", "userId": "seed-001", "name": seed.user_name(1), "savedAt": "2026-10-19T10:00:00Z"}
+    assert seed.save_one(client, ATTENDANCE, STATS, past)
+    args = SimpleNamespace(friends_table=FRIENDS, attendance_table=ATTENDANCE, stats_table=STATS)
+    seed.apply_friends(db, client, args, events, [], ("demo-sub-1", "Dawid"), now)
+    saved = {a["eventId"] for a in seed.scan_all(db.Table(ATTENDANCE)) if a["userId"] == "seed-001"}
+    upcoming = {e["id"] for e in events if seed.is_upcoming(e, now)}
+    assert upcoming == {"in-2", "rec-1"} and "in-1" in saved and saved & upcoming
