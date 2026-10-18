@@ -11,7 +11,6 @@ Zdjęcia: bucket zdjęć ogłoszeń (PHOTOS_BUCKET), klucz photos/avatars/<userI
 presigned POST prosto z przeglądarki, odczyt przez CloudFront panelu pod /photos/* (PHOTOS_BASE_URL).
 """
 
-import logging
 import os
 import re
 import secrets
@@ -22,6 +21,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
+from codzis_common.app import logger
 from codzis_common.aws import AWS_CONFIG
 
 PHOTOS_BUCKET = os.environ.get("PHOTOS_BUCKET", "")
@@ -38,7 +38,6 @@ s3 = boto3.client(
     endpoint_url=f"https://s3.{os.environ.get('AWS_REGION', 'eu-central-1')}.amazonaws.com",
     config=AWS_CONFIG.merge(Config(signature_version="s3v4", s3={"addressing_style": "virtual"})),
 )
-log = logging.getLogger()
 
 
 def prefill(claims: dict) -> dict:
@@ -116,7 +115,7 @@ def delete_file(key: str | None) -> None:
     try:
         s3.delete_object(Bucket=PHOTOS_BUCKET, Key=key)
     except (BotoCoreError, ClientError):
-        log.warning("Nie udało się usunąć starego zdjęcia profilowego")
+        logger.warning("Nie udało się usunąć starego zdjęcia profilowego")
 
 
 def _birth_date_ok(value: str, today: date) -> bool:
