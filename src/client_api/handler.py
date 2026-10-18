@@ -15,14 +15,40 @@ rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za 
     GET    /api/events/{id}             -> Card + {"text" (bez HTML), "occurrences", "importedAt"}; 404
     PUT    /api/events/{id}/save        -> {"saved": true, "saves"}  (idempotentnie; 404 gdy brak wydarzenia)
     DELETE /api/events/{id}/save        -> {"saved": false, "saves"} (idempotentnie)
-    GET    /api/events/{id}/attendees   -> {"saves", "saved", "people": [{"name", "isMe"}]}
-                                           (najnowsi najpierw, maks. 100; bez imienia "Ktoś"; nigdy e-maili)
+    GET    /api/events/{id}/attendees   -> {"saves", "saved", "people": [{"name", "isMe", "isFriend"}]}
+                                           (najpierw ja, potem znajomi, potem reszta - w grupach najnowsi
+                                           najpierw; isFriend tylko dla wydarzeń z nadchodzącym terminem,
+                                           inaczej false; maks. 100 najnowszych; bez imienia "Ktoś"; nigdy e-maili)
     GET    /api/popular                 -> {"window": {"from", "to"}, "items": [Card]}
                                            (dziś + 6 dni, saves > 0, malejąco, maks. 20)
     GET    /api/me/events               -> {"items": [Card + {"past", "savedAt"}]}  zakładka „Twoje”: moje zapisy
                                            (saved = true; najpierw nadchodzące od najbliższego terminu, potem
                                            minione - past = true, slot = ostatni termin - od najświeższego;
                                            maks. 100 najnowszych zapisów; bez wydarzeń wygasłych z codzis-events)
+
+Znajomi (logika i DynamoDB: friends.py). Akcje oznaczone (imię) bez imienia w tokenie i w users ->
+409 {"code": "name_required"}. Czasy createdAt/since: ISO 8601 UTC. userId = sub z Cognito (nigdy e-mail):
+
+    GET    /api/friends (imię)             -> {"code": "WAW-XXXXXX", "friends": [{"userId", "name", "since"}],
+                                              "incoming": [{"userId", "name", "createdAt"}], "outgoing": [...]}
+                                              (pierwsze wywołanie zakłada kod; znajomi alfabetycznie,
+                                              zaproszenia najnowsze najpierw, wygasłe po 30 dniach pominięte)
+    POST   /api/friends/code (imię)        -> {"code"}  nowy kod (stary przestaje działać; znajomi
+                                              i oczekujące zaproszenia zostają)
+    GET    /api/friends/code/{code}        -> {"userId", "name"}  do kogo należy kod (wpis "byle jak":
+                                              "waw 7k2p9x" = "WAW-7K2P9X"); 404 zły kod, 400 własny kod
+    POST   /api/friends/invite (imię)      {"code"} -> {"status": "pending" | "friends", "userId", "name"}
+                                              ("friends": już znajomi albo ta osoba już mnie zaprosiła -
+                                              automatyczna akceptacja); 404, 400 jak wyżej
+    PUT    /api/friends/requests/{userId} (imię) -> {"status": "friends"}  akceptacja; 404 brak zaproszenia
+    DELETE /api/friends/requests/{userId}  -> {}  ciche odrzucenie (zapraszający dalej widzi "oczekuje")
+    DELETE /api/friends/{userId}           -> {}  usunięcie znajomości u obu stron; własne id -> 400
+    GET    /api/friends/going              -> {"items": [Card + {"friends": [imię]}], "byEvent": {eventId: [imię]}}
+                                              nadchodzące zapisy znajomych (od teraz; bez zajęć bez terminu);
+                                              karty od najbliższego startu, maks. 60; byEvent - wszystkie;
+                                              imiona alfabetycznie
+    Błędy: 404 zły kod (+1 do limitu), 429 {"code": "too_many_attempts"} po 10 złych kodach w godzinę
+    (także dobre kody do końca okna), 409 {"code": "friend_limit"} przy 50 znajomych.
 
 Token weryfikuje API Gateway; tu korzystamy już tylko z jego claims (ID token Cognito).
 Po zapisaniu profilu i przy logowaniu rekomender w tle liczy zestawy na dziś, jutro i weekend
@@ -37,6 +63,7 @@ from datetime import date, datetime
 import boto3
 
 import events
+import friends
 import store
 from codzis_common.http import ApiError, now_iso, parse_body, response
 from onboarding import build_steps, compute_preferences, onboarding_version, public_steps, rag_profile, validate_answers
@@ -46,6 +73,7 @@ POPULAR_LIMIT = 20
 MY_EVENTS_LIMIT = 100
 MAX_STATS_IDS = 100
 MAX_NAME = 60
+GOING_LIMIT = 60
 ANONYMOUS = "Ktoś"
 DISTRICTS = json.loads(os.environ["DISTRICTS"])
 RECOMMENDER_FUNCTION = os.environ.get("RECOMMENDER_FUNCTION")
@@ -86,6 +114,24 @@ def handler(event, context):
                 return response(200, get_popular(claims))
             case "GET /api/me/events":
                 return response(200, get_my_events(claims))
+            case "GET /api/friends":
+                return response(200, get_friends(claims))
+            case "POST /api/friends/code":
+                return response(200, {"code": friends.regenerate_code(claims["sub"], _require_name(claims))})
+            case "GET /api/friends/code/{code}":
+                return response(200, friends.preview(claims["sub"], _path(event, "code"), _epoch()))
+            case "POST /api/friends/invite":
+                return response(200, post_invite(claims, parse_body(event)))
+            case "PUT /api/friends/requests/{userId}":
+                return response(200, put_friend_request(claims, _path(event, "userId")))
+            case "DELETE /api/friends/requests/{userId}":
+                friends.decline(claims["sub"], _path(event, "userId"))
+                return response(200, {})
+            case "DELETE /api/friends/{userId}":
+                friends.remove(claims["sub"], _path(event, "userId"))
+                return response(200, {})
+            case "GET /api/friends/going":
+                return response(200, get_friends_going(claims))
         raise ApiError(404, "Nie znaleziono")
     except ApiError as e:
         return response(e.status, e.body)
@@ -192,11 +238,15 @@ def get_attendees(claims: dict, event_id: str) -> dict:
     """Lista zapisanych: tylko imiona (nigdy e-maile), najnowsi najpierw."""
     rows = store.attendees(event_id)
     me = claims["sub"]
-    return {
-        "saves": store.saves_of(event_id),
-        "saved": store.is_saved(event_id, me),
-        "people": [{"name": row.get("name") or ANONYMOUS, "isMe": row["userId"] == me} for row in rows],
-    }
+    item = store.all_events().get(event_id) if rows else None
+    # znajomi widzą tylko nadchodzące zapisy - na minionych wydarzeniach nikt nie jest oznaczony
+    mine = friends.friend_ids(me) if item and _upcoming(events.next_slot(item, now=_now())) else {}
+    people = [
+        {"name": row.get("name") or ANONYMOUS, "isMe": row["userId"] == me, "isFriend": row["userId"] in mine}
+        for row in rows
+    ]
+    people.sort(key=lambda p: 0 if p["isMe"] else 1 if p["isFriend"] else 2)  # stabilnie: w grupie najnowsi
+    return {"saves": store.saves_of(event_id), "saved": store.is_saved(event_id, me), "people": people}
 
 
 def get_popular(claims: dict) -> dict:
@@ -230,6 +280,39 @@ def get_my_events(claims: dict) -> dict:
     }
 
 
+def get_friends(claims: dict) -> dict:
+    """Moja zakładka Znajomi: kod (pierwszy raz losowany), znajomi i zaproszenia."""
+    friends.get_or_create_code(claims["sub"], _require_name(claims))
+    return friends.overview(claims["sub"], _epoch())
+
+
+def post_invite(claims: dict, body: dict) -> dict:
+    code = body.get("code")
+    if not isinstance(code, str):
+        raise ApiError(400, "Podaj kod znajomego", fields=["code"])
+    return friends.invite(claims["sub"], _require_name(claims), code, _epoch())
+
+
+def put_friend_request(claims: dict, from_id: str) -> dict:
+    return friends.accept(claims["sub"], _require_name(claims), from_id, _epoch())
+
+
+def get_friends_going(claims: dict) -> dict:
+    """„Znajomi idą”: nadchodzące zapisy znajomych (≤ 50 zapytań GSI byUser) + mapa wydarzenie -> imiona."""
+    now = _now()
+    names: dict[str, list[str]] = {}
+    for friend_id, name in friends.friend_ids(claims["sub"]).items():
+        for row in store.my_saves(friend_id):
+            names.setdefault(row["eventId"], []).append(name)
+    known = store.all_events()
+    upcoming = [(known[i], events.next_slot(known[i], now=now)) for i in names if i in known]
+    page = [(item, slot) for item, slot in upcoming if slot and _upcoming(slot)]
+    page.sort(key=lambda pair: (events.slot_sort_key(pair[1]), events.plain_text(pair[0].get("title"))))
+    by_event = {item["id"]: sorted(names[item["id"]], key=str.casefold) for item, _ in page}
+    cards = _cards(claims, page[:GOING_LIMIT])
+    return {"items": [card | {"friends": by_event[card["id"]]} for card in cards], "byEvent": by_event}
+
+
 def _cards(claims: dict, page: list[tuple[dict, dict]]) -> list[dict]:
     """Karty z licznikami z bazy (nie z pamięci) i stanem "Zapisano" użytkownika."""
     counts = store.saves_for(item["id"] for item, _ in page) if page else {}
@@ -252,6 +335,19 @@ def _stored_name(user_id: str) -> str | None:
     return _clean_name(item.get("displayName"))
 
 
+def _upcoming(slot: dict | None) -> bool:
+    """Termin od teraz, z datą (zajęcia bez harmonogramu nie mają daty - "nie wiadomo kiedy")."""
+    return bool(slot and (slot.get("date") or slot.get("start")))
+
+
+def _require_name(claims: dict) -> str:
+    """Znajomi muszą wiedzieć, kogo dodają: imię z tokenu albo z users, inaczej 409 name_required."""
+    name = _name(claims) or _stored_name(claims["sub"])
+    if not name:
+        raise ApiError(409, "Podaj imię, zanim dodasz znajomych", code="name_required")
+    return name
+
+
 def _clean_name(value: object) -> str | None:
     name = " ".join(str(value or "").split())[:MAX_NAME]
     return name or None
@@ -259,6 +355,11 @@ def _clean_name(value: object) -> str | None:
 
 def _now() -> datetime:
     return datetime.now(events.WARSAW)
+
+
+def _epoch() -> int:
+    """Teraz w sekundach epoki (czasy i TTL w codzis-friends)."""
+    return int(_now().timestamp())
 
 
 def _query(event: dict) -> dict:
@@ -270,6 +371,13 @@ def _event_id(event: dict) -> str:
     if not event_id:
         raise ApiError(404, "Nie znaleziono wydarzenia")
     return event_id
+
+
+def _path(event: dict, name: str) -> str:
+    value = (event.get("pathParameters") or {}).get(name) or ""
+    if not value:
+        raise ApiError(404, "Nie znaleziono")
+    return value
 
 
 def _precompute(user_id: str) -> None:
