@@ -424,8 +424,8 @@ def test_access_log_route_without_ids(partner_api, caplog):
 
 def test_aws_clients_use_shared_timeouts(partner_api):
     store = partner_api.partners_table.meta.client
-    assert store.meta.config.read_timeout == 5
+    assert store.meta.config.read_timeout == 3
     s3 = sys.modules["store"].s3
-    assert s3.meta.config.connect_timeout == 2
+    assert s3.meta.config.connect_timeout == 1
     assert s3.meta.config.signature_version == "s3v4"  # podpis S3 zachowany po scaleniu konfiguracji
     assert sys.modules["store"].sqs.meta.config.retries["mode"] == "standard"

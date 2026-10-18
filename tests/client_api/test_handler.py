@@ -244,7 +244,7 @@ def test_api_error_unchanged(client_api):
 
 
 def test_aws_clients_use_shared_timeouts(client_api):
-    assert client_api.lambda_client.meta.config.read_timeout == 5
-    assert client_api.users.meta.client.meta.config.connect_timeout == 2
+    assert client_api.lambda_client.meta.config.read_timeout == 3
+    assert client_api.users.meta.client.meta.config.connect_timeout == 1
     assert client_api.store.ddb.meta.config.retries["mode"] == "standard"
-    assert client_api.friends.ddb.meta.config.read_timeout == 5
+    assert client_api.friends.ddb.meta.config.read_timeout == 3
