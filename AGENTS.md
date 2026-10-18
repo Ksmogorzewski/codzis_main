@@ -51,6 +51,14 @@ Wzorcowy plik: `src/client_api/handler.py`. Nowy kod backendu pisz tak samo.
 - **API partnera** (`src/api/`): `handler.py` (tylko routing), `events.py` (ogłoszenia i walidacja), `payments.py` (płatności), `store.py` (klienty AWS, transakcje, kredyty), `config.py` (zmienne środowiskowe).
 - **Konfiguracja** z `os.environ[...]` (ustawia Terraform), czytana raz na poziomie modułu (np. `USERS_TABLE`, `DISTRICTS`). Klienty AWS (`boto3.resource("dynamodb").Table(...)`) też na poziomie modułu — przeżywają między wywołaniami.
 
+**Logi i obsługa błędów (backend)**
+- **Catch-all w każdym handlerze:** `handler` tylko woła `handle_request(event, route_key, lambda: route(event))` z `codzis_common.http`, routing jest w `route(event)`. `ApiError` → jej status i body; każdy inny wyjątek → `logger.exception` z trasą i `requestId` (`event["requestContext"]["requestId"]`) i `500 {"error": "Coś poszło nie tak. Spróbuj ponownie.", "requestId"}` zamiast pustego 502.
+- **Jedna linia logu dostępu na żądanie** (JSON przez `logging`): `route`, `status`, `durationMs`, `requestId`; 4xx dodatkowo WARNING tylko ze statusem i `code`. Po `requestId` z odpowiedzi 500 szukamy w CloudWatch Logs Insights.
+- **Nigdy w logach:** body żądań, claims, e-maile, imiona, lokalizacje, tokeny.
+- **Klienty AWS:** każdy `boto3.client` / `boto3.resource` z `config=AWS_CONFIG` (`codzis_common.aws`: connect 2 s, read 5 s, ponawianie `standard`); własne opcje przez `AWS_CONFIG.merge(Config(...))`.
+- Nowy kod używa tych helperów — bez `print` i własnych `try/except Exception` w trasach.
+- Docelowo (po hackathonie): AWS Lambda Powertools (Logger, router `APIGatewayHttpResolver`, obsługa wyjątków) — nowe Lambdy już w tym stylu.
+
 **DynamoDB w kodzie**
 - Odczyt/zapis po kluczu: `get_item`, `put_item`, `update_item` z `UpdateExpression` i `ExpressionAttributeValues`; `if_not_exists(createdAt, :now)` dla pól ustawianych raz; `ReturnValues="ALL_NEW"`, gdy zwracamy rekord.
 - Liczby wracają jako `Decimal` (serializuje `json_default` z `codzis_common.http`); `None` i puste wartości nie są zapisywane (tagger ma `sanitize()`).
