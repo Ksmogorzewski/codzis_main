@@ -63,6 +63,7 @@ Po zapisaniu profilu i przy logowaniu rekomender w tle liczy zestawy na dziś, j
 import json
 import logging
 import os
+import re
 from datetime import date, datetime
 
 import boto3
@@ -397,16 +398,21 @@ def _query(event: dict) -> dict:
     return event.get("queryStringParameters") or {}
 
 
+# Parametry ścieżki: id wydarzenia (kal-…, spt-…, demo-…) i userId (sub z Cognito, seed-…). Krótki identyfikator
+# z liter, cyfr, "-" i "_"; wszystko inne -> 404, zanim trafi jako klucz do DynamoDB.
+PATH_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
 def _event_id(event: dict) -> str:
     event_id = (event.get("pathParameters") or {}).get("id") or ""
-    if not event_id:
+    if not PATH_ID.fullmatch(event_id):
         raise ApiError(404, "Nie znaleziono wydarzenia")
     return event_id
 
 
 def _path(event: dict, name: str) -> str:
     value = (event.get("pathParameters") or {}).get(name) or ""
-    if not value:
+    if not PATH_ID.fullmatch(value):
         raise ApiError(404, "Nie znaleziono")
     return value
 

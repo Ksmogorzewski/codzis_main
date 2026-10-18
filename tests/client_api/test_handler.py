@@ -193,6 +193,18 @@ def test_precompute_failure_does_not_fail_request(client_api, monkeypatch):
 # --- routing i serializacja ---
 
 
+@pytest.mark.parametrize("bad", ["a" * 65, "kal-1/../x", "zły id", "kal-1;drop", "x\n"])
+def test_path_ids_validated(client_api, bad):
+    assert call(client_api, "GET /api/events/{id}", path={"id": bad})[0] == 404
+    assert call(client_api, "DELETE /api/friends/{userId}", path={"userId": bad})[0] == 404
+
+
+def test_path_ids_accept_known_formats(client_api):
+    assert client_api.PATH_ID.fullmatch("kal-12932be073d4")
+    assert client_api.PATH_ID.fullmatch("seed-001")
+    assert client_api.PATH_ID.fullmatch("3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f")
+
+
 def test_unknown_route_404(client_api):
     status, body = call(client_api, "DELETE /api/me")
     assert status == 404
