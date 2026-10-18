@@ -23,7 +23,13 @@ export function patchSaveInList<T extends { id: string } & SaveState>(
   return items.map((item) => (item.id === id ? { ...item, ...next(item) } : item));
 }
 
-type Person = { name: string | null; isMe: boolean };
+type Person = { userId?: string | null; name: string | null; isMe: boolean };
+
+/** Klucz osoby na liście zapisanych: userId; mój wpis - „me” (optymistyczny nie ma id); bez id - pozycja. */
+export function personKey(p: Person, index: number): string {
+  if (p.isMe) return "me";
+  return p.userId ? `u:${p.userId}` : `i:${index}`;
+}
 
 /** Lista zapisanych po zmianie stanu: zapis dodaje mnie na początek (najnowsi najpierw), wypisanie usuwa. */
 export function patchAttendees<T extends KnownSaveState & { people: Person[] }>(

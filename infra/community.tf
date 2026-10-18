@@ -66,3 +66,35 @@ resource "aws_dynamodb_table" "event_stats" {
     projection_type = "KEYS_ONLY"
   }
 }
+
+# Znajomi (src/client_api/friends.py - tam pełny opis modelu). Jedyny zapisujący: client-api.
+# Jedna tabela bez GSI, wszystko po kluczu: PK userId (sub albo "code#WAW-XXXXXX"), SK sk:
+#   code (mój kod), owner (kod -> właściciel), friend#<sub> (znajomość, para rekordów),
+#   in#<sub> / out#<sub> (zaproszenia, wygasają po 30 dniach), limit (złe kody, okno 1 h).
+resource "aws_dynamodb_table" "friends" {
+  name         = "${local.name}-friends"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "userId"
+  range_key    = "sk"
+
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
+  attribute {
+    name = "sk"
+    type = "S"
+  }
+
+  # Zaproszenia i okna limitu prób wygasają same (sekundy epoki)
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
+  }
+
+  # Znajomości użytkowników - nie da się ich odtworzyć
+  point_in_time_recovery {
+    enabled = true
+  }
+}

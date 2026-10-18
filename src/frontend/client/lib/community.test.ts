@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   attendeeLabel,
   patchAttendees,
+  personKey,
   patchSaveInList,
   rankLabel,
   savedAsText,
@@ -99,6 +100,16 @@ describe("lista zapisanych: optymistycznie", () => {
   it("potwierdzenie zapisu z imieniem", () => {
     expect(savedAsText("Dawid")).toBe("Zapisano jako Dawid");
     expect(savedAsText(null)).toBe("Zapisano");
+  });
+
+  it("klucz osoby: userId (dwie „Ole” to dwa wpisy), mój wpis „me”, bez id pozycja", () => {
+    const people = [
+      { userId: "u1", name: "Ola", isMe: false },
+      { userId: "u2", name: "Ola", isMe: false },
+      { userId: null, name: "Dawid", isMe: true },
+      { name: "Ktoś", isMe: false },
+    ];
+    expect(people.map(personKey)).toEqual(["u:u1", "u:u2", "me", "i:3"]);
   });
 
   it("bez zmiany stanu nie dubluje wpisu", () => {

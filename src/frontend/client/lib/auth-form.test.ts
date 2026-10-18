@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { nameError, normalizeCode, normalizeName, validateAuthForm } from "./auth-form";
+import { familyNameError, nameError, normalizeCode, normalizeName, validateAuthForm } from "./auth-form";
 
-const values = { name: "Anna", email: "anna@example.pl", password: "haslo1234", code: "123456", newPassword: "nowehaslo1" };
+const values = {
+  name: "Anna",
+  familyName: "",
+  email: "anna@example.pl", password: "haslo1234", code: "123456", newPassword: "nowehaslo1" };
 
 describe("formularz logowania", () => {
   it("poprawne dane w każdym kroku", () => {
@@ -14,6 +17,17 @@ describe("formularz logowania", () => {
     expect(validateAuthForm("login", { ...values, email: "anna" })).toBe("Podaj poprawny adres e-mail.");
     expect(validateAuthForm("login", { ...values, password: "" })).toBe("Podaj hasło.");
     expect(validateAuthForm("register", { ...values, password: "krótkie" })).toMatch(/min\. 8 znaków/);
+  });
+
+  it("nazwisko opcjonalne, ale poprawne (te same reguły co imię)", () => {
+    expect(validateAuthForm("register", { ...values, familyName: "Kowalska-Nowak" })).toBeNull();
+    expect(validateAuthForm("register", { ...values, familyName: "Kow4lska" })).toBe(
+      "Nazwisko może zawierać tylko litery, spacje i myślnik.",
+    );
+    expect(validateAuthForm("login", { ...values, familyName: "Kow4lska" })).toBeNull();
+    for (const ok of ["", "   ", "Kowalska", "Żółć", " de  la Cruz "]) expect(familyNameError(ok)).toBeNull();
+    expect(familyNameError("a".repeat(41))).toBe("Nazwisko może mieć najwyżej 40 znaków.");
+    for (const bad of ["-Nowak", "Nowak1", "<b>"]) expect(familyNameError(bad)).not.toBeNull();
   });
 
   it("rejestracja wymaga imienia", () => {

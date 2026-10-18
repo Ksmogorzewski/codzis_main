@@ -2,6 +2,8 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useCrewUnreadTotal } from "@/hooks/use-crew-unread";
+import { useFriendInvitesCount } from "@/hooks/use-friend-invites.query";
+import { invitesLabel } from "@/lib/friends";
 import { activeTab, NAV_ITEMS } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import { UnreadBadge } from "./nav-badge";
@@ -16,6 +18,7 @@ export function Header({ dark, onToggleDark, onLogout }: Props) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = activeTab(pathname);
   const unread = useCrewUnreadTotal();
+  const invites = useFriendInvitesCount();
   return (
     <header className="sticky top-0 z-20 border-b bg-background pt-[env(safe-area-inset-top)]">
       <div className="mx-auto flex max-w-[1160px] items-center gap-3 px-4 py-2.5 md:px-8">
@@ -49,6 +52,7 @@ export function Header({ dark, onToggleDark, onLogout }: Props) {
               {/* Pięć miejsc: między 768 a 1100 px same ikony (podpis dla czytnika i w dymku). */}
               <span className="sr-only min-[1100px]:not-sr-only">{item.label}</span>
               {item.to === "/twoje" && <UnreadBadge count={unread} />}
+              {item.to === "/znajomi" && <UnreadBadge count={invites} label={invitesLabel} max={9} />}
             </Link>
           ))}
         </nav>

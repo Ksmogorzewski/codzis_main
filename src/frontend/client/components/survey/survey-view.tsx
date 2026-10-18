@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useSaveProfile } from "@/hooks/use-save-profile.mutation";
 import { ApiRequestError } from "@/lib/api";
+import { takeTarget } from "@/lib/login-redirect";
 import { type Answers, AnswersSchema, type Me, type OnboardingStep } from "@/lib/schemas";
 import { lastSearch } from "@/lib/search";
 import { readJson, writeJson } from "@/lib/storage";
@@ -86,7 +87,10 @@ export function SurveyView({ me, steps }: Props) {
       onSuccess: () => {
         writeJson("local", key, null);
         toast.success("Profil zapisany");
-        void navigate({ to: "/", search: lastSearch() });
+        // nowe konto z linku w QR: po ankiecie z powrotem na ekran zaproszenia (lib/login-redirect.ts)
+        const target = takeTarget();
+        if (target) void navigate({ href: target });
+        else void navigate({ to: "/", search: lastSearch() });
       },
       onError: (error) => {
         // 401 i 409 obsługuje globalny onError (main.tsx); tu błędy walidacji i serwera.

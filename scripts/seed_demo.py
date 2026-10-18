@@ -2,8 +2,9 @@
 """Dane testowe na demo: sztuczne zapisy na prawdziwe wydarzenia z najbliższego tygodnia
 (dziś + 6 dni, tak samo jak „Popularne” w API).
 
-Zapisuje WYŁĄCZNIE do `codzis-attendance` i `codzis-event-stats` (rekordy z `seed: true`,
-userId `seed-001`...). Nie dotyka `codzis-users` ani Cognito. `codzis-events` tylko czyta (scan).
+Zapisuje WYŁĄCZNIE do `codzis-attendance`, `codzis-event-stats` i (z `--friends-of`)
+`codzis-friends` (rekordy z `seed: true`, userId `seed-001`...). Nie dotyka `codzis-users`;
+z Cognito tylko czyta (`list_users`). `codzis-events` tylko czyta (scan).
 
 Przykłady (region eu-central-1):
     python scripts/seed_demo.py --dry-run --profile default     # plan, nic nie zapisuje (domyślnie)
@@ -11,6 +12,8 @@ Przykłady (region eu-central-1):
     python scripts/seed_demo.py --apply --users 80 --seed-value 7
     python scripts/seed_demo.py --dry-run --week 2026-10-19     # 7 dni od tej daty
     python scripts/seed_demo.py --delete --profile default      # usuwa tylko rekordy seed, koryguje liczniki
+    python scripts/seed_demo.py --apply --friends-of demo@example.com --user-pool-id eu-central-1_XXXX
+        # jw. + 3 znajomych testowych (seed-001..003) dla tego konta, każdy z zapisem w oknie
 
 Wydarzenia: kind=event z terminem nakładającym się na okno 7 dni (czas warszawski)
 albo kind=recurring z niepustym `schedule` (liczy się w każdym tygodniu). Rozkład zapisów jest
@@ -26,7 +29,7 @@ import argparse
 import random
 import sys
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import boto3
@@ -38,6 +41,8 @@ SEED_PREFIX = "seed-"
 DEFAULT_SEED_VALUE = 20261018
 ZIPF_EXPONENT = 1.1
 MAX_SAVES_PER_USER = 5
+FRIEND_COUNT = 3
+DEFAULT_OWN_NAME = "Ty"
 
 FIRST_NAMES = [
     "Anna", "Piotr", "Katarzyna", "Marcin", "Magdalena", "Tomasz", "Agnieszka", "Michał", "Barbara", "Paweł",
@@ -72,6 +77,19 @@ def in_week(event: dict, week: tuple[datetime, datetime]) -> bool:
             continue
         if occ_start < end and occ_end >= start:
             return True
+    return False
+
+
+def is_upcoming(event: dict, now: datetime) -> bool:
+    """Najbliższy termin jeszcze przed nami (zajęcia cykliczne z grafikiem liczą się zawsze)."""
+    if event.get("kind") == "recurring":
+        return bool(event.get("schedule"))
+    for occ in event.get("occurrences") or []:
+        try:
+            if datetime.fromisoformat(occ["start"]) > now:
+                return True
+        except (KeyError, ValueError):
+            continue
     return False
 
 
@@ -236,6 +254,123 @@ def delete_seed(dynamodb, client, attendance: str, stats: str) -> int:
     return sum(delete_one(client, attendance, stats, r["eventId"], r["userId"]) for r in rows)
 
 
+# --- Znajomi testowi ----------------------------------------------------------------------------
+
+
+def lookup_user(cognito, pool_id: str, email: str) -> tuple[str, str]:
+    """(sub, imię) konta z Cognito; tylko odczyt. Imię puste -> "Ty". Bez e-maila w komunikatach."""
+    safe = email.replace("\\", "\\\\").replace('"', '\\"')
+    users = cognito.list_users(UserPoolId=pool_id, Filter=f'email = "{safe}"', Limit=2)["Users"]
+    if len(users) != 1:
+        raise SystemExit(f"Cognito: znaleziono {len(users)} kont dla podanego adresu (oczekiwane: 1).")
+    attrs = {a["Name"]: a["Value"] for a in users[0]["Attributes"]}
+    return attrs["sub"], (attrs.get("name") or "").strip() or DEFAULT_OWN_NAME
+
+
+def lookup_sub(cognito, pool_id: str, email: str) -> str:
+    return lookup_user(cognito, pool_id, email)[0]
+
+
+def friend_ids() -> list[tuple[str, str]]:
+    return [(user_id(n), user_name(n)) for n in range(1, FRIEND_COUNT + 1)]
+
+
+def friend_saves(attendance_table, uid: str, event_ids: set[str]) -> set[str]:
+    """Id wydarzeń z okna, na które ta osoba jest już zapisana."""
+    rows = scan_all(
+        attendance_table,
+        FilterExpression="userId = :u",
+        ExpressionAttributeValues={":u": uid},
+        ProjectionExpression="eventId",
+    )
+    return {r["eventId"] for r in rows} & event_ids
+
+
+def planned_saves(
+    dynamodb, attendance: str, events: list[dict], plan: list[dict], now: datetime
+) -> dict[str, set[str]]:
+    """Zapisy znajomych w oknie: istniejące + z planu; bez nadchodzącego zapisu jeden dodatkowy (deterministycznie)."""
+    event_ids = {e["id"] for e in events}
+    upcoming = [e for e in events if is_upcoming(e, now)]
+    upcoming_ids = {e["id"] for e in upcoming}
+    result = {}
+    for n, (uid, _) in enumerate(friend_ids(), start=1):
+        saves = friend_saves(dynamodb.Table(attendance), uid, event_ids)
+        saves |= {p["eventId"] for p in plan if p["userId"] == uid}
+        if upcoming and not saves & upcoming_ids:
+            saves.add(upcoming[(n - 1) % len(upcoming)]["id"])
+        result[uid] = saves
+    return result
+
+
+def put_friend_row(table, uid: str, other: str, name: str, since: str) -> bool:
+    """Wiersz `friend#<other>` u `uid`. True = dodano, False = już był (idempotentnie)."""
+    try:
+        table.put_item(
+            Item={"userId": uid, "sk": f"friend#{other}", "name": name, "since": since, "seed": True},
+            ConditionExpression="attribute_not_exists(userId)",
+        )
+    except ClientError as error:
+        if error.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise
+    return True
+
+
+def apply_friends(dynamodb, client, args, events, plan, own: tuple[str, str], now: datetime) -> None:
+    sub, own_name = own
+    table = dynamodb.Table(args.friends_table)
+    since = now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    created = 0
+    for uid, name in friend_ids():
+        created += put_friend_row(table, sub, uid, name, since)
+        created += put_friend_row(table, uid, sub, own_name, since)
+    print(f"Znajomi: dodano rekordów: {created} (pominięto istniejące: {2 * FRIEND_COUNT - created})")
+    # Każdy znajomy ma mieć zapis na wydarzenie, które jeszcze się nie zaczęło
+    # (inaczej „Znajomi idą” byłoby puste, gdy jedyny zapis już się skończył).
+    extra = 0
+    upcoming = [e for e in events if is_upcoming(e, now)]
+    for n, (uid, name) in enumerate(friend_ids(), start=1):
+        if not upcoming:
+            break
+        if friend_saves(dynamodb.Table(args.attendance_table), uid, {e["id"] for e in upcoming}):
+            continue
+        event = upcoming[(n - 1) % len(upcoming)]
+        row = {"eventId": event["id"], "userId": uid, "name": name, "savedAt": since}
+        extra += save_one(client, args.attendance_table, args.stats_table, row)
+    print(f"Znajomi: dopisano zapisów: {extra}")
+
+
+def print_friends_plan(saves: dict[str, set[str]]) -> None:
+    print("Znajomi testowi dla wskazanego konta:")
+    for uid, name in friend_ids():
+        print(f"  {name} ({uid}): zapisów w oknie: {len(saves[uid])}")
+
+
+def delete_seed_friendships(dynamodb, friends: str) -> int:
+    """Usuwa wiersze `friend#…` z `seed = true` (obie strony). Prawdziwe znajomości zostają."""
+    table = dynamodb.Table(friends)
+    try:
+        rows = scan_all(
+            table,
+            FilterExpression="seed = :t AND begins_with(sk, :f)",
+            ExpressionAttributeValues={":t": True, ":f": "friend#"},
+            ProjectionExpression="userId, sk",
+        )
+    except ClientError as error:
+        if error.response["Error"]["Code"] == "ResourceNotFoundException":
+            print(f"Tabeli {friends} nie ma - pomijam znajomych.")
+            return 0
+        raise
+    for r in rows:
+        table.delete_item(
+            Key={"userId": r["userId"], "sk": r["sk"]},
+            ConditionExpression="seed = :t",
+            ExpressionAttributeValues={":t": True},
+        )
+    return len(rows)
+
+
 # --- CLI ----------------------------------------------------------------------------------------
 
 
@@ -247,19 +382,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     mode.add_argument("--delete", action="store_true", help="usuń rekordy seed i popraw liczniki")
     p.add_argument("--users", type=int, default=60, help="liczba sztucznych osób (domyślnie 60)")
     p.add_argument("--seed-value", type=int, default=DEFAULT_SEED_VALUE, help="ziarno losowania")
-    p.add_argument("--week", type=date.fromisoformat, default=None, help="pierwszy dzień okna 7 dni (YYYY-MM-DD), domyślnie dziś")
+    p.add_argument(
+        "--week", type=date.fromisoformat, default=None, help="pierwszy dzień okna 7 dni (YYYY-MM-DD), domyślnie dziś"
+    )
     p.add_argument("--events-table", default="codzis-events")
     p.add_argument("--attendance-table", default="codzis-attendance")
     p.add_argument("--stats-table", default="codzis-event-stats")
+    p.add_argument("--friends-table", default="codzis-friends")
+    p.add_argument(
+        "--friends-of",
+        metavar="EMAIL",
+        default=None,
+        help="dodaj 3 znajomych testowych temu kontem (wymaga --user-pool-id)",
+    )
+    p.add_argument("--user-pool-id", default=None, help="pula Cognito (tylko odczyt, dla --friends-of)")
     p.add_argument("--region", default=REGION)
     p.add_argument("--profile", default=None, help="profil AWS (opcjonalnie)")
     args = p.parse_args(argv)
     if args.users < 1:
         p.error("--users musi być >= 1")
+    if args.friends_of and not args.user_pool_id:
+        p.error("--friends-of wymaga --user-pool-id")
     return args
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, cognito=None) -> int:
     args = parse_args(argv)
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
     dynamodb = session.resource("dynamodb")
@@ -268,6 +415,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.delete:
         removed = delete_seed(dynamodb, client, args.attendance_table, args.stats_table)
         print(f"Usunięto rekordów seed: {removed}")
+        print(f"Usunięto rekordów znajomości seed: {delete_seed_friendships(dynamodb, args.friends_table)}")
         return 0
 
     week = week_bounds(args.week or datetime.now(WARSAW).date())
@@ -277,10 +425,18 @@ def main(argv: list[str] | None = None) -> int:
     if not events:
         print("Brak wydarzeń w tym tygodniu - nic do zapisania.")
         return 0
+    own = None
+    if args.friends_of:
+        cognito = cognito or session.client("cognito-idp")
+        own = lookup_user(cognito, args.user_pool_id, args.friends_of)
     if args.apply:
         added = apply_plan(client, args.attendance_table, args.stats_table, plan)
         print(f"Dodano zapisów: {added} (pominięto istniejące: {len(plan) - added})")
+        if own:
+            apply_friends(dynamodb, client, args, events, plan, own, datetime.now(UTC))
     else:
+        if own:
+            print_friends_plan(planned_saves(dynamodb, args.attendance_table, events, plan, datetime.now(UTC)))
         print("Dry-run: nic nie zapisano. Użyj --apply, żeby zapisać.")
     return 0
 

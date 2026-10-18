@@ -1,5 +1,5 @@
 # API portalu klienta: HTTP API + JWT authorizer (Cognito) -> Lambda -> tabela users
-# (+ odczyt codzis-events, zapisy na wydarzenia i liczniki: infra/community.tf).
+# (+ odczyt codzis-events, zapisy na wydarzenia, liczniki i znajomi: infra/community.tf).
 
 # Profile klientów pod rekomendacje (RAG): odpowiedzi z onboardingu, preferencje, profil tekstowy
 resource "aws_dynamodb_table" "users" {
@@ -79,6 +79,15 @@ resource "aws_iam_role_policy" "client_api" {
         Resource = [aws_dynamodb_table.event_stats.arn, "${aws_dynamodb_table.event_stats.arn}/index/*"]
       },
       {
+        # Znajomi: kody, zaproszenia, znajomości, limit złych kodów (Put/Delete/ConditionCheck także w TransactWriteItems)
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem", "dynamodb:Query",
+          "dynamodb:ConditionCheckItem",
+        ]
+        Resource = aws_dynamodb_table.friends.arn
+      },
+      {
         # Po zapisaniu profilu i przy logowaniu: przeliczenie rekomendacji w tle
         Effect   = "Allow"
         Action   = ["lambda:InvokeFunction"]
@@ -108,6 +117,7 @@ resource "aws_lambda_function" "client_api" {
       EVENTS_TABLE         = aws_dynamodb_table.events.name
       ATTENDANCE_TABLE     = aws_dynamodb_table.attendance.name
       STATS_TABLE          = aws_dynamodb_table.event_stats.name
+      FRIENDS_TABLE        = aws_dynamodb_table.friends.name
     }
   }
 
@@ -121,7 +131,7 @@ resource "aws_apigatewayv2_api" "client" {
   # Strona woła API bezpośrednio (inna domena niż strona) - CORS obsługuje API Gateway
   cors_configuration {
     allow_origins = concat(local.client_origins, var.client_dev_origins)
-    allow_methods = ["GET", "PUT", "DELETE", "OPTIONS"]
+    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     allow_headers = ["authorization", "content-type"]
     max_age       = 3600
   }
@@ -160,6 +170,14 @@ resource "aws_apigatewayv2_route" "client" {
     "GET /api/events/{id}/attendees",
     "GET /api/popular",
     "GET /api/me/events",
+    "GET /api/friends",
+    "POST /api/friends/code",
+    "GET /api/friends/code/{code}",
+    "POST /api/friends/invite",
+    "PUT /api/friends/requests/{userId}",
+    "DELETE /api/friends/requests/{userId}",
+    "DELETE /api/friends/{userId}",
+    "GET /api/friends/going",
   ])
 
   api_id             = aws_apigatewayv2_api.client.id

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   authErrorMessage,
   cognitoErrorCode,
+  displayName,
+  idTokenDisplayName,
   idTokenName,
   nextSession,
   type Session,
@@ -103,6 +105,27 @@ describe("imię (atrybut Cognito name)", () => {
       { Name: "email", Value: "anna@example.pl" },
       { Name: "name", Value: "Anna" },
     ]);
+  });
+
+  it("rejestracja z nazwiskiem wysyła family_name, puste pomija", () => {
+    expect(signUpAttributes("anna@example.pl", "Anna", " Kowalska ")).toEqual([
+      { Name: "email", Value: "anna@example.pl" },
+      { Name: "name", Value: "Anna" },
+      { Name: "family_name", Value: "Kowalska" },
+    ]);
+    expect(signUpAttributes("anna@example.pl", "Anna", "   ")).toHaveLength(2);
+  });
+
+  it("imię widoczne dla innych: imię + inicjał nazwiska (jak display_name w client-api)", () => {
+    expect(displayName("Ola", "Kowalska")).toBe("Ola K.");
+    expect(displayName("Ola", " łukasiewicz")).toBe("Ola Ł.");
+    expect(displayName("Ola", "   ")).toBe("Ola");
+    expect(displayName("Ola", null)).toBe("Ola");
+    expect(displayName(null, "Kowalska")).toBeNull();
+    expect(idTokenDisplayName(jwt({ sub: "1", name: "Ola", family_name: "Kowalska" }))).toBe("Ola K.");
+    expect(idTokenDisplayName(jwt({ sub: "1", name: "Ola" }))).toBe("Ola");
+    expect(idTokenDisplayName(jwt({ sub: "1", family_name: "Kowalska" }))).toBeNull();
+    expect(idTokenDisplayName("nie-jwt")).toBeNull();
   });
 
   it("czyta imię z ID tokenu (także polskie znaki)", () => {

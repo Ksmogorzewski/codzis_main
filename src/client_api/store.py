@@ -2,7 +2,7 @@
 
 Tabele (infra/community.tf), jedyny zapisujący: client-api (+ scripts/seed_demo.py, tylko rekordy seed):
 
-    attendance   PK eventId, SK userId; name (imię z tokenu, bez niego displayName z users, w chwili zapisu - kopia,
+    attendance   PK eventId, SK userId; name („Ola K.”: display_name z tokenu albo z users, w chwili zapisu - kopia,
                  ustawiana tylko w save()), savedAt (ISO UTC), seed?: true.
                  GSI byUser (userId, savedAt; KEYS_ONLY) - "na co się zapisałem" (stan "Zapisano", zakładka "Twoje").
     event-stats  PK eventId; saves (licznik, ADD), kind = "event" (stała pod GSI).
