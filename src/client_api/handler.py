@@ -1,6 +1,7 @@
 """API portalu klienta (HTTP API + JWT authorizer Cognito, payload 2.0).
 
-    GET /api/me          profil zalogowanego użytkownika (pierwsze wywołanie zakłada rekord)
+    GET /api/me          profil zalogowanego użytkownika (pierwsze wywołanie zakłada rekord; kopiuje z tokenu
+                         e-mail, imię -> displayName, nazwisko -> familyName)
     GET /api/onboarding  pytania onboardingu (onboarding.py)
     PUT /api/profile     {"answers": {...}} -> walidacja, preferencje, zapis w tabeli users
 
@@ -26,6 +27,9 @@ rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za 
                                            (saved = true; najpierw nadchodzące od najbliższego terminu, potem
                                            minione - past = true, slot = ostatni termin - od najświeższego;
                                            maks. 100 najnowszych zapisów; bez wydarzeń wygasłych z codzis-events)
+
+Imię widoczne dla innych (zapisy, zaproszenia, znajomi, podgląd kodu) składa display_name: imię + inicjał
+nazwiska („Ola K.”, nazwisko opcjonalne przy rejestracji); pełnego nazwiska nie oddajemy nikomu.
 
 Znajomi (logika i DynamoDB: friends.py). Akcje oznaczone (imię) bez imienia w tokenie i w users ->
 409 {"code": "name_required"}. Czasy createdAt/since: ISO 8601 UTC. userId = sub z Cognito (nigdy e-mail):
@@ -143,7 +147,8 @@ def get_me(claims: dict) -> dict:
     now = now_iso()
     values = {":now": now, ":provider": _provider(claims)}
     updates = ["lastLoginAt = :now", "createdAt = if_not_exists(createdAt, :now)", "identityProvider = :provider"]
-    for attr, claim in (("email", "email"), ("displayName", "name"), ("picture", "picture")):
+    copies = (("email", "email"), ("displayName", "name"), ("familyName", "family_name"), ("picture", "picture"))
+    for attr, claim in copies:
         if claims.get(claim):
             updates.append(f"{attr} = :{attr}")
             values[f":{attr}"] = claims[claim]
@@ -221,11 +226,11 @@ def get_event(claims: dict, event_id: str) -> dict:
 
 
 def put_save(claims: dict, event_id: str) -> dict:
-    """Zapis na wydarzenie (kopiuje imię z tokenu, a bez niego `displayName` z users; nigdy e-mail).
+    """Zapis na wydarzenie (kopiuje display_name z tokenu, a bez niego z users; nigdy e-mail ani pełne nazwisko).
     Ponowny zapis nic nie zmienia."""
     if not store.get_event(event_id):
         raise ApiError(404, "Nie znaleziono wydarzenia")
-    store.save(event_id, claims["sub"], _name(claims) or _stored_name(claims["sub"]), now_iso())
+    store.save(event_id, claims["sub"], display_name(claims) or _stored_name(claims["sub"]), now_iso())
     return {"saved": True, "saves": store.saves_of(event_id)}
 
 
@@ -337,15 +342,25 @@ def _window(date_from: date, date_to: date) -> dict:
     return {"from": date_from.isoformat(), "to": date_to.isoformat()}
 
 
-def _name(claims: dict) -> str | None:
-    """Imię z ID tokenu (atrybut Cognito `name`); puste -> None (na listach "Ktoś")."""
-    return _clean_name(claims.get("name"))
+def display_name(claims: dict) -> str | None:
+    """Imię widoczne dla innych z ID tokenu: `name` + inicjał `family_name` („Ola K.”); bez imienia -> None.
+
+    Jedyne miejsce, które składa imię kopiowane do zapisów i znajomych - pełnego nazwiska nie oddajemy nikomu."""
+    return _format_name(claims.get("name"), claims.get("family_name"))
+
+
+def _format_name(first: object, family: object) -> str | None:
+    name = _clean_name(first)
+    initial = next((c for c in _clean_name(family) or "" if c.isalpha()), None)
+    if not name:
+        return None
+    return f"{name} {initial.upper()}." if initial else name
 
 
 def _stored_name(user_id: str) -> str | None:
-    """Zapas, gdy token nie ma imienia: `displayName` zapisany przez GET /api/me (kopia claimu `name`)."""
-    item = users.get_item(Key={"userId": user_id}, ProjectionExpression="displayName").get("Item") or {}
-    return _clean_name(item.get("displayName"))
+    """Zapas, gdy token nie ma imienia: `displayName` + `familyName` zapisane przez GET /api/me (kopie claimów)."""
+    item = users.get_item(Key={"userId": user_id}, ProjectionExpression="displayName, familyName").get("Item") or {}
+    return _format_name(item.get("displayName"), item.get("familyName"))
 
 
 def _upcoming(slot: dict | None) -> bool:
@@ -355,7 +370,7 @@ def _upcoming(slot: dict | None) -> bool:
 
 def _require_name(claims: dict) -> str:
     """Znajomi muszą wiedzieć, kogo dodają: imię z tokenu albo z users, inaczej 409 name_required."""
-    name = _name(claims) or _stored_name(claims["sub"])
+    name = display_name(claims) or _stored_name(claims["sub"])
     if not name:
         raise ApiError(409, "Podaj imię, zanim dodasz znajomych", code="name_required")
     return name

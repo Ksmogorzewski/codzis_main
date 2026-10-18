@@ -129,6 +129,20 @@ def test_friends_contract(api):
     assert call(api, "GET /api/friends/code/{code}", claims=OLA, path={"code": code})[0] == 404
 
 
+def test_friends_see_surname_initial_only(api):
+    ola = OLA | {"family_name": "Kowalska"}
+    kuba = KUBA | {"family_name": "  "}  # same spacje - bez inicjału
+    code = code_of(api, ola)
+    assert call(api, "GET /api/friends/code/{code}", claims=ALA, path={"code": code})[1]["name"] == "Ola K."
+    assert invite(api, kuba, code)[1]["name"] == "Ola K."
+    _, body = call(api, "GET /api/friends", claims=ola)
+    assert [r["name"] for r in body["incoming"]] == ["Kuba"]
+    call(api, "PUT /api/friends/requests/{userId}", claims=ola, path={"userId": KUBA["sub"]})
+    _, body = call(api, "GET /api/friends", claims=kuba)
+    assert [f["name"] for f in body["friends"]] == ["Ola K."]
+    assert "Kowalska" not in str(body)
+
+
 def test_decline_and_errors(api):
     invite(api, OLA, code_of(api, ALA))
     assert call(api, "DELETE /api/friends/requests/{userId}", claims=ALA, path={"userId": "user-2"}) == (200, {})

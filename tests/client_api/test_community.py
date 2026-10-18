@@ -175,6 +175,27 @@ def test_save_never_falls_back_to_email(api, attendance_table, users_table):
     assert body["people"] == [{"userId": "user-3", "name": "Ktoś", "isMe": True, "isFriend": False}]
 
 
+@pytest.mark.parametrize(
+    ("family_name", "expected"),
+    [("Kowalska", "Ola K."), ("  łukasiewicz ", "Ola Ł."), ("   ", "Ola"), (None, "Ola")],
+)
+def test_save_shows_surname_initial_only(api, attendance_table, family_name, expected):
+    claims = {"sub": "user-9", "email": "ola@example.com", "name": "Ola", "family_name": family_name}
+    save(api, "today", claims)
+    item = attendance_table.get_item(Key={"eventId": "today", "userId": "user-9"})["Item"]
+    assert item["name"] == expected
+    _, body = call(api, "GET /api/events/{id}/attendees", claims=BARTEK, path={"id": "today"})
+    assert body["people"][0]["name"] == expected
+    assert "owalska" not in str(body) and "ukasiewicz" not in str(body)
+
+
+def test_save_without_name_claim_uses_stored_surname_initial(api, attendance_table, users_table):
+    users_table.put_item(Item={"userId": "user-3", "displayName": "Cezary", "familyName": "Nowak"})
+    save(api, "today", NONAME)
+    item = attendance_table.get_item(Key={"eventId": "today", "userId": "user-3"})["Item"]
+    assert item["name"] == "Cezary N."
+
+
 def test_save_name_claim_wins_over_display_name(api, attendance_table, users_table):
     users_table.put_item(Item={"userId": "user-1", "displayName": "Stare"})
     save(api, "today")
