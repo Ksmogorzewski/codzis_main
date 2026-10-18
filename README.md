@@ -103,10 +103,16 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 
 **Logowanie (Cognito):**
 - **E-mail + hasło:** własny formularz strony; rejestracja z 6-cyfrowym kodem z e-maila i reset hasła. Domyślna wysyłka Cognito ma limit ~50 e-maili dziennie.
-- **Google (domyślnie wyłączone):** jeden klient OAuth Google dla portalu klienta i panelu organizatora. Bez `google_client_id` nie powstają dostawcy Google ani domeny Hosted UI, portal nie pokazuje przycisku, a panel loguje kluczem API. Żeby włączyć, w [Google Cloud Console](https://console.cloud.google.com/auth/overview):
+- **Google (domyślnie wyłączone):** jeden klient OAuth Google dla portalu klienta i panelu organizatora. Bez sekretu `codzis/google-oauth` w AWS Secrets Manager nie powstają dostawcy Google ani domeny Hosted UI, portal nie pokazuje przycisku, a panel loguje kluczem API. Żeby włączyć, w [Google Cloud Console](https://console.cloud.google.com/auth/overview):
   1. *Google Auth Platform*: nazwa aplikacji i e-mail pomocy, odbiorcy *External*. W *Branding*: strona główna `https://portal.waw-out.pl/`, polityka prywatności `https://portal.waw-out.pl/polityka-prywatnosci.html` (`src/frontend/client/public/polityka-prywatnosci.html`), *Authorized domains* `amazoncognito.com` i `waw-out.pl`. Potem *Audience → Publish app* (w trybie *Testing* wejdą tylko dodani testerzy, do 100). Zakresy `openid`, `email`, `profile` nie wymagają weryfikacji przez Google.
   2. *Clients → Create client → Web application*: *Authorized JavaScript origins* = `terraform output cognito_hosted_ui`, *Authorized redirect URIs* = `terraform output google_oauth_redirect_uris` (po dwa adresy: portal i panel).
-  3. Client ID i secret wpisz do `infra/secrets.auto.tfvars` (`google_client_id`, `google_client_secret`; plik jest w `.gitignore`, Terraform wczytuje go sam), potem `scripts/build-frontend.sh` i `terraform apply`. Przyciski „Kontynuuj z Google” (portal) i „Zaloguj się przez Google” (panel) pojawią się same.
+  3. Client ID i secret zapisz w AWS Secrets Manager (sekret `codzis/google-oauth` jako JSON, ok. 0,40 USD miesięcznie; Terraform go tylko czyta):
+     ```sh
+     aws secretsmanager create-secret --name codzis/google-oauth \
+       --secret-string '{"client_id":"….apps.googleusercontent.com","client_secret":"…"}'
+     # zmiana później: aws secretsmanager put-secret-value --secret-id codzis/google-oauth --secret-string '{…}'
+     ```
+     Potem `scripts/build-frontend.sh` i `terraform apply`; `terraform output google_login_enabled` pokaże `true`. Przyciski „Kontynuuj z Google” (portal) i „Zaloguj się przez Google” (panel) pojawią się same.
 - **Panel organizatora z Google:** osobna pula Cognito partnerów, tylko Google (`infra/partner_auth.tf`); REST API sprawdza ID token autoryzatorem Cognito w nagłówku `X-Id-Token` (`Authorization` CloudFront zdejmuje z GET-ów). Samoobsługa: pierwsze logowanie zakłada konto organizatora (`partnerId` = `sub`, kredyty startowe = `starter_credits`), ogłoszenia podpisuje imię i nazwisko z Google. Partnerzy z kluczem API (np. `demo`) w tym trybie nie mają dostępu; ich dane zostają pod starym `partnerId`.
 - **E-maile** (kod przy rejestracji, kod resetu hasła) wysyła Cognito z domyślnej skrzynki AWS (`no-reply@verificationemail.com`, temat i treść z `verification_message_template` w `infra/client_auth.tf`). Limit to ~50 e-maili dziennie na konto AWS i nie da się zmienić nadawcy. Docelowo: Amazon SES z domeną `waw-out.pl` (rekordy DKIM w home.pl + wyjście z trybu sandbox), potem w Cognito `email_sending_account = "DEVELOPER"`.
 - Sesja jest trzymana w `localStorage` (refresh token na 30 dni), w panelu organizatora w `sessionStorage` (do zamknięcia karty). Konto e-mail i konto Google z tym samym adresem to w Cognito dwa osobne konta. Imię klienta z Google to `given_name` (samo imię, jak pole „Imię” przy rejestracji).
@@ -129,7 +135,7 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 | Endpoint | Opis |
 | --- | --- |
 | `GET /api/me` | profil (pierwsze wywołanie zakłada rekord i dane konta), `account`, `needsOnboarding`, `onboardingOutdated` |
-| `PUT /api/me` | `{"lastName", "birthDate"}` → dane konta (imię się nie zmienia); puste pole = usuń |
+| `PUT /api/me` | `{"birthDate"}` → dane konta (imię i nazwisko się nie zmieniają); pusta data = usuń |
 | `POST /api/me/photo` | `{"contentType"}` → `{key, upload}`: presigned POST, przeglądarka wysyła zdjęcie prosto do S3 |
 | `PUT /api/me/photo` / `DELETE /api/me/photo` | `{"key"}` → wgrane zdjęcie staje się profilowym (stare usuwamy) / profil bez zdjęcia |
 | `GET /api/onboarding` | kafelki z pytaniami (ikony, limity wyborów, wymagane pola) |
@@ -144,8 +150,8 @@ W polu Host wpisujesz część przed `.waw-out.pl`.
 
 | Pole | Opis |
 | --- | --- |
-| `email`, `displayName`, `picture`, `identityProvider` | z tokenu (`Google` / `Cognito`); `displayName` = imię (z rejestracji albo `given_name` z Google), niezmienne |
-| `account` | dane konta z profilu: `lastName`, `birthDate` (RRRR-MM-DD), `photoUrl`, `photoKey`; zakładane przy pierwszym logowaniu (z Google nazwisko i zdjęcie), potem zmienia je tylko użytkownik; widzi je tylko on. Zdjęcia: bucket zdjęć, `photos/avatars/<userId>/…`, zmniejszone w przeglądarce do 512 px |
+| `email`, `displayName`, `picture`, `identityProvider` | z tokenu (`Google` / `Cognito`); `displayName` = imię (z rejestracji albo `given_name` z Google), niezmienne; `familyName` = nazwisko (opcjonalne przy rejestracji, z Google), innym tylko inicjał („Ola K.”) |
+| `account` | dane konta z profilu: `birthDate` (RRRR-MM-DD, widzi ją tylko właściciel), `photoUrl`, `photoKey`; zakładane przy pierwszym logowaniu (z Google zdjęcie), potem zmienia je tylko użytkownik. Zdjęcia: bucket zdjęć, `photos/avatars/<userId>/…`, zmniejszone w przeglądarce do 512 px |
 | `onboarding` | `{version, completedAt, answers}`: surowe odpowiedzi; zmiana pytań zmienia `version` |
 | `preferences` | odpowiedzi przemapowane na słownik eventów: `themes`, `formats`, `audience`, `occasion`, `activityLevel`, `cost`, `mode`, `setting`, `registration`, `accessibility` (opcje taksonomii taggera), `interests` (kategorie kalendarza UM), `days`/`timeOfDay`/`weekend` (jak `facets` eventów), `district`, `travelRange`, `maxPrice`, `ageRange` |
 | `ragProfile` | tekst pod RAG, np. `interests=[Czas wolny, Kultura] \| district=Śródmieście \| cost=Bezpłatne \| mode=Stacjonarne \| audience=Dorośli (18-64) \| …` |
