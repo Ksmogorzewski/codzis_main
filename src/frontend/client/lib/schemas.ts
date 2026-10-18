@@ -248,6 +248,28 @@ export const EventStatsSchema = z.record(z.string(), z.unknown()).transform((raw
   return out;
 });
 
+// GET /api/me/events (zakładka „Twoje”): moje zapisy, najpierw nadchodzące od najbliższego terminu,
+// potem minione (past = true, slot = ostatni termin) od najświeższego; maks. 100.
+export const MyEventSchema = CardSchema.extend({
+  past: z.boolean().default(false).catch(false),
+  savedAt: nullableString,
+});
+export type MyEvent = z.infer<typeof MyEventSchema>;
+
+export const MyEventsSchema = z.object({
+  // Zepsutą kartę pomijamy, zamiast odrzucać całą odpowiedź.
+  items: z
+    .array(z.unknown())
+    .default([])
+    .transform((xs) =>
+      xs.flatMap((x) => {
+        const r = MyEventSchema.safeParse(x);
+        return r.success ? [r.data] : [];
+      }),
+    ),
+});
+export type MyEvents = z.infer<typeof MyEventsSchema>;
+
 // --- błąd API: {error: "komunikat PL", fields?, code?} ---
 
 export const ApiErrorBodySchema = z.object({

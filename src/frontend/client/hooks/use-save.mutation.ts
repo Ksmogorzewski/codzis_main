@@ -12,20 +12,32 @@ import {
   type StatsMap,
   toggleSave,
 } from "@/lib/community";
-import { attendeesKey, eventKey, eventStatsRootKey, eventsRootKey, popularKey } from "@/lib/query-keys";
-import { type Attendees, type EventDetail, type EventList, SaveResultSchema } from "@/lib/schemas";
+import { patchMyEvents } from "@/lib/my-events";
+import { attendeesKey, eventKey, eventStatsRootKey, eventsRootKey, myEventsKey, popularKey } from "@/lib/query-keys";
+import { type Attendees, type EventDetail, type EventList, type MyEvents, SaveResultSchema } from "@/lib/schemas";
 
 export type SaveVars = { id: string; save: boolean };
 
 // Wszystkie miejsca w cache, gdzie widać stan zapisu danego wydarzenia.
-const keysFor = (id: string) => [eventsRootKey(), popularKey(), eventKey(id), attendeesKey(id), eventStatsRootKey()];
+const keysFor = (id: string) => [
+  eventsRootKey(),
+  popularKey(),
+  eventKey(id),
+  attendeesKey(id),
+  eventStatsRootKey(),
+  myEventsKey(),
+];
 
-/** Ustawia stan zapisu wydarzenia we wszystkich listach, szczegółach, liście zapisanych i licznikach. */
+/**
+ * Ustawia stan zapisu wydarzenia we wszystkich listach, szczegółach, liście zapisanych i licznikach;
+ * na liście „Twoje” wypisanie od razu usuwa wydarzenie.
+ */
 function patchCaches(qc: QueryClient, id: string, next: (s: SaveState) => KnownSaveState) {
   const patchList = (list: EventList | undefined) => list && { ...list, items: patchSaveInList(list.items, id, next) };
   qc.setQueriesData<EventList>({ queryKey: eventsRootKey() }, patchList);
   qc.setQueriesData<EventList>({ queryKey: popularKey() }, patchList);
   qc.setQueryData<EventDetail>(eventKey(id), (d) => d && { ...d, ...next(d) });
+  qc.setQueryData<MyEvents>(myEventsKey(), (list) => list && patchMyEvents(list, id, next));
   qc.setQueryData<Attendees>(attendeesKey(id), (a) => a && patchAttendees(a, next(a), currentName()));
   qc.setQueriesData<StatsMap>({ queryKey: eventStatsRootKey() }, (m) => {
     const s = m?.[id];
@@ -37,7 +49,8 @@ function patchCaches(qc: QueryClient, id: string, next: (s: SaveState) => KnownS
  * PUT / DELETE /api/events/{id}/save -> {saved, saves}. Optymistycznie: stan i licznik zmieniają się
  * od razu wszędzie (na liście zapisanych mój wpis z imieniem z ID tokenu); błąd przywraca poprzedni
  * stan i pokazuje toast. Po sukcesie: wartości z serwera, toast „Zapisano jako <imię>” i odświeżenie
- * listy zapisanych, Popularnych i list Eksploruj.
+ * listy zapisanych, Popularnych, list Eksploruj i „Twoich” (po wypisaniu tylko oznaczenie jako
+ * nieaktualne: indeks byUser jest odczytem ostatecznie spójnym, a lista już jest poprawna).
  */
 export function useSave() {
   const qc = useQueryClient();
@@ -69,6 +82,7 @@ export function useSave() {
       void qc.invalidateQueries({ queryKey: attendeesKey(id) });
       void qc.invalidateQueries({ queryKey: popularKey() });
       void qc.invalidateQueries({ queryKey: eventsRootKey() });
+      void qc.invalidateQueries({ queryKey: myEventsKey(), refetchType: save ? "active" : "none" });
     },
   });
 }

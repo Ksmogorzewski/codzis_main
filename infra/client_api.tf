@@ -67,7 +67,7 @@ resource "aws_iam_role_policy" "client_api" {
         Resource = aws_dynamodb_table.events.arn
       },
       {
-        # Zapisy na wydarzenia (Put/Delete także w TransactWriteItems), lista zapisanych, "moje zapisy"
+        # Zapisy na wydarzenia (Put/Delete także w TransactWriteItems), lista zapisanych, "moje zapisy" (GSI byUser)
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query"]
         Resource = [aws_dynamodb_table.attendance.arn, "${aws_dynamodb_table.attendance.arn}/index/*"]
@@ -159,6 +159,7 @@ resource "aws_apigatewayv2_route" "client" {
     "DELETE /api/events/{id}/save",
     "GET /api/events/{id}/attendees",
     "GET /api/popular",
+    "GET /api/me/events",
   ])
 
   api_id             = aws_apigatewayv2_api.client.id

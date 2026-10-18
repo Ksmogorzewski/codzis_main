@@ -19,6 +19,10 @@ rekomendacji z src/recommender_api/present.py bez reason/reasonSource/score, za 
                                            (najnowsi najpierw, maks. 100; bez imienia "Ktoś"; nigdy e-maili)
     GET    /api/popular                 -> {"window": {"from", "to"}, "items": [Card]}
                                            (dziś + 6 dni, saves > 0, malejąco, maks. 20)
+    GET    /api/me/events               -> {"items": [Card + {"past", "savedAt"}]}  zakładka „Twoje”: moje zapisy
+                                           (saved = true; najpierw nadchodzące od najbliższego terminu, potem
+                                           minione - past = true, slot = ostatni termin - od najświeższego;
+                                           maks. 100 najnowszych zapisów; bez wydarzeń wygasłych z codzis-events)
 
 Token weryfikuje API Gateway; tu korzystamy już tylko z jego claims (ID token Cognito).
 Po zapisaniu profilu i przy logowaniu rekomender w tle liczy zestawy na dziś, jutro i weekend
@@ -39,6 +43,7 @@ from onboarding import build_steps, compute_preferences, onboarding_version, pub
 
 USERS_TABLE = os.environ["USERS_TABLE"]
 POPULAR_LIMIT = 20
+MY_EVENTS_LIMIT = 100
 MAX_STATS_IDS = 100
 MAX_NAME = 60
 ANONYMOUS = "Ktoś"
@@ -79,6 +84,8 @@ def handler(event, context):
                 return response(200, get_attendees(claims, _event_id(event)))
             case "GET /api/popular":
                 return response(200, get_popular(claims))
+            case "GET /api/me/events":
+                return response(200, get_my_events(claims))
         raise ApiError(404, "Nie znaleziono")
     except ApiError as e:
         return response(e.status, e.body)
@@ -209,6 +216,18 @@ def get_popular(claims: dict) -> dict:
         if len(page) == POPULAR_LIMIT:
             break
     return {"window": _window(date_from, date_to), "items": _cards(claims, page)}
+
+
+def get_my_events(claims: dict) -> dict:
+    """Zakładka „Twoje”: wydarzenia, na które jestem zapisany (GSI byUser + pamięć codzis-events)."""
+    found = events.my_events(store.my_saves(claims["sub"]), store.all_events(), _now(), MY_EVENTS_LIMIT)
+    counts = store.saves_for(item["id"] for item, _, _ in found) if found else {}
+    return {
+        "items": [
+            events.card(item, slot, counts[item["id"]], True) | {"past": row["past"], "savedAt": row.get("savedAt")}
+            for item, slot, row in found
+        ]
+    }
 
 
 def _cards(claims: dict, page: list[tuple[dict, dict]]) -> list[dict]:

@@ -4,7 +4,7 @@ Tabele (infra/community.tf), jedyny zapisujący: client-api (+ scripts/seed_demo
 
     attendance   PK eventId, SK userId; name (imię z tokenu, bez niego displayName z users, w chwili zapisu - kopia,
                  ustawiana tylko w save()), savedAt (ISO UTC), seed?: true.
-                 GSI byUser (userId, savedAt; KEYS_ONLY) - "na co się zapisałem".
+                 GSI byUser (userId, savedAt; KEYS_ONLY) - "na co się zapisałem" (stan "Zapisano", zakładka "Twoje").
     event-stats  PK eventId; saves (licznik, ADD), kind = "event" (stała pod GSI).
                  GSI bySaves (kind, saves; KEYS_ONLY) - top wydarzeń po liczbie zapisanych.
 
@@ -129,6 +129,24 @@ def saved_ids(user_id: str) -> set[str]:
         found.update(item["eventId"] for item in page.get("Items", []))
         if "LastEvaluatedKey" not in page:
             return found
+        params["ExclusiveStartKey"] = page["LastEvaluatedKey"]
+
+
+def my_saves(user_id: str) -> list[dict]:
+    """Moje zapisy, najnowsze najpierw (GSI byUser, KEYS_ONLY): [{eventId, savedAt}].
+
+    Także zapisy na wydarzenia, których już nie ma w codzis-events - pomija je handler."""
+    params: dict[str, Any] = {
+        "IndexName": "byUser",
+        "KeyConditionExpression": Key("userId").eq(user_id),
+        "ScanIndexForward": False,
+    }
+    rows: list[dict] = []
+    while True:
+        page = attendance_table.query(**params)
+        rows.extend({"eventId": item["eventId"], "savedAt": item.get("savedAt")} for item in page.get("Items", []))
+        if "LastEvaluatedKey" not in page:
+            return rows
         params["ExclusiveStartKey"] = page["LastEvaluatedKey"]
 
 
