@@ -51,11 +51,19 @@ export type Answers = z.infer<typeof AnswersSchema>;
 // Preferencje liczy backend z odpowiedzi; front ich nie potrzebuje do działania, więc luźno.
 export const PreferencesSchema = z.record(z.string(), z.unknown());
 
+// Dane konta (PUT /api/me, zdjęcie: /api/me/photo); imię to `name` w Me (z rejestracji albo Google)
+export const AccountSchema = z.object({
+  lastName: nullableString,
+  birthDate: nullableString,
+  photoUrl: nullableString,
+});
+
 export const MeSchema = z.object({
   userId: z.string(),
   email: nullableString,
   name: nullableString,
   picture: nullableString,
+  account: AccountSchema.default({ lastName: null, birthDate: null, photoUrl: null }),
   identityProvider: nullableString,
   needsOnboarding: z.boolean(),
   onboardingOutdated: z.boolean().default(false),
@@ -71,6 +79,12 @@ export const MeSchema = z.object({
 });
 
 export type Me = z.infer<typeof MeSchema>;
+
+// POST /api/me/photo: klucz w S3 i formularz presigned POST (upload prosto z przeglądarki)
+export const PhotoUploadSchema = z.object({
+  key: z.string(),
+  upload: z.object({ url: z.string(), fields: z.record(z.string(), z.string()) }),
+});
 
 // --- rekomendacje: GET /api/recommendations?when=&date=&q=&limit= ---
 

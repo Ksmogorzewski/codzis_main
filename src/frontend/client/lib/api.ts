@@ -91,12 +91,13 @@ export function createApi(deps: ApiDeps) {
 
   return {
     apiGet: <T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal) => request("GET", path, undefined, schema, signal),
+    apiPost: <T>(path: string, body: unknown, schema: z.ZodType<T>) => request("POST", path, body, schema),
     apiPut: <T>(path: string, body: unknown, schema: z.ZodType<T>) => request("PUT", path, body, schema),
     apiDelete: <T>(path: string, schema: z.ZodType<T>) => request("DELETE", path, undefined, schema),
   };
 }
 
-export const { apiGet, apiPut, apiDelete } = createApi({
+export const { apiGet, apiPost, apiPut, apiDelete } = createApi({
   fetch: (url, init) => fetch(url, init),
   baseUrl: () => config().apiUrl,
   getToken: getIdToken,
