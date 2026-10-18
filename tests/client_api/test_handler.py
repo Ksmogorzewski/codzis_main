@@ -30,6 +30,7 @@ def test_get_me_creates_user_from_claims(client_api, users_table):
         "email": "ala@example.com",
         "name": "Ala",
         "picture": None,
+        "account": {"lastName": None, "birthDate": None, "photoUrl": None},
         "identityProvider": "Cognito",
         "needsOnboarding": True,
         "onboardingOutdated": False,
