@@ -85,6 +85,30 @@ def test_onboarding_version_ignores_labels_but_tracks_mapping():
     assert onboarding.onboarding_version(onboarding.build_steps(["Wola"])) != base
 
 
+def test_missing_required_lists_only_unanswered_required_fields():
+    assert (
+        onboarding.missing_required({k: [v] if isinstance(v, str) else v for k, v in VALID_ANSWERS.items()}, steps())
+        == []
+    )
+    assert onboarding.missing_required({}, steps()) == ["who", "vibe", "discover", "district", "travel"]
+    assert onboarding.missing_required({**VALID_ANSWERS, "vibe": []}, steps()) == ["vibe"]
+
+
+def test_missing_required_ignores_removed_and_optional_fields():
+    answers = {**VALID_ANSWERS, "age": ["30-49"]}  # usunięte pytanie
+    assert onboarding.missing_required(answers, steps()) == []
+    with_optional = steps()
+    with_optional[-1]["fields"].append({"id": "nowe", "type": "multi", "required": False, "options": []})
+    assert onboarding.missing_required(answers, with_optional) == []
+    with_required = steps()
+    with_required[-1]["fields"].append({"id": "nowe", "type": "multi", "required": True, "options": []})
+    assert onboarding.missing_required(answers, with_required) == ["nowe"]
+
+
+def test_bio_field_is_optional():
+    assert fields_by_id()["bio"]["required"] is False
+
+
 def test_public_steps_hides_mappings_and_keeps_shape():
     public = onboarding.public_steps(steps())
     assert [s["id"] for s in public] == [s["id"] for s in steps()]
