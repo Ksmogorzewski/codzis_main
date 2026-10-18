@@ -8,7 +8,7 @@ from botocore.config import Config
 
 from codzis_common.aws import AWS_CONFIG
 from codzis_common.http import ApiError
-from config import LIST_LIMIT, PARTNERS_TABLE, PAYMENTS_TABLE, REGION, SUBMISSIONS_TABLE
+from config import LIST_LIMIT, PARTNERS_TABLE, PAYMENTS_TABLE, REGION, STARTER_CREDITS, SUBMISSIONS_TABLE
 
 dynamodb = boto3.resource("dynamodb", config=AWS_CONFIG)
 submissions_table = dynamodb.Table(SUBMISSIONS_TABLE)
@@ -35,6 +35,16 @@ def transact(items, condition_error):
         if "ConditionalCheckFailed" in reasons:
             raise condition_error from e
         raise ApiError(409, "Konflikt zapisu, spróbuj ponownie") from e
+
+
+def ensure_partner(partner):
+    """Rekord partnera (aktualna nazwa); pierwsze wywołanie zakłada go z kredytami startowymi."""
+    return partners_table.update_item(
+        Key={"partnerId": partner["partnerId"]},
+        UpdateExpression="SET partnerName = :name, credits = if_not_exists(credits, :start)",
+        ExpressionAttributeValues={":name": partner["partnerName"], ":start": STARTER_CREDITS},
+        ReturnValues="ALL_NEW",
+    )["Attributes"]
 
 
 def credit_update(partner, delta, require_funds=True):
