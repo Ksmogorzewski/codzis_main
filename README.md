@@ -324,3 +324,34 @@ W UI wydarzenia demo nie są oznaczone; w polu „Źródło” stoi fikcyjny org
 - Rekordy usunięte w źródle przed końcem (np. odwołane eventy) zostają w tabeli do `expiresAt`; zajęcia cykliczne usunięte w źródle zostają na stałe (importer tylko loguje ich liczbę).
 - Zmiana taksonomii przetaguje tylko rekordy, które przyjdą ponownie; żeby przetagować wszystko: pełne przeładowanie (sekcja Initial load).
 - API GW jest też dostępne bezpośrednio pod `execute-api` (z tym samym kluczem).
+
+
+
+
+
+
+google cloud auth
+  Jak przygotować klucz w Google Cloud (bezpłatne, bez konta rozliczeniowego)
+  1. Wejdź na https://console.cloud.google.com i wybierz ten sam projekt co przy Mapach.
+  2. Menu, potem Google Auth Platform, potem Get started:
+     - nazwa aplikacji WarsawNow i Twój e-mail jako e-mail pomocy;
+     - Audience: External;
+     - e-mail kontaktowy, akceptacja zasad, Create.
+  3. Branding, potem Authorized domains, Add domain: wpisz amazoncognito.com i zapisz. Nie
+     dodawaj logo, bo logo wymaga weryfikacji przez Google.
+  4. Audience, potem Publish app. Bez tego zalogują się tylko dodani testerzy (najwyżej 100).
+     Zakresy openid, email i profile nie wymagają weryfikacji.
+  5. Clients, potem Create client, typ Web application. Wpisz:
+  Authorized JavaScript origins:
+    https://warsawnow.auth.eu-central-1.amazoncognito.com
+    https://warsawnow-partner.auth.eu-central-1.amazoncognito.com
+  Authorized redirect URIs:
+    https://warsawnow.auth.eu-central-1.amazoncognito.com/oauth2/idpresponse
+    https://warsawnow-partner.auth.eu-central-1.amazoncognito.com/oauth2/idpresponse
+  6. Od razu skopiuj Client ID i Client secret albo kliknij Download JSON, bo sekret może się
+     później nie pokazać.
+  7. Wpisz je do infra/secrets.auto.tfvars. Ten plik jest w .gitignore, a terraform.tfvars jest w
+     gicie, więc nie tam. Sekretu nie wklejaj na czat.
+  hcl
+  google_client_id     = "….apps.googleusercontent.com"
+  google_client_secret = "…"
