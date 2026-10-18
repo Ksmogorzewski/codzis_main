@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from codzis_common.http import ApiError, json_default, now_iso, parse_body, response
+from codzis_common.http import SERVER_ERROR, ApiError, handle_request, json_default, now_iso, parse_body, response
 
 
 def test_api_error_body_and_status():
@@ -62,3 +62,74 @@ def test_now_iso_is_utc():
     offset = datetime.fromisoformat(now_iso()).utcoffset()
     assert offset is not None
     assert offset.total_seconds() == 0
+
+
+# --- handle_request: catch-all i log dostępu ---
+
+EVENT = {"requestContext": {"requestId": "req-1"}, "body": '{"email": "ala@example.com"}'}
+
+
+def _ok():
+    return response(200, {"ok": True})
+
+
+def _api_error():
+    raise ApiError(409, "Podaj imię", code="name_required")
+
+
+def _boom():
+    raise RuntimeError("awaria")
+
+
+def _records(caplog):
+    return [json.loads(r.getMessage()) for r in caplog.records if r.name == "codzis.http"]
+
+
+def test_handle_request_passes_response(caplog):
+    caplog.set_level("INFO", logger="codzis.http")
+    result = handle_request(EVENT, "GET /api/me", _ok)
+    assert result == response(200, {"ok": True})
+    [access] = _records(caplog)
+    assert access["route"] == "GET /api/me"
+    assert access["status"] == 200
+    assert access["requestId"] == "req-1"
+    assert isinstance(access["durationMs"], int)
+    assert set(access) == {"route", "status", "durationMs", "requestId"}
+
+
+def test_handle_request_api_error_unchanged_and_warning(caplog):
+    caplog.set_level("INFO", logger="codzis.http")
+    result = handle_request(EVENT, "GET /api/friends", _api_error)
+    assert result == response(409, {"error": "Podaj imię", "code": "name_required"})
+    warning = next(r for r in caplog.records if r.levelname == "WARNING")
+    assert json.loads(warning.getMessage()) == {
+        "route": "GET /api/friends",
+        "status": 409,
+        "code": "name_required",
+        "requestId": "req-1",
+    }
+    assert _records(caplog)[-1]["status"] == 409
+
+
+def test_handle_request_unexpected_error_is_500_with_request_id(caplog):
+    caplog.set_level("INFO", logger="codzis.http")
+    result = handle_request(EVENT, "GET /api/me", _boom)
+    assert result["statusCode"] == 500
+    assert result["headers"] == {"Content-Type": "application/json"}
+    assert json.loads(result["body"]) == {"error": SERVER_ERROR, "requestId": "req-1"}
+    error = next(r for r in caplog.records if r.levelname == "ERROR")
+    assert error.exc_info is not None  # pełny traceback w CloudWatch
+    assert json.loads(error.getMessage())["route"] == "GET /api/me"
+    assert _records(caplog)[-1]["status"] == 500
+
+
+def test_handle_request_without_request_id():
+    result = handle_request({}, None, _boom)
+    assert json.loads(result["body"]) == {"error": SERVER_ERROR, "requestId": None}
+
+
+def test_handle_request_never_logs_body(caplog):
+    caplog.set_level("INFO", logger="codzis.http")
+    for run in (_ok, _api_error, _boom):
+        handle_request(EVENT, "PUT /api/profile", run)
+    assert "ala@example.com" not in caplog.text
