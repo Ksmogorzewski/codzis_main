@@ -101,20 +101,26 @@ def aws(partner_api):
     return Aws()
 
 
-def rest_event(method, path, body=None, api_key=PARTNER_KEY):
-    """Zdarzenie REST API (v1, proxy {proxy+}) z kluczem API partnera."""
+def rest_event(method, path, body=None, api_key=PARTNER_KEY, claims=None):
+    """Zdarzenie REST API (v1, proxy {proxy+}) z kluczem API partnera albo - z `claims` - z tokenem Google
+    (autoryzator Cognito: claimy w requestContext.authorizer.claims, bez klucza API)."""
+    context = (
+        {"identity": {"apiKeyId": None}, "authorizer": {"claims": claims}}
+        if claims
+        else {"identity": {"apiKeyId": api_key}}
+    )
     event = {
         "httpMethod": method,
         "pathParameters": {"proxy": path} if path else None,
-        "requestContext": {"identity": {"apiKeyId": api_key}},
+        "requestContext": context,
     }
     if body is not None:
         event["body"] = body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)
     return event
 
 
-def call(module, method, path, body=None, api_key=PARTNER_KEY):
+def call(module, method, path, body=None, api_key=PARTNER_KEY, claims=None):
     """Wywołuje handler i zwraca (status, sparsowane body)."""
-    response = module.handler(rest_event(method, path, body, api_key), None)
+    response = module.handler(rest_event(method, path, body, api_key, claims), None)
     assert response["headers"] == {"Content-Type": "application/json"}
     return response["statusCode"], json.loads(response["body"])
