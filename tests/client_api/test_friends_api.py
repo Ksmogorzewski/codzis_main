@@ -16,6 +16,11 @@ KUBA = {"sub": "user-3", "email": "kuba@example.com", "name": "Kuba"}
 BARTEK = {"sub": "user-4", "email": "bartek@example.com", "name": "Bartek"}
 ZOSIA = {"sub": "user-5", "email": "zosia@example.com", "name": "Zosia"}
 NONAME = {"sub": "user-6", "email": "anon@example.com"}
+OLA2 = {"sub": "user-7", "email": "ola2@example.com", "name": "Ola"}
+
+
+def friend(claims):
+    return {"userId": claims["sub"], "name": claims["name"]}
 
 
 def record(event_id, start, end=None):
@@ -147,9 +152,9 @@ def test_going_lists_friends_upcoming_only(api):
     body = going(api)
     assert [card["id"] for card in body["items"]] == ["e1"]
     card = body["items"][0]
-    assert card["friends"] == ["Ola"]
+    assert card["friends"] == [friend(OLA)]
     assert (card["saves"], card["saved"], card["slot"]["start"]) == (1, False, "2026-10-15T18:00:00+02:00")
-    assert body["byEvent"] == {"e1": ["Ola"]}
+    assert body["byEvent"] == {"e1": [friend(OLA)]}
     assert "example.com" not in str(body)
 
 
@@ -162,14 +167,27 @@ def test_going_by_event_map(api):
     save(api, "e1", ALA)
 
     body = going(api)
-    assert body["byEvent"] == {"e1": ["Kuba", "Ola"], "saturday": ["Kuba"]}
+    assert body["byEvent"] == {"e1": [friend(KUBA), friend(OLA)], "saturday": [friend(KUBA)]}
     assert [(c["id"], c["saved"], c["friends"]) for c in body["items"]] == [
-        ("e1", True, ["Kuba", "Ola"]),
-        ("saturday", False, ["Kuba"]),
+        ("e1", True, [friend(KUBA), friend(OLA)]),
+        ("saturday", False, [friend(KUBA)]),
     ]
     # po usunięciu znajomego jego wydarzenia znikają
     call(api, "DELETE /api/friends/{userId}", claims=ALA, path={"userId": KUBA["sub"]})
-    assert going(api)["byEvent"] == {"e1": ["Ola"]}
+    assert going(api)["byEvent"] == {"e1": [friend(OLA)]}
+
+
+def test_going_same_names_are_different_friends(api):
+    befriend(api, ALA, OLA2)
+    befriend(api, ALA, OLA)
+    save(api, "e1", OLA2)
+    save(api, "e1", OLA)
+    save(api, "saturday", OLA2)
+
+    body = going(api)
+    # po imieniu, potem po userId: user-2 przed user-7
+    assert body["byEvent"] == {"e1": [friend(OLA), friend(OLA2)], "saturday": [friend(OLA2)]}
+    assert body["items"][0]["friends"] == [friend(OLA), friend(OLA2)]
 
 
 def test_going_empty(api):

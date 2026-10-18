@@ -43,10 +43,10 @@ Znajomi (logika i DynamoDB: friends.py). Akcje oznaczone (imię) bez imienia w t
     PUT    /api/friends/requests/{userId} (imię) -> {"status": "friends"}  akceptacja; 404 brak zaproszenia
     DELETE /api/friends/requests/{userId}  -> {}  ciche odrzucenie (zapraszający dalej widzi "oczekuje")
     DELETE /api/friends/{userId}           -> {}  usunięcie znajomości u obu stron; własne id -> 400
-    GET    /api/friends/going              -> {"items": [Card + {"friends": [imię]}], "byEvent": {eventId: [imię]}}
-                                              nadchodzące zapisy znajomych (od teraz; bez zajęć bez terminu);
-                                              karty od najbliższego startu, maks. 60; byEvent - wszystkie;
-                                              imiona alfabetycznie
+    GET    /api/friends/going              -> {"items": [Card + {"friends": [Friend]}], "byEvent": {eventId: [Friend]}}
+                                              Friend = {"userId", "name"}; nadchodzące zapisy znajomych (od teraz;
+                                              bez zajęć bez terminu); karty od najbliższego startu, maks. 60;
+                                              byEvent - wszystkie; znajomi po imieniu, potem po userId
     Błędy: 404 zły kod (+1 do limitu), 429 {"code": "too_many_attempts"} po 10 złych kodach w godzinę
     (także dobre kody do końca okna), 409 {"code": "friend_limit"} przy 50 znajomych.
 
@@ -298,19 +298,26 @@ def put_friend_request(claims: dict, from_id: str) -> dict:
 
 
 def get_friends_going(claims: dict) -> dict:
-    """„Znajomi idą”: nadchodzące zapisy znajomych (≤ 50 zapytań GSI byUser) + mapa wydarzenie -> imiona."""
+    """„Znajomi idą”: nadchodzące zapisy znajomych (≤ 50 zapytań GSI byUser) + mapa wydarzenie -> znajomi.
+
+    Znajomi jako {"userId", "name"} (po imieniu, potem po userId) - dwie „Ole” to dwie osoby.
+    """
     now = _now()
-    names: dict[str, list[str]] = {}
+    going: dict[str, list[dict[str, str]]] = {}
     for friend_id, name in friends.friend_ids(claims["sub"]).items():
         for row in store.my_saves(friend_id):
-            names.setdefault(row["eventId"], []).append(name)
+            going.setdefault(row["eventId"], []).append({"userId": friend_id, "name": name})
     known = store.all_events()
-    upcoming = [(known[i], events.next_slot(known[i], now=now)) for i in names if i in known]
+    upcoming = [(known[i], events.next_slot(known[i], now=now)) for i in going if i in known]
     page = [(item, slot) for item, slot in upcoming if slot and _upcoming(slot)]
     page.sort(key=lambda pair: (events.slot_sort_key(pair[1]), events.plain_text(pair[0].get("title"))))
-    by_event = {item["id"]: sorted(names[item["id"]], key=str.casefold) for item, _ in page}
+    by_event = {item["id"]: sorted(going[item["id"]], key=_friend_order) for item, _ in page}
     cards = _cards(claims, page[:GOING_LIMIT])
     return {"items": [card | {"friends": by_event[card["id"]]} for card in cards], "byEvent": by_event}
+
+
+def _friend_order(friend: dict[str, str]) -> tuple[str, str]:
+    return (friend["name"].casefold(), friend["userId"])
 
 
 def _cards(claims: dict, page: list[tuple[dict, dict]]) -> list[dict]:
