@@ -122,6 +122,7 @@ class Recommender:
         explain: bool = True,
         pool: int | None = None,
         expand: bool = True,
+        query_vector: object | None = None,
     ) -> list[Candidate]:
         """Rank events for a user context.
 
@@ -134,9 +135,15 @@ class Recommender:
         min_score: cosine floor (default DEFAULT_MIN_SCORE) - weak candidates are dropped
         rather than padding the list, so fewer than top_k results can come back. Pass
         None to disable. See `last_dropped` for how many were cut.
+        query_vector: a precomputed query vector (see Retriever.retrieve). Ignored when
+        `expand` rewrites the query, because then the text - and vector - change.
         """
+        original = user_context
         user_context = self._maybe_expand(user_context, expand)
-        candidates = self.retriever.retrieve(user_context, top_k=max(top_k, pool or 0), min_score=min_score)
+        if query_vector is not None and user_context is not original:
+            query_vector = None  # expansion changed the text; the precomputed vector is stale
+        candidates = self.retriever.retrieve(user_context, top_k=max(top_k, pool or 0),
+                                             min_score=min_score, query_vector=query_vector)
         self.last_dropped = self.retriever.last_dropped
         self.last_usage = None
         self.last_notes = None

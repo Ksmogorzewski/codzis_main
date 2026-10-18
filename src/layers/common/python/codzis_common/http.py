@@ -1,5 +1,8 @@
 """HTTP w Lambdach API: błędy, odczyt body, odpowiedź JSON i obsługa żądania z logiem dostępu.
 
+Nowe trasy: aplikacja Powertools z `codzis_common.app` (`create_app`); `handle_request` i `response` zostają
+tylko do czasu przeniesienia handlerów na router. `ApiError`, `parse_body`, `json_default`, `now_iso` - dalej tutaj.
+
     raise ApiError(400, "Niepoprawne pola", fields=["title"])  -> {"error": "...", "fields": [...]}
     body = parse_body(event)                                    # obiekt JSON albo ApiError 400
     return response(200, {"items": items})                      # Decimal z DynamoDB -> int/float

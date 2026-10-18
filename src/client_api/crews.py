@@ -58,6 +58,7 @@ RETENTION_S = 30 * 24 * 3600
 JOIN_RETRIES = 5
 BATCH_GET_MAX = 100  # limit BatchGetItem
 ANONYMOUS = "Ktoś"
+TEXT_ERROR = f"Wiadomość musi mieć od 1 do {MAX_MESSAGE} znaków"  # ten sam dla złego typu (schemas.MessageBody)
 
 # Lodołamacz ekipy (stały dla ekipy, różne ekipy różne): pierwsza wiadomość osoby odblokowuje jej czat
 ICEBREAKERS = [
@@ -103,7 +104,7 @@ def send(event_id: str, event: dict, user_id: str, name: str, raw: object, now: 
     """Wiadomość do mojej ekipy -> {"message"}. Za szybko po poprzedniej (MIN_GAP) -> 429."""
     text = clean_message(raw)
     if not text or len(text) > MAX_MESSAGE:
-        raise ApiError(400, f"Wiadomość musi mieć od 1 do {MAX_MESSAGE} znaków", fields=["text"])
+        raise ApiError(400, TEXT_ERROR, fields=["text"])
     ttl = expires_at(event, now)
     crew, _ = _my_crew(event_id, user_id, name, now, ttl)
     nr = _nr(crew)

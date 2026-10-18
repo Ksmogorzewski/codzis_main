@@ -39,7 +39,7 @@ class Clock:
 @pytest.fixture
 def clock(client_api, monkeypatch):
     c = Clock()
-    monkeypatch.setattr(client_api, "_now", lambda: c.now)
+    monkeypatch.setattr(client_api.routes.common, "now", lambda: c.now)
     return c
 
 

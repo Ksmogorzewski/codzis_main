@@ -41,7 +41,7 @@ def record(event_id, start, end=None):
 
 @pytest.fixture
 def api(client_api, monkeypatch, events_table):
-    monkeypatch.setattr(client_api, "_now", lambda: NOW)
+    monkeypatch.setattr(client_api.routes.common, "now", lambda: NOW)
     for item in [
         record("e1", "2026-10-15T18:00:00+02:00"),
         record("saturday", "2026-10-17T10:00:00+02:00"),

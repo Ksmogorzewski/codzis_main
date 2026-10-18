@@ -2,7 +2,7 @@ data "archive_file" "api" {
   type        = "zip"
   source_dir  = "${path.module}/../src/api"
   output_path = "${path.module}/build/api.zip"
-  excludes    = ["__pycache__"]
+  excludes    = ["__pycache__", "**/__pycache__"]
 }
 
 resource "aws_cloudwatch_log_group" "api" {
@@ -66,7 +66,7 @@ resource "aws_lambda_function" "api" {
   handler          = "handler.handler"
   filename         = data.archive_file.api.output_path
   source_code_hash = data.archive_file.api.output_base64sha256
-  layers           = [aws_lambda_layer_version.common.arn]
+  layers           = [aws_lambda_layer_version.common.arn, local.powertools_layer_arn]
   memory_size      = 128
   timeout          = 10
 
@@ -87,6 +87,8 @@ resource "aws_lambda_function" "api" {
       PUBLIC_BASE_URL    = local.website_origin
       # apiKeyId -> nazwa partnera
       PARTNERS = jsonencode({ for name, key in aws_api_gateway_api_key.partner : key.id => name })
+      # pole "service" w logach JSON (Powertools Logger)
+      POWERTOOLS_SERVICE_NAME = "${local.name}-api"
     }
   }
 
