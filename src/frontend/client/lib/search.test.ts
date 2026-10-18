@@ -17,7 +17,11 @@ describe("search", () => {
 
   it("zły parametr wraca do domyślnego, reszta zostaje", () => {
     expect(HomeSearchSchema.parse({ when: "jutro", q: 5, cat: "kino" })).toEqual(DEFAULT_SEARCH);
-    expect(HomeSearchSchema.parse({ when: "week", cat: "?" })).toEqual({ when: "week", q: "", cat: "all" });
+    expect(HomeSearchSchema.parse({ when: "weekend", cat: "?" })).toEqual({ when: "weekend", q: "", cat: "all" });
+  });
+
+  it("bez „7 dni”: stary link z when=week wraca do dziś", () => {
+    expect(HomeSearchSchema.parse({ when: "week", q: "jazz" })).toEqual({ when: "today", q: "jazz", cat: "all" });
   });
 
   it("zapytanie: przycięte, pojedyncze spacje, maks. 120 znaków", () => {

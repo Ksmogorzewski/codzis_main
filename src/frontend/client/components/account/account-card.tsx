@@ -104,13 +104,13 @@ export function AccountCard({ me }: { me: Me }) {
       </div>
 
       <form className="grid gap-4 md:grid-cols-3" onSubmit={onSubmit} noValidate>
-        <Field id="account-first-name" label="Imię" hint="Widzą je inni zapisani. Nie zmienisz go.">
+        <Field id="account-first-name" label="Imię" hint="Widzą je inni zapisani.">
           <Input id="account-first-name" value={me.name ?? ""} readOnly disabled />
         </Field>
         <Field
           id="account-last-name"
           label="Nazwisko"
-          hint={me.familyName ? "Inni widzą tylko pierwszą literę. Nie zmienisz go." : "Nie podano przy rejestracji."}
+          hint={me.familyName ? "Inni widzą tylko pierwszą literę." : "Nie podano przy rejestracji."}
         >
           <Input id="account-last-name" value={me.familyName ?? ""} readOnly disabled />
         </Field>

@@ -21,7 +21,8 @@ Ten sam kształt mają rekordy ze wszystkich źródeł (API UM Warszawy i portal
     schedule       [{day, start?, end?}]    day: monday..sunday, "HH:MM" (kind=recurring)
     startsAt       str?  UTC, najwcześniejszy start z occurrences (do sortowania/indeksów)
     endsAt         str?  UTC, najpóźniejszy koniec z occurrences
-    imageUrl       str?  https
+    imageUrl       str?  https (w tabeli: plik w standardzie zdjęć, tagger/images.py)
+    sourceImageUrl str?  dopisuje tagger: adres źródłowy zdjęcia
     attributes     {}    dodatki specyficzne dla źródła
     contentHash    str   hash treści - importer wysyła na kolejkę tylko nowe/zmienione rekordy
     importedAt     str   UTC

@@ -12,8 +12,9 @@ type Props = { dark: boolean; onToggleDark: () => void; onLogout: () => void };
 
 const focusRing =
   "outline-none focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+// Same napisy (bez ikon; ikony ma dolny pasek na telefonie). Do 1100 px ciaśniej, żeby pięć miejsc się zmieściło.
 const navLink = cn(
-  "inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3 text-[17px] font-semibold text-foreground underline decoration-transparent decoration-[3px] underline-offset-[7px] transition-[text-decoration-color] duration-200 hover:decoration-border",
+  "inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-2 text-[15px] font-semibold text-foreground underline decoration-transparent decoration-[3px] underline-offset-[7px] transition-[text-decoration-color] duration-200 hover:decoration-border min-[1100px]:px-3 min-[1100px]:text-[17px]",
   focusRing,
 );
 const navActive = "decoration-foreground hover:decoration-foreground";
@@ -43,12 +44,9 @@ export function Header({ dark, onToggleDark, onLogout }: Props) {
               key={item.to}
               to={item.to}
               aria-current={active === item.to ? "page" : undefined}
-              title={item.label}
               className={cn(navLink, active === item.to && navActive)}
             >
-              <Icon name={item.icon} filled={active === item.to} />
-              {/* Pięć miejsc: między 768 a 1100 px same ikony (podpis dla czytnika i w dymku). */}
-              <span className="sr-only min-[1100px]:not-sr-only">{item.label}</span>
+              {item.label}
               {item.to === "/twoje" && <UnreadBadge count={unread} />}
               {item.to === "/znajomi" && <UnreadBadge count={invites} label={invitesLabel} max={9} />}
             </Link>

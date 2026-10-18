@@ -7,8 +7,9 @@ testpaths = ["tests"]
 pythonpath = ["src/layers/common/python"]
 addopts = "-ra"
 
-# Lint i formatowanie: na razie tylko Lambdy API (klient, partner, dispatcher), wspólna warstwa i testy.
-# recommender/ (z testami w tests/recommender/), tagger/, src/importer/, src/recommender_api/ - do objęcia w przyszłości.
+# Lint i formatowanie: na razie tylko Lambdy API (klient, partner, dispatcher), wspólna warstwa, zdjęcia taggera
+# (tagger/images.py) i testy. recommender/ (z testami w tests/recommender/), reszta tagger/, src/importer/,
+# src/recommender_api/ - do objęcia w przyszłości.
 [tool.ruff]
 target-version = "py313"
 line-length = 120
@@ -17,6 +18,7 @@ include = [
     "src/api/**/*.py",
     "src/dispatcher/**/*.py",
     "src/layers/**/*.py",
+    "tagger/images.py",
     "tests/**/*.py",
 ]
 extend-exclude = ["tests/recommender"]
@@ -47,3 +49,13 @@ warn_redundant_casts = true
 no_implicit_optional = true
 mypy_path = "src/layers/common/python"
 exclude = ["^tests/recommender/"]  # jak recommender/ w ruff (wyżej)
+
+# tests/tagger/ importuje tagger.images, a z nim pakiet tagger: reszta taggera jeszcze bez typów (jak w ruff wyżej),
+# więc błędy tylko z tagger/images.py (konkretny moduł ma pierwszeństwo przed wzorcem).
+[[tool.mypy.overrides]]
+module = ["tagger", "tagger.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "tagger.images"
+ignore_errors = false

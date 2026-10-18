@@ -41,7 +41,7 @@ Tabele DynamoDB: `events` (docelowa, pisze tylko worker), `submissions` i `payme
 
 ## Struktura
 
-- `run_task.py`, `tagger/` – tagowanie eventów przez AI (DeepSeek), jednorazowy task ECS: SQS → tagi → `events`. Szczegóły: [tagger/README.md](tagger/README.md)
+- `run_task.py`, `tagger/` – tagowanie eventów przez AI (DeepSeek), jednorazowy task ECS: SQS → tagi → `events`; przy zapisie zdjęcie w standardzie (`tagger/images.py`). Szczegóły: [tagger/README.md](tagger/README.md)
 
 - `infra/` – Terraform
 - `src/api/` – Lambda API panelu partnera: `handler.py` (routing), `events.py` (ogłoszenia, walidacja pól: `TEXT_FIELDS`, `_event_input`), `payments.py` (płatności), `store.py` (AWS, kredyty), `config.py` (zmienne środowiskowe)
@@ -89,6 +89,7 @@ aws ssm put-parameter --name "$(terraform output -raw deepseek_api_key_parameter
   --type SecureString --overwrite --value "sk-..."   # klucz DeepSeek (poza state'em)
 cd ..
 scripts/push-images.sh                         # obrazy taggera i importera (wymaga Dockera)
+scripts/resize-images.sh                       # zdjęcia wydarzeń już w tabeli do standardu (jednorazowo, Docker)
 ```
 
 Do czasu wypchnięcia obrazu dispatcher będzie uruchamiał task, który nie wystartuje (brak obrazu w ECR), a wiadomości poczekają w kolejce (retencja 14 dni).
@@ -270,6 +271,8 @@ Kod: `run_task.py` + `tagger/` ([tagger/README.md](tagger/README.md)), obraz z `
 - **Model dostaje:** tytuł, lead, opis (bez HTML, przycięty do 1500 znaków), kategorie oraz podpowiedzi ze źródła: `audience_hint`, `kind`, `online`, `venue`.
 - **Tagi** (`tags`, 10 wymiarów z `tagger/prompt.py`): `theme`, `audience` (do 3), `format`, `cost`, `mode`, `setting` (w pomieszczeniu / na zewnątrz), `registration` (wstęp wolny / zapisy / bilet), `activity_level`, `occasion` (z dziećmi, na randkę…), `accessibility`. Zmiana taksonomii zmienia `taxonomyVersion`, więc rekordy, które przyjdą ponownie, zostaną przetagowane.
 - **Parametry z danych** (`facets`, bez LLM): `timeOfDay`, `days`, `weekend`, `multiDay`, `recurring`.
+- **Zdjęcia w standardzie** (`tagger/images.py`, bez LLM): tagger pobiera zdjęcie źródłowe i zapisuje WebP 1200×800 (3:2, jakość 82, sRGB, bez metadanych) w buckecie zdjęć: `photos/events/v1/<sha1 adresu>.webp`, publicznie `https://<domain_name>/photos/…`. W rekordzie `imageUrl` = nasz plik, `sourceImageUrl` = źródło; ten sam adres źródła = ten sam plik. Od 4:3 do 16:9 zdjęcie wypełnia kadr (z brzegu znika najwyżej 8%); plakaty pionowe, kwadraty, panoramy i miniatury UM (360×270) są całe, powiększone najwyżej 2×, na jednolitym polu w kolorze brzegu zdjęcia. Nieudane zdjęcie nie blokuje zapisu (zostaje adres źródłowy). Pobieranie tylko https z publicznych adresów, do 15 MB / 25 Mpx.
+- **Zdjęcia wydarzeń już w tabeli** (po pierwszym wdrożeniu i po zmianie standardu = nowy `VERSION`): `scripts/resize-images.sh` (`--dry-run`: tylko przeliczenie, `--limit N`). Lokalnie w Dockerze z twoimi credentialami; można powtarzać (gotowe pliki są pomijane), kod wyjścia `2` = część zdjęć została źródłowa. Portal pokazuje nowe adresy po odświeżeniu pamięci client-api (5 min) i indeksu rekomendera (30 min); zapisane zestawy rekomendacji przy najbliższym przeliczeniu (w nocy).
 - **TTL:** `expiresAt` = koniec eventu + 1 dzień; DynamoDB sam usuwa zakończone eventy. Zajęcia cykliczne nie wygasają.
 - **Koszt:** każda wiadomość loguje tokeny i przybliżony koszt (`LLM: … ~$…`) w `/ecs/codzis-worker`.
 - **Uruchamianie:** dispatcher odpala task na Fargate Spot (fallback: Fargate), task kończy się, gdy kolejka jest pusta. Kod wyjścia `1` = część wiadomości nie przeszła; po 5 próbach trafiają do `codzis-events-dlq`.
@@ -292,7 +295,8 @@ Jeden kształt dla wszystkich źródeł (importer i portal partnera). Pełny opi
 | `occurrences [{start, end, allDay}]` | ISO 8601 z offsetem; dla `kind=event` |
 | `schedule [{day, start, end}]` | `monday`…`sunday`, `HH:MM`; dla `recurring` |
 | `startsAt`, `endsAt` | UTC, z `occurrences` (do sortowania/indeksów) |
-| `imageUrl`, `attributes` | zdjęcie po https; dodatki specyficzne dla źródła |
+| `imageUrl`, `attributes` | zdjęcie po https (w tabeli: plik w standardzie zdjęć, patrz Tagger); dodatki specyficzne dla źródła |
+| `sourceImageUrl` | dopisuje tagger: adres źródłowy zdjęcia (z niego powstaje plik w standardzie) |
 | `contentHash`, `importedAt` | wykrywanie zmian w importerze |
 | `declared` | tylko partner: koszt, wejście, miejsce, dla kogo, dostępność podane w formularzu; tagger przepisuje je do `tags` zamiast zgadywać |
 | `tags` | dopisuje tagger: 10 wymiarów z `tagger/prompt.py` |

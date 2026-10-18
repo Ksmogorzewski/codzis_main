@@ -24,6 +24,7 @@ tagger/                  # the importable tagging module
   merger.py              # merge(raw_events, tagged) — full record + tags
   sqs_source.py          # SQSSource — receive/delete SQS messages
   dynamodb_sink.py       # DynamoDBSink — exists/put + DynamoDB sanitize
+  images.py              # event photos -> standard WebP 1200x800 in the photos bucket; backfill: python -m tagger.images
 requirements.txt
 .env                     # DEEPSEEK_API_KEY (gitignored); AWS via ECS task-role
 ```
@@ -78,3 +79,4 @@ merged = merge(raw_events, summary["results"])   # full records + "id" + "tags"
 | Skip / reuse tags / re-tag decision | `run_task.py` (per record, before the LLM call) |
 | Model / endpoint | `tagger/client.py` |
 | Chunk token budget | `tagger/orchestrator.py` → `TARGET_TOKENS` |
+| Photo standard (size, crop, quality) | `tagger/images.py` → constants; a change = new `VERSION` (new keys), then `scripts/resize-images.sh` |

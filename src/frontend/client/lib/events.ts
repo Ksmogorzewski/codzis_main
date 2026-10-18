@@ -12,7 +12,6 @@ export const WHEN_OPTIONS: { id: When; label: string }[] = [
   { id: "today", label: "Dziś" },
   { id: "tomorrow", label: "Jutro" },
   { id: "weekend", label: "Weekend" },
-  { id: "week", label: "7 dni" },
 ];
 
 export const MAX_DAYS_AHEAD = 60; // = MAX_DAYS_AHEAD w src/recommender_api/user_context.py

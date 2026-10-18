@@ -220,6 +220,26 @@
   }
 }
 
+/* Przejście między podstronami (View Transitions API, router: defaultViewTransition w main.tsx - tylko zmiana
+   ścieżki). Samo przenikanie opacity: identyczne miejsca (nagłówek, dolny pasek) stoją, zmienia się treść.
+   Bez przesunięcia, bo zrzut obejmuje cały ekran; przy prefers-reduced-motion - bez animacji (blok niżej). */
+@keyframes podstrona-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes podstrona-in {
+  from {
+    opacity: 0;
+  }
+}
+::view-transition-old(root) {
+  animation: 160ms ease-out both podstrona-out;
+}
+::view-transition-new(root) {
+  animation: 220ms ease-out both podstrona-in;
+}
+
 /* Ruch tylko dla tych, którzy go chcą: przejścia i animacje skracamy do zera.
    !important, bo musi wygrać z klasami animacji Tailwinda. */
 @media (prefers-reduced-motion: reduce) {
@@ -230,5 +250,10 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }

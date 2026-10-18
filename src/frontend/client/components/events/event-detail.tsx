@@ -177,7 +177,12 @@ function Detail({ card, builtAt, detail }: DetailProps) {
         )}
       </header>
 
-      <EventImage imageUrl={card.imageUrl} category={category} className="h-60 border-2 border-input md:h-[400px]" />
+      <EventImage
+        imageUrl={card.imageUrl}
+        category={category}
+        fit="contain"
+        className="h-60 border-2 border-input md:h-[400px]"
+      />
 
       <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-6">
